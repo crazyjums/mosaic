@@ -182,7 +182,7 @@ func TestOverrideConfigProfileAndDelete(t *testing.T) {
 		{Name: "fake", Type: "fake", Models: []string{"demo"}},
 		{Name: "deepseek", Type: "openai", BaseURL: "https://api.deepseek.com/v1", APIKey: "from-env-xxxxxxxx", Models: []string{"deepseek-chat"}},
 	}
-	m, _, _ := newEnv(t, base...)
+	m, _, path := newEnv(t, base...)
 
 	// 在界面上只修改模型列表（不填密钥）：应形成覆盖，并保留环境变量里的密钥。
 	if err := m.Save(ProviderInput{OriginalName: "deepseek", Name: "deepseek", Type: "openai", BaseURL: "https://api.deepseek.com/v1", Models: []string{"deepseek-chat", "deepseek-reasoner"}}); err != nil {
@@ -192,6 +192,10 @@ func TestOverrideConfigProfileAndDelete(t *testing.T) {
 		if p.Name == "deepseek" && (p.APIKey != "from-env-xxxxxxxx" || len(p.Models) != 2) {
 			t.Fatalf("覆盖应保留原密钥: %+v", p)
 		}
+	}
+	// 沿用的密钥来自环境变量，不能被明文写进设置文件。
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "from-env-xxxxxxxx") {
+		t.Fatalf("环境变量中的密钥不应写入设置文件: %s", b)
 	}
 	for _, v := range m.Providers() {
 		if v.Name == "deepseek" && v.Source != SourceOverride {

@@ -138,7 +138,9 @@ func (m *Manager) Save(in ProviderInput) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// 步骤 1：校验与规范化。
+	// 步骤 1：校验与规范化。normalize 会在密钥留空时填入沿用的密钥（用于下面的校验），
+	// 但写进设置文件的密钥要单独决定，见 keyToPersist。
+	typedKey := strings.TrimSpace(in.APIKey)
 	in, err := m.normalize(in)
 	if err != nil {
 		return err
@@ -156,6 +158,7 @@ func (m *Manager) Save(in ProviderInput) error {
 	if _, err := m.registry.New(toProfile(setting)); err != nil {
 		return err
 	}
+	setting.APIKey = m.keyToPersist(typedKey, in)
 
 	// 步骤 2：生成新的设置文件内容（改名时去掉旧条目）。
 	next := cloneFile(m.file)
@@ -385,6 +388,29 @@ func (m *Manager) existingKey(names ...string) string {
 		}
 	}
 	return ""
+}
+
+// keyToPersist 决定写进设置文件的密钥。
+//
+// 留空沿用的密钥如果来自配置文件（常见的是 api_key_env 指向的环境变量），不能写进 settings.json：
+// 那样会把环境变量里的密钥明文落盘，而且之后用户轮换环境变量也不再生效（设置文件里的优先）。
+// 同名的配置文件配置档存在时留空即可，merge 会沿用它的密钥。
+func (m *Manager) keyToPersist(typed string, in ProviderInput) string {
+	if typed != "" {
+		return typed
+	}
+	for _, n := range []string{in.OriginalName, in.Name} {
+		for _, s := range m.file.Providers {
+			if n != "" && s.Name == n && s.APIKey != "" {
+				return s.APIKey
+			}
+		}
+	}
+	if slices.ContainsFunc(m.base, func(p provider.ProfileConfig) bool { return p.Name == in.Name }) {
+		return ""
+	}
+	// 例如把配置文件里的配置档改名另存：新名字没有可以沿用的来源，只能保存一份。
+	return in.APIKey
 }
 
 // apply 用新的设置重建厂商目录并交给 Engine。
