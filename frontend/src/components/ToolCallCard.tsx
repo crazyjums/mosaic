@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ToolStatus, ToolView } from "../store/reducer";
+import { t } from "../i18n";
 
+// label 是中文原文，渲染时翻译。
 const STATUS: Record<ToolStatus, { label: string; className: string }> = {
   queued: { label: "排队中", className: "text-muted" },
   awaiting_permission: { label: "等待确认", className: "text-warn" },
@@ -36,11 +38,11 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
         <span className="font-mono text-[13px] font-semibold">{tool.name}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{headline(tool.input)}</span>
         {tool.risk && tool.risk !== "read" && (
-          <span className="rounded border border-warn/40 px-1.5 text-[11px] text-warn">{RISK[tool.risk] ?? tool.risk}</span>
+          <span className="rounded border border-warn/40 px-1.5 text-[11px] text-warn">{RISK[tool.risk] ? t(RISK[tool.risk]) : tool.risk}</span>
         )}
         <span className={`flex items-center gap-1 text-xs ${st.className}`}>
           {busy && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
-          {st.label}
+          {t(st.label)}
           {/* 耗时为 0 表示不足 1ms 或未知（重放的历史），都不显示 */}
           {!!tool.durationMs && <span className="text-muted">· {tool.durationMs}ms</span>}
         </span>
@@ -49,13 +51,13 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
         <div className="space-y-2 border-t border-line px-3 py-2 text-xs">
           {tool.permission && (
             <div className="text-muted">
-              权限：{tool.permission.summary}
+              {t("权限：{summary}", { summary: tool.permission.summary })}
               {tool.permission.decision && ` → ${tool.permission.decision}`}
             </div>
           )}
-          <Section title="参数" body={JSON.stringify(tool.input, null, 2)} />
+          <Section title={t("参数")} body={JSON.stringify(tool.input, null, 2)} />
           {tool.output !== undefined && (
-            <Section title="结果" body={tool.output} error={tool.status === "error" || tool.status === "denied"} />
+            <Section title={t("结果")} body={tool.output} error={tool.status === "error" || tool.status === "denied"} />
           )}
         </div>
       )}

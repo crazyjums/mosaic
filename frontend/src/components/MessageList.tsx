@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 import AssistantMessage from "./AssistantMessage";
+import { t } from "../i18n";
 
+// 只存中文原文，渲染时再翻译：模块加载时语言还没确定。
 const REASON: Record<string, string> = {
   completed: "完成",
   max_steps: "达到最大步数",
@@ -31,7 +33,7 @@ export default function MessageList() {
 
   return (
     <div ref={ref} onScroll={onScroll} className="min-w-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-5 px-6 py-6">
+      <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-6 py-6">
         {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} />}
         {timeline.map((it) => {
           switch (it.kind) {
@@ -61,7 +63,12 @@ export default function MessageList() {
               return (
                 <div key={it.id} className="flex items-center gap-3 text-[11px] text-muted">
                   <div className="h-px flex-1 bg-line" />
-                  {REASON[it.reason] ?? it.reason} · {it.steps} 步 · 入 {it.usage.input_tokens} / 出 {it.usage.output_tokens} tokens
+                  {t("{reason} · {steps} 步 · 入 {input} / 出 {output} tokens", {
+                    reason: REASON[it.reason] ? t(REASON[it.reason]) : it.reason,
+                    steps: it.steps,
+                    input: it.usage.input_tokens,
+                    output: it.usage.output_tokens,
+                  })}
                   <div className="h-px flex-1 bg-line" />
                 </div>
               );
@@ -77,18 +84,17 @@ function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
   return (
     <div className="mt-24 text-center text-muted">
       <div className="text-2xl font-semibold text-fg">myllmapp</div>
-      <p className="mt-2 text-sm">自己实现的 agent harness · 思考、工具调用、权限确认全过程可视化</p>
+      <p className="mt-2 text-sm">{t("自己实现的 agent harness · 思考、工具调用、权限确认全过程可视化")}</p>
       {demo && (
         <p className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
-          当前是<strong className="text-fg">浏览器演示模式</strong>：没有连接 Go 后端，回放的是 fake provider 录制的事件流。
-          随便输入一句话试试；在 Wails 桌面端中会连接真实内核。
+          {t("当前是浏览器演示模式：没有连接 Go 后端，回放的是 fake provider 录制的事件流。随便输入一句话试试；在 Wails 桌面端中会连接真实内核。")}
         </p>
       )}
       {!demo && demoModel && (
         <div className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
-          当前使用的是<strong className="text-fg">演示模型</strong>（按固定剧本回复，不调用真实模型）。
+          {t("当前使用的是演示模型（按固定剧本回复，不调用真实模型）。")}
           <button className="mt-2 block w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90" onClick={() => void openSettings("providers")}>
-            配置真实模型（Base URL + API Key）
+            {t("配置真实模型（Base URL + API Key）")}
           </button>
         </div>
       )}

@@ -4,6 +4,7 @@ import ImageBlock from "./ImageBlock";
 import Markdown from "./Markdown";
 import ThinkingCard from "./ThinkingCard";
 import ToolCallCard from "./ToolCallCard";
+import { t } from "../i18n";
 
 // 一条 assistant 消息 = 一次模型调用（一个 step）。按块的顺序渲染：思考、正文、图片、工具调用。
 export default function AssistantMessage({ item }: { item: AssistantItem }) {
@@ -31,9 +32,9 @@ export default function AssistantMessage({ item }: { item: AssistantItem }) {
           }
         }
       })}
-      {item.streaming && item.blocks.length === 0 && <div className="caret text-sm text-muted">等待模型响应</div>}
-      {item.stopReason === "max_tokens" && <div className="text-xs text-warn">输出达到 max_tokens 上限，被截断。</div>}
-      {item.stopReason === "refusal" && <div className="text-xs text-danger">厂商拒绝了这次请求。</div>}
+      {item.streaming && item.blocks.length === 0 && <div className="caret text-sm text-muted">{t("等待模型响应")}</div>}
+      {item.stopReason === "max_tokens" && <div className="text-xs text-warn">{t("输出达到 max_tokens 上限，被截断。")}</div>}
+      {item.stopReason === "refusal" && <div className="text-xs text-danger">{t("厂商拒绝了这次请求。")}</div>}
     </div>
   );
 }

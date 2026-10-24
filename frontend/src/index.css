@@ -2,7 +2,10 @@
 
 /*
  * 主题：用 CSS 变量定义颜色，Tailwind 的 @theme 把变量映射成工具类（bg-panel、text-muted……）。
- * 跟随系统深浅色：默认深色，系统为浅色时覆盖变量即可，组件里不需要写 dark: 前缀。
+ * 组件里不需要写 dark: 前缀，切换主题只是换一组变量：
+ *   - 默认深色；系统为浅色时用浅色变量（"跟随系统"）；
+ *   - 设置 → 外观 选了固定主题时，根元素上有 data-theme="light|dark"，优先于系统设置。
+ * 浅色变量写了两遍（媒体查询里和 data-theme 里），因为 CSS 不能把两者合进一条规则。
  */
 :root {
   color-scheme: dark;
@@ -17,10 +20,12 @@
   --ok: #4ade80;
   --warn: #fbbf24;
   --danger: #f87171;
+  /* 消息区和输入框的最大宽度（设置 → 外观 → 消息区宽度） */
+  --content-width: 48rem;
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     color-scheme: light;
     --bg: #f7f8fa;
     --panel: #ffffff;
@@ -34,6 +39,21 @@
     --warn: #b45309;
     --danger: #dc2626;
   }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --panel-2: #f1f3f6;
+  --border: #e1e4ea;
+  --fg: #1b1f27;
+  --muted: #697186;
+  --accent: #3b5bdb;
+  --think: #7c3aed;
+  --ok: #16a34a;
+  --warn: #b45309;
+  --danger: #dc2626;
 }
 
 @theme {
@@ -102,6 +122,12 @@ body {
 .md table { border-collapse: collapse; }
 .md th, .md td { border: 1px solid var(--border); padding: 0.25em 0.6em; }
 .md blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--muted); }
+
+/* 状态栏脚本输出中的 ANSI 颜色（见 store/ansi.ts） */
+.ansi-bold { font-weight: 600; }
+.ansi-dim { opacity: 0.7; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
 
 /* 流式输出时末尾的闪烁光标 */
 .caret::after {

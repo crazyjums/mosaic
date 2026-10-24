@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { PermissionMode } from "../bridge";
+import { t } from "../i18n";
 import { useChat } from "../store/chatStore";
 
 // 权限档位（参考 Claude Code 的权限模式），从保守到放开。与 Go 端 permission.Modes() 一一对应。
+// label / desc 是中文原文，渲染时用 t() 翻译。
 export const MODES: { value: PermissionMode; label: string; desc: string }[] = [
   { value: "readonly", label: "只读", desc: "只能读文件和列目录，写文件、执行命令一律拒绝" },
   { value: "default", label: "默认", desc: "读操作直接放行，写文件和执行命令前询问" },
@@ -34,12 +36,13 @@ export default function PermissionModeSelect() {
         className={`shrink-0 rounded border px-1.5 py-0.5 ${TONE[mode] ?? TONE.default} bg-panel`}
         value={mode}
         onChange={(e) => onChange(e.target.value as PermissionMode)}
-        title={`权限：${MODES.find((m) => m.value === mode)?.desc ?? ""}（立即生效，会被记住；全部放行除外）`}
-        aria-label="权限档位"
+        title={t("权限：{desc}（立即生效，会被记住；全部放行除外）", { desc: t(MODES.find((m) => m.value === mode)?.desc ?? "") })}
+        aria-label={t("权限档位")}
       >
         {MODES.map((m) => (
           <option key={m.value} value={m.value}>
-            {m.value === "auto" ? "⚠ " : ""}权限：{m.label}
+            {m.value === "auto" ? "⚠ " : ""}
+            {t("权限：{label}", { label: t(m.label) })}
           </option>
         ))}
       </select>
@@ -74,23 +77,23 @@ function DangerConfirm({ onCancel, onConfirm }: { onCancel: () => void; onConfir
       <div className="w-full max-w-md rounded-xl border border-danger/50 bg-panel shadow-2xl">
         <div className="px-5 py-4">
           <div id="danger-title" className="flex items-center gap-2 text-sm font-semibold text-danger">
-            <span>⚠</span> 开启「全部放行」？
+            <span>⚠</span> {t("开启「全部放行」？")}
           </div>
           <p className="mt-3 text-sm leading-relaxed text-fg">
-            开启后，agent 写文件、<strong>执行任意 shell 命令</strong>都不再经过你的确认。模型可能误删文件、改坏代码，或运行你没有预料到的命令。
+            {t("开启后，agent 写文件、执行任意 shell 命令都不再经过你的确认。模型可能误删文件、改坏代码，或运行你没有预料到的命令。")}
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">
-            <li>只建议在可以随意破坏的目录（一次性的沙箱、已提交的 git 仓库）里使用</li>
-            <li>随时可以在状态栏切回「默认」，立即生效</li>
-            <li>只对本次运行有效，不会被记住；重启应用后回到切换前的档位</li>
+            <li>{t("只建议在可以随意破坏的目录（一次性的沙箱、已提交的 git 仓库）里使用")}</li>
+            <li>{t("随时可以在状态栏切回「默认」，立即生效")}</li>
+            <li>{t("只对本次运行有效，不会被记住；重启应用后回到切换前的档位")}</li>
           </ul>
         </div>
         <div className="flex justify-end gap-2 border-t border-line px-5 py-3 text-sm">
           <button ref={cancelRef} className="rounded-md border border-line px-3 py-1.5 hover:bg-panel-2" onClick={onCancel}>
-            取消 <kbd className="ml-1 text-[10px] opacity-60">Esc</kbd>
+            {t("取消")} <kbd className="ml-1 text-[10px] opacity-60">Esc</kbd>
           </button>
           <button className="rounded-md bg-danger px-3 py-1.5 font-medium text-white hover:opacity-90" onClick={onConfirm}>
-            我了解风险，全部放行
+            {t("我了解风险，全部放行")}
           </button>
         </div>
       </div>
