@@ -57,7 +57,7 @@ export default function Sidebar() {
           disabled={running}
           title={running ? "运行中不能修改设置" : undefined}
         >
-          ⚙ 设置 · 模型厂商
+          ⚙ 设置
         </button>
       </div>
     </aside>

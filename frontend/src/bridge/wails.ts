@@ -7,7 +7,9 @@
 
 import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
-import type { Backend, PermissionMode, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo } from "./types";
+import type {
+  Backend, DataInfo, General, GeneralView, PermissionMode, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo,
+} from "./types";
 
 /** Go 端 internal/app.EventName */
 const EVENT_NAME = "agent:event";
@@ -33,6 +35,12 @@ interface GoApp {
   SetPermissionMode(mode: PermissionMode): Promise<Status>;
   GetStatusLineConfig(): Promise<unknown>;
   SaveStatusLineConfig(cfg: unknown): Promise<void>;
+  GetGeneral(): Promise<GeneralView>;
+  SaveGeneral(g: General): Promise<GeneralView>;
+  ChooseDirectory(start: string): Promise<string>;
+  GetDataInfo(): Promise<DataInfo>;
+  OpenDataDir(): Promise<void>;
+  ClearSessions(): Promise<number>;
 }
 
 interface WailsWindow {
@@ -74,6 +82,12 @@ export function createWailsBackend(): Backend {
     setPermissionMode: (mode) => app.SetPermissionMode(mode),
     getStatusLineConfig: () => app.GetStatusLineConfig(),
     saveStatusLineConfig: (cfg) => app.SaveStatusLineConfig(cfg),
+    getGeneral: () => app.GetGeneral(),
+    saveGeneral: (g) => app.SaveGeneral(g),
+    chooseDirectory: (start) => app.ChooseDirectory(start),
+    getDataInfo: () => app.GetDataInfo(),
+    openDataDir: () => app.OpenDataDir(),
+    clearSessions: () => app.ClearSessions(),
     onEvent(cb: (ev: AgentEvent) => void) {
       return runtime.EventsOn(EVENT_NAME, (data) => {
         // 不认识的事件类型直接忽略（协议约定的向前兼容）。

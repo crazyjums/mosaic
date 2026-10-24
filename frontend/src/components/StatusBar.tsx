@@ -98,7 +98,7 @@ function ModelItem() {
         ))}
       </select>
       {isDemo && (
-        <button className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-warn hover:bg-warn/25" onClick={() => void openSettings()}>
+        <button className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-warn hover:bg-warn/25" onClick={() => void openSettings("providers")}>
           演示模型 · 配置真实模型 →
         </button>
       )}

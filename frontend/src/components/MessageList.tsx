@@ -87,7 +87,7 @@ function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
       {!demo && demoModel && (
         <div className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
           当前使用的是<strong className="text-fg">演示模型</strong>（按固定剧本回复，不调用真实模型）。
-          <button className="mt-2 block w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90" onClick={() => void openSettings()}>
+          <button className="mt-2 block w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90" onClick={() => void openSettings("providers")}>
             配置真实模型（Base URL + API Key）
           </button>
         </div>

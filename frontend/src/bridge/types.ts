@@ -55,6 +55,34 @@ export interface WorkspaceInfo {
   changed_files: number;
 }
 
+/** 对应 settings.General。数字为 0、字符串为空表示"未设置，沿用默认值" */
+export interface General {
+  workspace?: string;
+  max_steps?: number;
+  max_tokens?: number;
+  shell_timeout_seconds?: number;
+  system_prompt?: string;
+}
+
+/** 对应 settings.GeneralView */
+export interface GeneralView {
+  saved: General;
+  effective: General;
+  defaults: General;
+  default_system_prompt: string;
+  workspace_locked: boolean;
+  workspace_warning?: string;
+}
+
+/** 对应 settings.DataInfo */
+export interface DataInfo {
+  data_dir: string;
+  settings_path: string;
+  db_path: string;
+  db_bytes: number;
+  sessions: number;
+}
+
 /** 对应 core.SessionSummary */
 export interface SessionSummary {
   id: string;
@@ -134,6 +162,15 @@ export interface Backend {
   /** 从未保存过时返回 null */
   getStatusLineConfig(): Promise<unknown>;
   saveStatusLineConfig(cfg: unknown): Promise<void>;
+  // ---- 设置：常规 / 系统提示词 / 数据 ----
+  getGeneral(): Promise<GeneralView>;
+  saveGeneral(g: General): Promise<GeneralView>;
+  /** 弹出选择文件夹对话框；取消时返回空字符串 */
+  chooseDirectory(start: string): Promise<string>;
+  getDataInfo(): Promise<DataInfo>;
+  openDataDir(): Promise<void>;
+  /** 删除所有历史会话，返回删除的数量 */
+  clearSessions(): Promise<number>;
   /** 订阅事件，返回取消订阅函数 */
   onEvent(cb: (ev: AgentEvent) => void): () => void;
 }

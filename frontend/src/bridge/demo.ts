@@ -12,7 +12,7 @@
 //      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
 import type { AgentEvent, Decision, Usage } from "../protocol/events";
-import type { Backend, PermissionMode, ProfileInfo, ProviderView, SessionSummary, Status } from "./types";
+import type { Backend, General, GeneralView, PermissionMode, ProfileInfo, ProviderView, SessionSummary, Status } from "./types";
 import raw from "./demo-events.jsonl?raw";
 
 const recorded: AgentEvent[] = raw
@@ -43,6 +43,22 @@ export function createDemoBackend(): Backend {
   let provider = "fake";
   let permissionMode: PermissionMode = "default";
   let statusLineConfig: unknown = null;
+  let general: General = {};
+  const demoWorkspace = "/demo/workspace";
+  const generalView = (): GeneralView => ({
+    saved: general,
+    effective: {
+      workspace: general.workspace || demoWorkspace,
+      max_steps: general.max_steps || 20,
+      max_tokens: general.max_tokens || 0,
+      shell_timeout_seconds: general.shell_timeout_seconds || 60,
+      system_prompt: general.system_prompt || "",
+    },
+    defaults: { workspace: demoWorkspace, max_steps: 20, max_tokens: 0, shell_timeout_seconds: 60 },
+    default_system_prompt:
+      `You are a helpful coding agent running inside a desktop client.\n\nEnvironment:\n- Workspace root: ${general.workspace || demoWorkspace} (all file paths are relative to it)\n- OS: browser/demo\n\nGuidelines:\n- ...（浏览器演示模式下的示意）`,
+    workspace_locked: false,
+  });
   let model = "demo";
   let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
 
@@ -69,7 +85,7 @@ export function createDemoBackend(): Backend {
       model,
       usage: current.usage,
       running,
-      workspace: "/demo/workspace（浏览器演示）",
+      workspace: general.workspace || demoWorkspace,
       pending_permissions: pending ? [pending.requestId] : [],
       permission_mode: permissionMode,
     };
@@ -243,6 +259,27 @@ export function createDemoBackend(): Backend {
     },
     deleteProvider: async (name) => {
       providers = providers.filter((p) => p.name !== name);
+    },
+    getGeneral: async () => generalView(),
+    saveGeneral: async (g) => {
+      if (running) throw new Error("engine: a turn is already running");
+      general = g;
+      return generalView();
+    },
+    chooseDirectory: async (start) => window.prompt("浏览器演示模式没有文件夹对话框，请直接输入路径：", start) ?? "",
+    getDataInfo: async () => ({
+      data_dir: "~/.myllmapp（演示）", settings_path: "~/.myllmapp/settings.json", db_path: "~/.myllmapp/sessions.db",
+      db_bytes: 0, sessions: sessions.size,
+    }),
+    openDataDir: async () => {
+      throw new Error(demoOnly);
+    },
+    clearSessions: async () => {
+      if (running) throw new Error("engine: a turn is already running");
+      const n = sessions.size;
+      sessions.clear();
+      current = newSession();
+      return n;
     },
     getWorkspaceInfo: async () => ({
       path: "/demo/workspace", name: "workspace", is_repo: true, branch: "main", dirty: true, changed_files: 2,

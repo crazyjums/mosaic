@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from
 import type { ModelMeta, ProviderInput, ProviderView, TestResult } from "../bridge";
 import { PRESETS, type Preset } from "../store/presets";
 import { useSettings } from "../store/settingsStore";
+import DataSettings from "./DataSettings";
+import GeneralSettings from "./GeneralSettings";
+import PromptSettings from "./PromptSettings";
 import StatusLineSettings from "./StatusLineSettings";
 
 // 设置：模型厂商。左侧是配置档列表，右侧是编辑表单。
@@ -47,8 +50,11 @@ export default function SettingsDialog() {
         <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
           {(
             [
+              ["general", "常规"],
               ["providers", "模型厂商"],
+              ["prompt", "系统提示词"],
               ["statusline", "状态栏"],
+              ["data", "数据"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -64,7 +70,15 @@ export default function SettingsDialog() {
             ✕
           </button>
         </div>
-        {tab === "statusline" ? (
+        {/* 厂商页在自己的表单区域显示错误；其他页的错误显示在这里 */}
+        {error && tab !== "providers" && <div className="border-b border-danger/40 bg-danger/10 px-6 py-2 text-sm text-danger">{error}</div>}
+        {tab === "general" ? (
+          <GeneralSettings />
+        ) : tab === "prompt" ? (
+          <PromptSettings />
+        ) : tab === "data" ? (
+          <DataSettings />
+        ) : tab === "statusline" ? (
           <StatusLineSettings />
         ) : (
       <div className="flex min-h-0 flex-1">
@@ -414,6 +428,20 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
                       <option key={x}>{x}</option>
                     ))}
                   </select>
+                </Field>
+                <Field label="拒绝回退">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-[var(--accent)]"
+                      checked={form.options.refusal_fallback === true}
+                      onChange={(e) => patch({ options: { ...form.options, refusal_fallback: e.target.checked || undefined } })}
+                    />
+                    <span>
+                      请求被安全策略拒绝时，由服务端自动换用合适的模型重试
+                      <span className="block text-[11px] text-muted">会在请求中加上 fallbacks="default" 和对应的 beta 头；使用不支持该功能的代理时请关闭。</span>
+                    </span>
+                  </label>
                 </Field>
               </>
             )}

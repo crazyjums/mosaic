@@ -35,6 +35,8 @@ interface Store extends ChatState {
   setModel(profile: string, model: string): Promise<void>;
   setPermissionMode(mode: PermissionMode): Promise<void>;
   refreshWorkspace(): Promise<void>;
+  /** 后端换了当前会话（例如清空历史后）：清空界面并切换到后端的当前会话 */
+  resetToCurrentSession(): Promise<void>;
   /** 重新读取厂商列表、当前状态和会话列表（设置页修改厂商后调用） */
   refreshMeta(): Promise<void>;
   dismissToast(): void;
@@ -55,7 +57,10 @@ export const useChat = create<Store>((set, get) => {
   const refreshMeta = async () => {
     const b = backend();
     const [st, sessions, profiles] = await Promise.all([b.getStatus(), b.listSessions(), b.getProfiles()]);
-    set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, sessions, profiles });
+    set({
+      title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, sessions, profiles,
+      workspace: st.workspace, permissionMode: st.permission_mode,
+    });
   };
 
   return {
@@ -163,6 +168,13 @@ export const useChat = create<Store>((set, get) => {
       guard(async () => {
         const st = await backend().setPermissionMode(mode);
         set({ permissionMode: st.permission_mode });
+      }),
+
+    resetToCurrentSession: () =>
+      guard(async () => {
+        const st = await backend().getStatus();
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage });
+        await refreshMeta();
       }),
 
     async refreshWorkspace() {
