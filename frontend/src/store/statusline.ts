@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { backend } from "../bridge";
 
-export type ItemId = "model" | "tokens" | "context" | "cost" | "turn" | "workspace" | "git" | "permission" | "running";
+export type ItemId = "model" | "tokens" | "context" | "cost" | "turn" | "workspace" | "git" | "permission" | "running" | "script";
 
 export interface ItemMeta {
   label: string;
@@ -26,6 +26,7 @@ export const ITEMS: Record<ItemId, ItemMeta> = {
   git: { label: "Git 分支", description: "工作区是 git 仓库时显示分支，以及未提交改动的文件数", defaultEnabled: true },
   permission: { label: "权限模式", description: "只读 / 默认 / 自动接受编辑 / 全部放行，可直接切换", defaultEnabled: true },
   running: { label: "运行状态", description: "空闲 / 运行中 / 等待确认", defaultEnabled: true },
+  script: { label: "脚本输出", description: "自定义命令输出的第一行（在下方“自定义脚本”中设置；没有设置时不显示）", defaultEnabled: true },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -72,21 +73,31 @@ export function normalizeConfig(raw: unknown): StatusLineConfig {
 
 interface StatusLineStore {
   config: StatusLineConfig;
+  /** 自定义状态栏命令（单独保存，见 Go 端 settings.File.StatusLineScript） */
+  script: string;
   load(): Promise<void>;
   /** 修改并立即保存 */
   update(fn: (c: StatusLineConfig) => StatusLineConfig): Promise<void>;
   reset(): Promise<void>;
+  saveScript(cmd: string): Promise<void>;
 }
 
 export const useStatusLine = create<StatusLineStore>((set, get) => ({
   config: DEFAULT_CONFIG,
+  script: "",
 
   async load() {
     try {
-      set({ config: normalizeConfig(await backend().getStatusLineConfig()) });
+      const [cfg, script] = await Promise.all([backend().getStatusLineConfig(), backend().getStatusLineScript()]);
+      set({ config: normalizeConfig(cfg), script });
     } catch {
       // 读不到就用默认配置，状态栏不应该因此显示不出来。
     }
+  },
+
+  async saveScript(cmd) {
+    await backend().setStatusLineScript(cmd);
+    set({ script: cmd.trim() });
   },
 
   async update(fn) {

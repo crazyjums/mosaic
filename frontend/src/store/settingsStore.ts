@@ -6,7 +6,7 @@ import { create } from "zustand";
 import { backend, type DataInfo, type General, type GeneralView, type ProviderInput, type ProviderView, type TestResult } from "../bridge";
 import { useChat } from "./chatStore";
 
-export type SettingsTab = "general" | "providers" | "prompt" | "statusline" | "data";
+export type SettingsTab = "general" | "providers" | "prompt" | "permissions" | "mcp" | "appearance" | "statusline" | "data";
 
 interface SettingsStore {
   open: boolean;

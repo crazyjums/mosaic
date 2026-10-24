@@ -2,10 +2,26 @@ import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from
 import type { ModelMeta, ProviderInput, ProviderView, TestResult } from "../bridge";
 import { PRESETS, type Preset } from "../store/presets";
 import { useSettings } from "../store/settingsStore";
+import { t } from "../i18n";
+import AppearanceSettings from "./AppearanceSettings";
 import DataSettings from "./DataSettings";
 import GeneralSettings from "./GeneralSettings";
+import MCPSettings from "./MCPSettings";
+import PermissionsSettings from "./PermissionsSettings";
 import PromptSettings from "./PromptSettings";
 import StatusLineSettings from "./StatusLineSettings";
+
+// 标签页。label 是中文原文，渲染时翻译。
+const TABS = [
+  ["general", "常规"],
+  ["providers", "模型厂商"],
+  ["prompt", "系统提示词"],
+  ["permissions", "权限与工具"],
+  ["mcp", "MCP"],
+  ["appearance", "外观"],
+  ["statusline", "状态栏"],
+  ["data", "数据"],
+] as const;
 
 // 设置：模型厂商。左侧是配置档列表，右侧是编辑表单。
 // 保存后立即生效（Go 端会热替换厂商目录），不需要重启应用。
@@ -47,26 +63,18 @@ export default function SettingsDialog() {
         className="flex h-[min(760px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
-          {(
-            [
-              ["general", "常规"],
-              ["providers", "模型厂商"],
-              ["prompt", "系统提示词"],
-              ["statusline", "状态栏"],
-              ["data", "数据"],
-            ] as const
-          ).map(([id, label]) => (
+        <div className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-3">
+          {TABS.map(([id, label]) => (
             <button
               key={id}
-              className={`rounded-md px-3 py-1 text-sm ${tab === id ? "bg-panel-2 font-medium text-fg" : "text-muted hover:text-fg"}`}
+              className={`shrink-0 rounded-md px-3 py-1 text-sm ${tab === id ? "bg-panel-2 font-medium text-fg" : "text-muted hover:text-fg"}`}
               onClick={() => setTab(id)}
             >
-              {label}
+              {id === "mcp" ? label : t(label)}
             </button>
           ))}
           <div className="flex-1" />
-          <button className="px-2 text-muted hover:text-fg" onClick={hide} title="关闭（Esc）">
+          <button className="px-2 text-muted hover:text-fg" onClick={hide} title={t("关闭（Esc）")}>
             ✕
           </button>
         </div>
@@ -80,6 +88,12 @@ export default function SettingsDialog() {
           <DataSettings />
         ) : tab === "statusline" ? (
           <StatusLineSettings />
+        ) : tab === "appearance" ? (
+          <AppearanceSettings />
+        ) : tab === "permissions" ? (
+          <PermissionsSettings />
+        ) : tab === "mcp" ? (
+          <MCPSettings />
         ) : (
       <div className="flex min-h-0 flex-1">
         {/* 左：配置档列表 */}
@@ -329,7 +343,7 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
               {showKey ? "隐藏" : "显示"}
             </button>
           </div>
-          <Hint>密钥只保存在本机（数据目录下的 settings.json），不会显示在界面上。</Hint>
+          <Hint>密钥只保存在本机（数据目录下的 settings.json；在“常规”中开启后改为保存到系统钥匙串），不会显示在界面上。</Hint>
         </Field>
 
         <Field label="模型列表">

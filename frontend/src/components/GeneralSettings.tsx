@@ -1,20 +1,22 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { backend, type General } from "../bridge";
+import { backend, type General, type KeychainStatus } from "../bridge";
+import { t } from "../i18n";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 
-// 设置 → 常规：工作区、最大步数、输出上限、命令超时。
+// 设置 → 常规：工作区、最大步数、输出上限、命令超时、会话标题、API Key 存储位置。
 //
 // 和状态栏设置"改了就存"不同，这里有明确的"保存"按钮：换工作区影响很大（agent 读写的目录变了），
 // 应该由用户确认后再生效。输入框留空 = 使用默认值，占位文字显示默认值是多少。
 
-type Form = { workspace: string; maxSteps: string; maxTokens: string; shellTimeout: string };
+type Form = { workspace: string; maxSteps: string; maxTokens: string; shellTimeout: string; titleMode: NonNullable<General["title_mode"]> };
 
 const toForm = (g: General): Form => ({
   workspace: g.workspace ?? "",
   maxSteps: g.max_steps ? String(g.max_steps) : "",
   maxTokens: g.max_tokens ? String(g.max_tokens) : "",
   shellTimeout: g.shell_timeout_seconds ? String(g.shell_timeout_seconds) : "",
+  titleMode: g.title_mode ?? "",
 });
 
 /** "" → 0（使用默认）；非法数字返回 NaN，交给保存前的校验 */
@@ -50,6 +52,7 @@ export default function GeneralSettings() {
       max_tokens: num(form.maxTokens),
       shell_timeout_seconds: num(form.shellTimeout),
       system_prompt: general.saved.system_prompt, // 系统提示词在另一个标签页编辑，这里原样保留
+      title_mode: form.titleMode,
     };
     if ([g.max_steps, g.max_tokens, g.shell_timeout_seconds].some((n) => !Number.isInteger(n) || (n as number) < 0)) {
       setLocalError("步数、输出上限、超时都需要是正整数（留空表示使用默认值）");
@@ -104,6 +107,31 @@ export default function GeneralSettings() {
         <Row label="命令超时" hint="shell 工具执行单条命令的最长时间，超时会结束整个进程组。">
           <NumberInput value={form.shellTimeout} onChange={(v) => patch({ shellTimeout: v })} placeholder={`默认 ${d.shell_timeout_seconds}`} unit="秒" disabled={running} />
         </Row>
+
+        <Row label={t("会话标题")} hint={t("“由模型生成”会在第一轮对话结束后，用当前模型额外发一次很短的请求（几百个 token）。失败时保留截取的第一句。")}>
+          <div className="inline-flex gap-1 rounded-lg border border-line p-1">
+            {(
+              [
+                ["first_message", t("截取第一句")],
+                ["model", t("由模型生成")],
+              ] as const
+            ).map(([v, label]) => {
+              const active = (form.titleMode || "first_message") === v;
+              return (
+                <button
+                  key={v}
+                  className={`rounded-md px-3 py-1 text-sm ${active ? "bg-accent text-white" : "hover:bg-panel-2"}`}
+                  onClick={() => patch({ titleMode: v })}
+                  disabled={running}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
+
+        <KeychainRow />
       </div>
 
       <footer className="flex shrink-0 items-center gap-3 border-t border-line px-6 py-3">
@@ -149,4 +177,43 @@ function NumberInput(props: { value: string; onChange: (v: string) => void; plac
 export function Notice({ tone, children }: { tone: "warn" | "info"; children: ReactNode }) {
   const cls = tone === "warn" ? "border-warn/40 bg-warn/10 text-warn" : "border-line bg-panel-2 text-muted";
   return <div className={`rounded-lg border px-3 py-2 text-xs ${cls}`}>{children}</div>;
+}
+
+// 钥匙串开关与其他设置不同：点了立即生效（会马上迁移已有的密钥），不跟随下面的"保存"按钮。
+function KeychainRow() {
+  const [st, setSt] = useState<KeychainStatus | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void backend()
+      .getKeychain()
+      .then(setSt)
+      .catch((e) => setError(String(e instanceof Error ? e.message : e)));
+  }, []);
+  if (!st) return null;
+
+  const toggle = async () => {
+    try {
+      setSt(await backend().setUseKeychain(!st.enabled));
+      setError("");
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    }
+  };
+  // 已开启时即使钥匙串暂时不可用也允许关闭（把密钥迁回文件）。
+  const canToggle = st.available || st.enabled;
+
+  return (
+    <Row
+      label={t("API Key 保存到系统钥匙串")}
+      hint={t("开启后，厂商的 API Key 保存在 macOS 钥匙串 / Windows 凭据管理器 / Linux Secret Service 中，settings.json 里只留引用。立即生效，已有的密钥会被迁移。")}
+    >
+      <label className={`flex items-center gap-2 text-sm ${canToggle ? "cursor-pointer" : "opacity-60"}`}>
+        <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={st.enabled} disabled={!canToggle} onChange={() => void toggle()} />
+        {st.enabled ? t("已开启") : t("已关闭")}
+      </label>
+      {!st.available && st.error && <div className="mt-1 text-[11px] text-warn">{t("不可用：{error}", { error: st.error })}</div>}
+      {st.warning && <div className="mt-1 text-[11px] text-warn">{st.warning}</div>}
+      {error && <div className="mt-1 text-[11px] text-danger">{error}</div>}
+    </Row>
+  );
 }

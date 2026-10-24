@@ -1,3 +1,7 @@
+import { useState } from "react";
+import { backend } from "../bridge";
+import { t } from "../i18n";
+import { parseAnsi } from "../store/ansi";
 import { useSettings } from "../store/settingsStore";
 import { ITEMS, useStatusLine, type StatusLineConfig } from "../store/statusline";
 import StatusBar from "./StatusBar";
@@ -75,6 +79,8 @@ export default function StatusLineSettings() {
           </label>
         </div>
 
+        <ScriptEditor />
+
         <div className="mt-5 rounded-lg border border-line bg-panel-2 px-3 py-2.5 text-xs text-muted">
           “上下文占用”的百分比和“预估花费”需要知道每个模型的上下文窗口和单价，
           请在
@@ -86,12 +92,92 @@ export default function StatusLineSettings() {
       </div>
 
       <footer className="flex shrink-0 items-center border-t border-line px-5 py-3">
-        <span className="text-xs text-muted">修改会立即保存</span>
+        <span className="text-xs text-muted">{t("修改会立即保存")}</span>
         <div className="flex-1" />
         <button className="btn" onClick={() => confirm("恢复状态栏的默认设置？") && void reset()}>
-          恢复默认
+          {t("恢复默认")}
         </button>
       </footer>
     </div>
+  );
+}
+
+// 自定义脚本：和上面的开关不同，命令要点"保存"才生效——它会被定时执行，改到一半的命令不应该跑起来。
+function ScriptEditor() {
+  const { script, saveScript } = useStatusLine();
+  const [draft, setDraft] = useState(script);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savedMsg, setSavedMsg] = useState(false);
+
+  const tryRun = async () => {
+    try {
+      setResult({ ok: true, text: await backend().testStatusLineScript(draft) });
+    } catch (e) {
+      setResult({ ok: false, text: String(e instanceof Error ? e.message : e) });
+    }
+  };
+  const save = async () => {
+    try {
+      await saveScript(draft);
+      setSavedMsg(true);
+      setResult(null);
+    } catch (e) {
+      setResult({ ok: false, text: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  return (
+    <>
+      <div className="mt-5 mb-2 text-xs font-medium text-muted">{t("自定义脚本")}</div>
+      <div className="space-y-2 rounded-lg border border-line px-3 py-3">
+        <p className="text-[11px] leading-relaxed text-muted">
+          {t("运行一条命令，把它输出的第一行显示在状态栏上（支持 ANSI 颜色）。当前状态以 JSON 写到命令的标准输入，格式与 Claude Code 的 statusLine 相同。")}
+        </p>
+        <input
+          className="input font-mono"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setSavedMsg(false);
+          }}
+          placeholder={`~/.config/myllmapp/statusline.sh   /   echo "$(date +%H:%M)"`}
+          spellCheck={false}
+        />
+        <div className="flex items-center gap-2">
+          <button className="btn" onClick={() => void tryRun()} disabled={!draft.trim()}>
+            {t("试运行")}
+          </button>
+          <div className="min-w-0 flex-1 truncate text-xs">
+            {result &&
+              (result.ok ? (
+                <span className="font-mono">
+                  {t("输出：")}
+                  {parseAnsi(result.text).map((seg, i) => (
+                    <span key={i} style={{ color: seg.fg, backgroundColor: seg.bg }} className={seg.bold ? "ansi-bold" : undefined}>
+                      {seg.text}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-danger">{result.text}</span>
+              ))}
+            {savedMsg && <span className="text-ok">{t("✓ 已保存，立即生效")}</span>}
+          </div>
+          <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" onClick={() => void save()} disabled={draft.trim() === script}>
+            {t("保存")}
+          </button>
+        </div>
+        <details className="text-[11px] text-muted">
+          <summary className="cursor-pointer">stdin JSON</summary>
+          <pre className="mt-1 overflow-x-auto rounded bg-panel-2 p-2 font-mono">{`{
+  "session_id": "...", "provider": "openai", "model": "gpt-...",
+  "input_tokens": 1234, "output_tokens": 567, "workspace": "/path",
+  "extra": { "title": "...", "running": false, "permission_mode": "default",
+             "context_tokens": 2048, "context_window": 200000,
+             "cost_usd": 0.012, "git_branch": "main" }
+}`}</pre>
+        </details>
+      </div>
+    </>
   );
 }
