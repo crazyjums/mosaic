@@ -18,6 +18,7 @@ flowchart TB
     subgraph Assembly["装配层"]
         BOOT["internal/bootstrap<br/>(组合根)"]
         CFG["internal/config<br/>(TOML + 环境变量)"]
+        SET["internal/settings<br/>(界面配置的厂商)"]
     end
 
     subgraph Adapters["适配层"]
@@ -47,6 +48,9 @@ flowchart TB
     APP --> CORE
     CLI --> CORE
     BOOT --> CFG
+    BOOT --> SET
+    APP --> SET
+    SET --> CORE
     BOOT --> CORE
     BOOT --> Adapters
     STORE --> CORE
@@ -83,7 +87,7 @@ flowchart TB
 | | `tool/builtin` | 四个内置工具 |
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
 | | `mcp`、`plugin` | 预留扩展点 |
-| 装配 | `config`、`bootstrap` | 读配置；把具体实现组装成 `Engine` |
+| 装配 | `config`、`settings`、`bootstrap` | 读配置文件；管理界面上配置的厂商（持久化、合并、热更新）；把具体实现组装成 `Engine` |
 | 入口 | `cmd/cli`、`internal/app` + `main.go`、`frontend` | 两种界面 |
 
 ## 3. 两个关键接口

@@ -3,7 +3,8 @@
 一个**自己实现 agent harness** 的大模型桌面客户端（Go + Wails + React），也是一个学习项目：可读性和可理解性优先于功能数量。
 
 - 🧠 **自研内核**：agent 循环、上下文、工具调用、权限确认全部自己写，不依赖任何 agent SDK
-- 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake
+- 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
+  在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
 - 👀 **可视化**：思考过程、工具调用、权限确认、图片、token 用量；为子 agent 树和后台任务预留了事件与界面
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
 
@@ -66,6 +67,10 @@ cd frontend && npm install && npm run dev
 
 ### 接入真实模型
 
+最简单：打开桌面端，点左下角 **⚙ 设置 · 模型厂商**，填 Base URL 和 API Key，获取模型列表，测试连接，保存。详见 [docs/usage.md](docs/usage.md#2-配置厂商)。
+
+也可以用配置文件 / 环境变量（CLI 同样适用）：
+
 ```bash
 cp config.example.toml config.toml   # 已在 .gitignore 中
 export ANTHROPIC_API_KEY=...          # 或 DEEPSEEK_API_KEY / OPENAI_API_KEY ...
@@ -108,6 +113,7 @@ wails build    # 打包到 build/bin/
 │   ├── core/                   内核：agent 循环、Delta 累加、工具执行、会话、重放、Engine 命令接口
 │   ├── store/                  会话持久化（SQLite 纯 Go 驱动 / 内存）
 │   ├── config/                 读取 TOML 配置与环境变量密钥
+│   ├── settings/               界面上配置的厂商：持久化到 settings.json、与配置文件合并、修改后热更新
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
 │   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑
 │   ├── mcp/                    预留：MCP 工具适配（ToolAdapter 已实现，Client 未实现）
@@ -190,6 +196,7 @@ wails build    # 打包到 build/bin/
 | [docs/design/tools-and-permissions.md](docs/design/tools-and-permissions.md) | 工具接口、内置工具、权限策略与 Broker |
 | [docs/design/persistence.md](docs/design/persistence.md) | SQLite 表结构、迁移、写入策略 |
 | [docs/design/frontend-state.md](docs/design/frontend-state.md) | 前端分层、reducer、工具状态机、演示模式 |
+| [docs/design/settings.md](docs/design/settings.md) | 界面配置厂商：两层配置的合并规则、热更新、密钥存储 |
 | [docs/extending.md](docs/extending.md) | 如何新增厂商 / 工具 / 子 agent / 界面 |
 | [docs/roadmap.md](docs/roadmap.md) | 后续阶段规划与每个预留能力的接口状态 |
 | [docs/usage.md](docs/usage.md) | 安装依赖、配置厂商、CLI 调试、开发模式、打包、常见问题 |

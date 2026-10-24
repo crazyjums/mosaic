@@ -9,6 +9,7 @@
 - 前端：消息流、可折叠思考卡片、工具调用卡片、权限弹窗、状态栏（厂商/模型/token）、会话列表
 - 会话保存与恢复（SQLite，纯 Go）
 - CLI 调试入口；浏览器演示模式
+- 设置页：界面上配置厂商（Base URL + API Key + 模型列表），获取模型列表、测试连接，修改立即生效，记住上次选择
 
 ## 预留能力一览
 
@@ -105,6 +106,7 @@
 
 - 工具：`edit_file`（基于字符串替换的局部修改，比整体覆盖更安全）、`glob`、`grep`；read 风险工具并行执行
 - 权限：按命令前缀/路径的细粒度规则；记住"总是允许"到配置文件
+- 密钥：从 settings.json 明文改为存入系统钥匙串（macOS Keychain / Windows Credential Manager / Linux Secret Service，例如用 `github.com/zalando/go-keyring`），settings.json 只保存引用
 - 厂商：Gemini 原生协议；OpenAI Responses API；请求重试与 429 退避
 - 会话：标题由模型生成；会话搜索；导出 Markdown
 - 前端：长会话虚拟列表；高频 delta 批量合并；代码块高亮；diff 视图
