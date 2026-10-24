@@ -10,6 +10,7 @@
 - 会话保存与恢复（SQLite，纯 Go）
 - CLI 调试入口；浏览器演示模式
 - 设置页：界面上配置厂商（Base URL + API Key + 模型列表），获取模型列表、测试连接，修改立即生效，记住上次选择
+- 设置页（续）：权限规则、工具开关、MCP 服务器、自定义状态栏脚本、API Key 存系统钥匙串、外观（主题/字号/宽度/思考卡片/发送键）、中英文界面、由模型生成会话标题
 
 ## 预留能力一览
 
@@ -18,8 +19,9 @@
 | 子 agent 调度与可视化树 | ✅ `subagent_start/end`，信封 `agent_id`/`parent_id` | ✅ `SubagentDefinition`、`SubagentRegistry`；⬜ `SubagentRunner` | ✅ reducer 建树；`ActivityPanel` 显示 | Runner 实现 + `task` 工具 |
 | 后台任务 | ✅ `task_start/log/end` | ⬜ `TaskManager` 接口 | ✅ reducer + 面板 | TaskManager 实现 + 3 个工具 |
 | 上下文压缩 | ✅ `context_compacted` | ✅ `Compactor` 接口，已在每步前调用（no-op） | ✅ 显示提示 | 一个真正的 Compactor |
-| MCP 接入 | — | ✅ `ToolAdapter`、`RegisterServerTools`；⬜ `Client` | 无需修改 | stdio/HTTP Client + 配置 |
-| 插件：技能 / 斜杠命令 / 钩子 / 状态栏脚本 | — | ⬜ `internal/plugin` 接口 | ⬜ | 加载器 + 各接入点 |
+| MCP 接入 | — | ✅ stdio / Streamable HTTP 客户端、`mcp.Manager` | ✅ 设置 → MCP | resources / prompts、服务器推送（工具列表变化通知） |
+| 插件：状态栏脚本 | — | ✅ `plugin.CommandStatusLine` | ✅ 状态栏"脚本输出"项 | — |
+| 插件：技能 / 斜杠命令 / 钩子 | — | ⬜ `internal/plugin` 接口 | ⬜ | 加载器 + 各接入点 |
 
 ✅ 已有　⬜ 只有接口 / 未做
 
@@ -71,23 +73,13 @@
 
 对 Anthropic，也可以改用服务端压缩（beta），由适配器处理返回的压缩块——此时 Compactor 保持 no-op。
 
-### MCP 接入
+### MCP 接入 ✅（tools 能力）
 
-接口：[`internal/mcp/mcp.go`](../internal/mcp/mcp.go)。
+已实现：[`internal/mcp`](../internal/mcp/doc.go) 中的 stdio 与 Streamable HTTP 客户端、`initialize` 握手、`tools/list`（分页）、`tools/call`、响应服务器的 `ping`；
+`mcp.Manager` 按设置在后台连接、注册/移除工具，进程退出时自动移除工具并在设置页显示原因。配置在 **设置 → MCP**（保存在 settings.json 的 `mcp_servers`）。
 
-1. 实现 `mcp.Client`：stdio 传输（启动子进程，换行分隔的 JSON-RPC 2.0）或 Streamable HTTP；完成 `initialize` 握手；实现 `tools/list`、`tools/call`；
-2. 配置：
-   ```toml
-   [[mcp_servers]]
-   name = "github"
-   transport = "stdio"
-   command = "github-mcp-server"
-   args = ["stdio"]
-   risk = "exec"
-   ```
-3. `bootstrap.Build` 为每个 server 创建 Client 并调用 `mcp.RegisterServerTools`，退出时 `Close`。
-
-工具执行、权限确认、事件、前端卡片全部复用现有机制。
+还没做：resources、prompts、sampling；服务器推送流（GET）和 `notifications/tools/list_changed`（目前工具列表变化需要点"重新连接"）；
+OAuth 认证（目前只能在请求头里填令牌）；把服务器的 `instructions` 拼进系统提示词。
 
 ### 插件系统
 
@@ -98,7 +90,7 @@
 | Skill | 系统提示词里列出技能名和简介；提供 `read_skill` 工具按需加载正文 |
 | SlashCommand | 前端/CLI 解析 `/xxx`，调用新的绑定方法 `ExpandCommand(name, args)`，结果作为用户消息发送 |
 | Hook | `AgentConfig` 增加 `Hooks`；`runTool` 在权限裁决前调用 `PreToolUse`，执行后调用 `PostToolUse`；`Engine.Send` 开头调用 `UserPromptSubmit` |
-| StatusLine | `internal/app` 定时调用，结果通过新事件 `status_line` 推给状态栏 |
+| StatusLine | ✅ 已实现为"运行一条命令"（`plugin.CommandStatusLine`），由前端在状态变化时调用 `RunStatusLine`，没有新增事件 |
 
 插件加载：先支持"目录 + plugin.toml + 外部可执行文件（JSON over stdio）"，这样插件可以用任何语言编写，也避免 Go plugin 的平台限制。
 

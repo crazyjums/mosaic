@@ -75,7 +75,26 @@ sequenceDiagram
 
 用户选择"本会话总是允许"（`allow_session`）后，同名工具在本会话内不再询问；`NewSession` / `LoadSession` 时 `Reset`。未知模式回落到 `default`——宁可多问一次。
 
-`Policy` 是接口，`Evaluate` 已经接收工具参数，以后可以实现更细的规则（如允许 `go test`、拒绝 `rm -rf`，或按路径白名单）。
+### 规则（RulePolicy）
+
+档位是"一刀切"的。[`rules.go`](../../internal/permission/rules.go) 的 `RulePolicy` 包在档位策略外面，按工具名和参数做更细的裁决：
+
+```go
+policy := permission.NewRulePolicy(permission.NewModePolicy(mode), rules) // bootstrap 中
+```
+
+- 一条规则 = 工具名（支持 `*`）+ 匹配内容 + 动作（allow / ask / deny）；从上到下第一条匹配的生效，都不匹配时交给档位；
+- 匹配内容对照的是工具参数里的 `command`、`path`、`url`（依次取第一个存在的），都没有时对照整个参数 JSON；
+  这样内置工具和大多数 MCP 工具都能按"命令 / 路径 / 地址"写规则，而不需要为每个工具写匹配器；
+- `*` 可以跨越 `/`（`src/*` 匹配 `src/a/b.go`）：规则是给人手写的，按 glob 的"`*` 不跨目录"语义反而容易写漏；
+- **规则优先于档位**：`deny` 在 `auto` 下也生效（"全部放行，但永远不许 rm"），`allow` 在 `readonly` 下也生效；
+- 切换档位（`SetMode`）、"本会话总是允许"（`Remember` / `Reset`）都转发给内层策略，`RulePolicy` 只增加规则这一层；
+- `SetRules` 一条不合法就整体拒绝，避免保存了一半的规则。
+
+### 工具开关
+
+被禁用的工具（设置 → 权限与工具）不会出现在发给模型的工具列表里（`Agent.toolSpecs`）；
+历史消息里可能还有它的调用示例，模型偶尔会照着调用，所以 `runTool` 也会检查并返回"已被用户禁用"的工具错误，而不是执行。
 
 ### 会合点（Broker）
 

@@ -5,7 +5,8 @@
 - 🧠 **自研内核**：agent 循环、上下文、工具调用、权限确认全部自己写，不依赖任何 agent SDK
 - 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
   在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
-- ⚙️ **设置界面**：常规（工作区、步数、超时）、模型厂商、系统提示词、状态栏、数据管理，修改即时生效，不用改配置文件
+- ⚙️ **设置界面**：常规（工作区、步数、超时、会话标题、钥匙串）、模型厂商、系统提示词、权限规则与工具开关、MCP 服务器、外观（主题 / 字号 / 宽度 / 快捷键 / 中英文）、状态栏（含自定义脚本）、数据管理，修改即时生效，不用改配置文件
+- 🔌 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
 - 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、权限模式……）；为子 agent 树和后台任务预留了事件与界面
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
 
@@ -114,12 +115,13 @@ wails build    # 打包到 build/bin/
 │   ├── core/                   内核：agent 循环、Delta 累加、工具执行、会话、重放、Engine 命令接口
 │   ├── store/                  会话持久化（SQLite 纯 Go 驱动 / 内存）
 │   ├── config/                 读取 TOML 配置与环境变量密钥
-│   ├── settings/               界面上配置的厂商与状态栏：持久化到 settings.json、与配置文件合并、修改后热更新
+│   ├── settings/               界面上的所有设置：持久化到 settings.json（可选钥匙串）、与配置文件合并、修改后热更新
+│   ├── secret/                 系统钥匙串（macOS 钥匙串 / Windows 凭据管理器 / Linux Secret Service）
 │   ├── workspace/              工作区信息（git 分支、未提交改动），供状态栏显示
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
 │   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑
-│   ├── mcp/                    预留：MCP 工具适配（ToolAdapter 已实现，Client 未实现）
-│   ├── plugin/                 预留：技能 / 斜杠命令 / 钩子 / 状态栏脚本接口
+│   ├── mcp/                    MCP 客户端（stdio / Streamable HTTP）与连接管理器
+│   ├── plugin/                 插件接口；已实现状态栏脚本，技能 / 斜杠命令 / 钩子为预留
 │   └── archtest/               仓库级守卫测试：doc.go、密钥扫描、示例配置
 ├── frontend/
 │   └── src/
@@ -198,7 +200,7 @@ wails build    # 打包到 build/bin/
 | [docs/design/tools-and-permissions.md](docs/design/tools-and-permissions.md) | 工具接口、内置工具、权限策略与 Broker |
 | [docs/design/persistence.md](docs/design/persistence.md) | SQLite 表结构、迁移、写入策略 |
 | [docs/design/frontend-state.md](docs/design/frontend-state.md) | 前端分层、reducer、工具状态机、演示模式 |
-| [docs/design/settings.md](docs/design/settings.md) | 界面配置厂商：两层配置的合并规则、热更新、密钥存储 |
+| [docs/design/settings.md](docs/design/settings.md) | 界面设置：两层配置的合并规则、热更新、密钥与钥匙串、规则 / MCP / 状态栏脚本的持久化 |
 | [docs/extending.md](docs/extending.md) | 如何新增厂商 / 工具 / 子 agent / 界面 |
 | [docs/roadmap.md](docs/roadmap.md) | 后续阶段规划与每个预留能力的接口状态 |
 | [docs/usage.md](docs/usage.md) | 安装依赖、配置厂商、CLI 调试、开发模式、打包、常见问题 |

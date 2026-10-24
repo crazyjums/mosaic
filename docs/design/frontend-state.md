@@ -67,10 +67,10 @@ stateDiagram-v2
 
 | 组件 | 约定 |
 | --- | --- |
-| `ThinkingCard` | 流式输出时自动展开，结束后自动折叠；用户手动操作后以用户为准 |
+| `ThinkingCard` | 默认（"自动"）流式输出时展开、结束后折叠；可在 设置 → 外观 改为总是展开 / 总是折叠；用户手动操作后以用户为准 |
 | `ToolCallCard` | 标题显示工具名、关键参数（command/path）、风险标签、状态和耗时；展开看完整参数和结果 |
 | `PermissionDialog` | Enter 允许，Esc 拒绝；显示摘要、风险说明、完整参数 |
-| `Composer` | Enter 发送、Shift+Enter 换行；中文输入法选词时的 Enter 不触发发送（`isComposing`）；运行中变成"停止" |
+| `Composer` | 默认 Enter 发送、Shift+Enter 换行，可改为 Ctrl/⌘+Enter 发送（规则在 `store/keys.ts`）；中文输入法选词时的 Enter 不触发发送（`isComposing`）；运行中变成"停止" |
 | `MessageList` | 只有用户在底部附近时才自动滚动 |
 | `StatusBar` | 一个下拉框同时选择厂商和模型；不可用的配置档置灰并显示原因 |
 
@@ -97,6 +97,18 @@ stateDiagram-v2
 ## 测试
 
 `store/reducer.test.ts` 用同一份录制事件流测试：完整还原时间线、运行中的权限队列与拒绝、会话过滤、无思考降级、协议版本提示。
+其余纯函数各有测试：ANSI 解析（`ansi.test.ts`）、界面偏好规范化（`uiPrefs.test.ts`）、发送快捷键（`keys.test.ts`）、MCP 表单转换（`mcpForm.test.ts`），
+`i18n.test.ts` 扫描组件源码，确认每个 `t("…")` 都有英文翻译。
+
+## 界面偏好与多语言
+
+- **偏好归前端**：[`store/uiPrefs.ts`](../../frontend/src/store/uiPrefs.ts) 定义结构，后端原样保存在 settings.json 的 `ui` 字段（与状态栏配置同一个模式）。
+- **主题和尺寸靠根元素**：主题写在 `<html data-theme>` 上，`index.css` 据此切换颜色变量（"跟随系统"时不设属性，由 `prefers-color-scheme` 决定）；
+  字号设在根元素的 `font-size` 上，Tailwind 的尺寸都是 rem，整个界面等比缩放；消息区宽度是 CSS 变量 `--content-width`。组件里不需要读这些偏好。
+- **多语言**：[`i18n.ts`](../../frontend/src/i18n.ts) 以中文原文为 key 查英文表，`t()` 是普通函数。切换语言时 `App` 用 `key={lang}` 重新挂载界面，
+  所有 `t()` 重新求值；状态都在 store 里，不会丢（只有输入框里没发出去的草稿会清空）。
+  模块级常量（例如工具状态的标签）只存中文原文，渲染时再 `t()`——模块加载时语言还没确定。
+- **会话标题**：`session_updated` 事件不经过 reducer（标题属于会话元数据），由 `chatStore` 更新标题并刷新会话列表。
 
 ## 状态栏
 
@@ -105,4 +117,6 @@ stateDiagram-v2
 - **上下文** 取最近一次调用的 `input_tokens + output_tokens`（厂商返回的真实值），不是估算。
 - **花费** 逐条消息按"当时的厂商和模型"计价，中途换模型也算得对；恢复的历史会话没有逐条用量，退回到"会话累计 × 当前单价"的近似值并标 `+`。
 - **实时性**：reducer 在每个 `message_end` 把用量累加进 `sessionUsage`，`turn_end` 再用后端的权威值覆盖；耗时由 `turn_start` 的时间戳计算，组件运行中每秒刷新。
+- **脚本输出**：`ScriptItem` 在会话、模型、运行状态、用量变化时（节流到每秒最多一次）和每 15 秒调用 `RunStatusLine`，同一时间只跑一个；
+  输出里的 ANSI 颜色由 [`store/ansi.ts`](../../frontend/src/store/ansi.ts) 解析成带样式的片段（支持 16 色、256 色、真彩色、粗体等）。命令本身由后端从设置文件读取。
 - **每项可以为空**：组件返回 null 时外层 `.statusline-item:empty` 被隐藏，分隔线用 `:not(:empty) ~ :not(:empty)::before` 绘制，所以关掉的项和暂时没数据的项都不会留下多余的分隔线。

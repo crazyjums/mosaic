@@ -27,7 +27,9 @@ flowchart TB
         FAKE["provider/fake"]
         BUILTIN["tool/builtin"]
         STORE["internal/store<br/>(SQLite)"]
-        MCP["internal/mcp<br/>(预留)"]
+        MCP["internal/mcp<br/>(MCP 客户端)"]
+        SECRET["internal/secret<br/>(系统钥匙串)"]
+        PLUGIN["internal/plugin<br/>(状态栏脚本)"]
     end
 
     subgraph Kernel["内核层"]
@@ -59,6 +61,8 @@ flowchart TB
     FAKE --> PROV
     BUILTIN --> TOOL
     MCP --> TOOL
+    SET --> SECRET
+    SET --> PLUGIN
     CORE --> EVENT
     CORE --> PROV
     CORE --> TOOL
@@ -86,7 +90,9 @@ flowchart TB
 | 适配 | `provider/openai`、`provider/anthropic`、`provider/fake` | 各协议 ↔ 中立 Delta |
 | | `tool/builtin` | 四个内置工具 |
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
-| | `mcp`、`plugin` | 预留扩展点 |
+| | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |
+| | `secret` | 系统钥匙串（保存 API Key，可选） |
+| | `plugin` | 插件接口；已实现状态栏脚本（`CommandStatusLine`），技能 / 斜杠命令 / 钩子仍是预留 |
 | 装配 | `config`、`settings`、`bootstrap` | 读配置文件；管理界面上配置的厂商（持久化、合并、热更新）；把具体实现组装成 `Engine` |
 | 入口 | `cmd/cli`、`internal/app` + `main.go`、`frontend` | 两种界面 |
 
