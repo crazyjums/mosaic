@@ -61,6 +61,11 @@ sequenceDiagram
 
 ## 其他保存在 settings.json 里的东西
 
+- `general`：设置 → 常规 / 系统提示词（工作区、最大步数、输出上限、命令超时、系统提示词）。零值表示"未设置，沿用默认"。
+  生效规则在 [`general.go`](../../internal/settings/general.go) 的 `ResolveGeneral`：命令行 > 界面 > config.toml > 内置默认；
+  bootstrap 启动时和界面保存时用的是同一个函数。保存时先校验（工作区必须是已存在的目录、数值有上限），
+  再调用 `core.Engine.UpdateRuntime`（运行中返回 ErrBusy，什么都不改），再修改 shell 工具的超时，最后写文件。
+  默认系统提示词由内核（`core.DefaultSystemPrompt`）在每轮开始时按当前工作区生成，所以换工作区后提示词自动跟随。
 - `permission_mode`：状态栏上切换的权限模式（启动时优先级：命令行 `-mode` > 这里 > config.toml；`auto` 不会写进这里，旧文件里的 `auto` 也会被忽略）；
 - `statusline`：状态栏配置。后端不解析，原样保存（大小上限 64KB，必须是 JSON 对象），字段由前端定义，见 [前端状态管理](frontend-state.md#状态栏)。
 
