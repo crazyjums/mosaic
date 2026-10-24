@@ -284,7 +284,13 @@ func (e *Engine) LoadSession(ctx context.Context, id string) (Status, error) {
 	e.mu.Unlock()
 	e.cfg.Policy.Reset()
 
-	for _, ev := range ReplayEvents(s) {
+	riskOf := func(name string) permission.Risk {
+		if t, ok := e.cfg.Tools.Get(name); ok {
+			return t.Spec().Risk
+		}
+		return ""
+	}
+	for _, ev := range ReplayEvents(s, riskOf) {
 		e.bus.Publish(ev)
 	}
 	return e.Status(), nil

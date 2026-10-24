@@ -39,7 +39,8 @@ func (a *Agent) runTools(ctx context.Context, em emitter, calls []provider.Block
 
 // runTool 执行单个工具调用：查找 → 权限裁决 →（等待确认）→ 执行 → 发 tool_result。
 func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (result tool.Result) {
-	start := time.Now()
+	// 耗时只统计工具真正执行的时间，不包括等待用户确认的时间；没有执行（被拒绝、未知工具）则为 0。
+	var duration time.Duration
 	// 无论从哪个分支返回，都发一个 tool_result 事件，界面上的工具卡片才能进入"完成"状态。
 	defer func() {
 		em.emit("", event.ToolResult{
@@ -47,7 +48,7 @@ func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (resu
 			Name:       c.ToolName,
 			Output:     result.Output,
 			IsError:    result.IsError,
-			DurationMS: time.Since(start).Milliseconds(),
+			DurationMS: duration.Milliseconds(),
 		})
 	}()
 
@@ -69,7 +70,10 @@ func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (resu
 	}
 
 	// 步骤 3：执行。工具 panic 不应拖垮整个应用，转成工具错误交给模型。
+	// 注意 defer 的执行顺序是后进先出：recover 先改写 result，上面发事件的 defer 再读取它。
+	start := time.Now()
 	defer func() {
+		duration = time.Since(start)
 		if p := recover(); p != nil {
 			result = tool.Errorf("tool panicked: %v", p)
 		}

@@ -238,7 +238,7 @@ tool_call ──(message_end)──┬──────────────
 | `name` | string | 工具名 |
 | `output` | string | 输出（过长会被截断并注明） |
 | `is_error` | bool | 失败、被拒绝、被取消时为 true |
-| `duration_ms` | int | 耗时（重放时为 0） |
+| `duration_ms` | int | 工具执行耗时，不含等待用户确认的时间；未执行（被拒绝、未知工具）和重放时为 0 |
 
 ```json
 {"call_id": "call_eab12343f8d5", "name": "list_dir", "output": "README.md\nsrc/", "is_error": false, "duration_ms": 0}

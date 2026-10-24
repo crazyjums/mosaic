@@ -193,6 +193,22 @@ func TestAllowSessionRemembered(t *testing.T) {
 	}
 }
 
+// 工具耗时只统计执行时间，不包括等待用户确认的时间。
+func TestToolDurationExcludesPermissionWait(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, func(e *core.Engine, p event.PermissionRequest) {
+		go func() {
+			time.Sleep(150 * time.Millisecond) // 模拟用户犹豫了一下才点"允许"
+			_ = e.RespondPermission(p.RequestID, "allow")
+		}()
+	})
+	h.engine.Send(context.Background(), "hi")
+	for _, r := range payloads[event.ToolResult](h.rec) {
+		if r.Name == "write_file" && r.DurationMS >= 150 {
+			t.Fatalf("耗时不应包含等待确认的时间: %d ms", r.DurationMS)
+		}
+	}
+}
+
 func TestMaxSteps(t *testing.T) {
 	loop := fake.Step{Text: "再查一次", ToolCalls: []fake.ToolSpec{{Name: "list_dir", Input: json.RawMessage(`{}`)}}}
 	script := fake.Script{Steps: []fake.Step{loop, loop, loop, loop, loop}}
@@ -300,6 +316,9 @@ func TestLoadSessionReplaysHistory(t *testing.T) {
 		switch p := ev.Data.(type) {
 		case event.ToolCall:
 			nCalls++
+			if p.Risk == "" {
+				t.Fatal("重放的 tool_call 应补上风险等级")
+			}
 		case event.ToolResult:
 			nResults++
 			if p.Name == "" {

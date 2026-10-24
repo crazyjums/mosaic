@@ -41,7 +41,8 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
         <span className={`flex items-center gap-1 text-xs ${st.className}`}>
           {busy && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
           {st.label}
-          {tool.durationMs !== undefined && tool.status !== "denied" && <span className="text-muted">· {tool.durationMs}ms</span>}
+          {/* 耗时为 0 表示不足 1ms 或未知（重放的历史），都不显示 */}
+          {!!tool.durationMs && <span className="text-muted">· {tool.durationMs}ms</span>}
         </span>
       </button>
       {open && (
