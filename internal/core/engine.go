@@ -164,11 +164,15 @@ func (e *Engine) ReplaceCatalog(c *provider.Catalog) error {
 	if e.running {
 		return ErrBusy
 	}
+	// 回落失败（新目录里没有可用的配置档）时恢复原目录，引擎保持原状，
+	// 不会出现"目录换了、会话还指向已不存在的配置档"的半更新状态。
+	old := e.cfg.Catalog
 	e.cfg.Catalog = c
 	snap := e.session.Snapshot()
 	if _, _, err := c.Get(snap.Provider); err != nil {
 		p, m, err := e.resolveModel("", "")
 		if err != nil {
+			e.cfg.Catalog = old
 			return err
 		}
 		e.session.setModel(p, m)
@@ -294,6 +298,10 @@ func (e *Engine) LoadSession(ctx context.Context, id string) (Status, error) {
 	if e.cfg.Store == nil {
 		return Status{}, fmt.Errorf("engine: no session store configured")
 	}
+	// 先快速检查一次，运行中就不必去读数据库；下面替换会话前还会在锁内再检查一次。
+	if e.Status().Running {
+		return Status{}, ErrBusy
+	}
 	s, err := e.cfg.Store.LoadSession(ctx, id)
 	if err != nil {
 		return Status{}, err
@@ -325,10 +333,27 @@ func (e *Engine) LoadSession(ctx context.Context, id string) (Status, error) {
 	return e.Status(), nil
 }
 
-// DeleteSession 删除一个已保存的会话。不能删除当前会话之外的正在运行的会话（只有一个），所以无需额外检查。
+// DeleteSession 删除一个已保存的会话。
+//
+// 删除的是当前会话时，切换到一个新的空会话：否则内存里的会话还在，下一轮结束时
+// SaveSession 会把它重新写回数据库，"删掉的会话又回来了"。运行中不允许删除当前会话。
 func (e *Engine) DeleteSession(ctx context.Context, id string) error {
 	if e.cfg.Store == nil {
 		return nil
+	}
+	e.mu.Lock()
+	isCurrent := e.session.ID == id
+	if isCurrent && e.running {
+		e.mu.Unlock()
+		return ErrBusy
+	}
+	if isCurrent {
+		old := e.session.Snapshot()
+		e.session = NewSession(event.NewID("sess"), old.Provider, old.Model)
+	}
+	e.mu.Unlock()
+	if isCurrent {
+		e.cfg.Policy.Reset()
 	}
 	return e.cfg.Store.DeleteSession(ctx, id)
 }

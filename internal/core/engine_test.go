@@ -378,11 +378,38 @@ func TestSendWhileBusy(t *testing.T) {
 	if err := h.engine.SetModel("alt", ""); !errors.Is(err, core.ErrBusy) {
 		t.Fatalf("运行中切换模型应返回 ErrBusy: %v", err)
 	}
+	if err := h.engine.DeleteSession(context.Background(), h.engine.Status().SessionID); !errors.Is(err, core.ErrBusy) {
+		t.Fatalf("运行中删除当前会话应返回 ErrBusy: %v", err)
+	}
 	if !h.engine.Status().Running || len(h.engine.Status().PendingPermissions) != 1 {
 		t.Fatalf("状态应显示运行中且有一个待确认请求: %+v", h.engine.Status())
 	}
 	close(release)
 	<-done
+}
+
+// 删除当前会话后应切换到新会话，下一轮结束时不能把删掉的会话写回去。
+func TestDeleteCurrentSession(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	ctx := context.Background()
+	h.engine.Send(ctx, "演示")
+	id := h.engine.Status().SessionID
+	if err := h.engine.DeleteSession(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if h.engine.Status().SessionID == id {
+		t.Fatal("删除当前会话后应切换到新会话")
+	}
+	h.engine.Send(ctx, "演示")
+	sessions, _ := h.engine.ListSessions(ctx)
+	for _, s := range sessions {
+		if s.ID == id {
+			t.Fatal("被删除的会话不应被重新保存")
+		}
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("应只剩新会话: %+v", sessions)
+	}
 }
 
 // assertToolPairs 检查保存的历史里每个 tool_use 都有配对的 tool_result——否则下一次请求会被厂商拒绝。
@@ -405,5 +432,24 @@ func assertToolPairs(t *testing.T, h *harness) {
 	}
 	if len(pending) != 0 {
 		t.Fatalf("存在没有结果的工具调用: %v", pending)
+	}
+}
+
+// 新目录里没有可用的配置档时，ReplaceCatalog 失败，且引擎保持原来的目录。
+func TestReplaceCatalogFailureKeepsOldCatalog(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	reg := provider.NewRegistry()
+	reg.Register("broken", func(provider.ProfileConfig) (provider.Provider, error) {
+		return nil, errors.New("missing key")
+	})
+	bad := provider.NewCatalog(reg, []provider.ProfileConfig{{Name: "x", Type: "broken", Models: []string{"m"}}})
+	if err := h.engine.ReplaceCatalog(bad); err == nil {
+		t.Fatal("没有可用配置档时应失败")
+	}
+	if ps := h.engine.Profiles(); len(ps) != 2 || ps[0].Name != "fake" {
+		t.Fatalf("失败后应保留原目录: %+v", ps)
+	}
+	if _, err := h.engine.Send(context.Background(), "演示"); err != nil {
+		t.Fatalf("失败后应能继续使用原厂商: %v", err)
 	}
 }

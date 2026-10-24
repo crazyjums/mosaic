@@ -104,15 +104,36 @@ export const useChat = create<Store>((set, get) => {
         if (get().running) throw new Error("当前一轮还在运行，请先停止");
         // 先切换到目标会话再调用后端：后端会在调用返回之前就开始推送重放事件，
         // 提前设置 sessionId 才能让 reducer 接收它们、同时丢弃旧会话的残留事件。
-        const { provider, model } = get();
-        set({ ...initialState(id), provider, model });
-        const st = await backend().loadSession(id);
-        set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage });
+        const prev = get();
+        set({ ...initialState(id), provider: prev.provider, model: prev.model });
+        try {
+          const st = await backend().loadSession(id);
+          set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage });
+        } catch (e) {
+          // 加载失败时后端仍停留在原会话：恢复原来的界面状态，否则 sessionId 指向一个没加载成功的会话，
+          // 之后原会话的所有事件都会被 reducer 过滤掉，界面再也不响应。
+          set({
+            sessionId: prev.sessionId,
+            timeline: prev.timeline,
+            tools: prev.tools,
+            permissions: prev.permissions,
+            sessionUsage: prev.sessionUsage,
+            agents: prev.agents,
+            tasks: prev.tasks,
+            lastSeq: prev.lastSeq,
+          });
+          throw e;
+        }
       }),
 
     deleteSession: (id) =>
       guard(async () => {
         await backend().deleteSession(id);
+        // 删除的是当前会话时，后端已切换到一个新的空会话，界面跟着切换。
+        if (id === get().sessionId) {
+          const st = await backend().getStatus();
+          set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "" });
+        }
         set({ sessions: await backend().listSessions() });
       }),
 

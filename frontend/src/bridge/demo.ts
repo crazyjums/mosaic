@@ -199,7 +199,14 @@ export function createDemoBackend(): Backend {
       s.events.forEach((ev) => listeners.forEach((cb) => cb(ev)));
       return status();
     },
-    deleteSession: async (id) => void sessions.delete(id),
+    deleteSession: async (id) => {
+      // 与真实后端一致：删除当前会话时切换到新的空会话，运行中不允许删除当前会话。
+      if (id === current.summary.id) {
+        if (running) throw new Error("engine: a turn is already running");
+        current = newSession();
+      }
+      sessions.delete(id);
+    },
     setModel: async (p, m) => {
       provider = p || "fake";
       model = m || "demo";

@@ -37,8 +37,9 @@ export default function Sidebar() {
               </div>
             </div>
             <button
-              className="ml-1 hidden rounded px-1 text-xs text-muted hover:text-danger group-hover:block"
+              className="ml-1 hidden rounded px-1 text-xs text-muted hover:text-danger group-hover:block disabled:opacity-40"
               title="删除"
+              disabled={running && s.id === sessionId}
               onClick={(e) => {
                 e.stopPropagation();
                 if (confirm(`删除会话「${s.title}」？`)) void deleteSession(s.id);
