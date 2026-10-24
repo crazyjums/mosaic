@@ -4,22 +4,63 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/tool"
 )
 
-// ServerConfig 描述一个 MCP server 的连接方式（预留，供将来的配置解析使用）。
+// 传输方式。
+const (
+	TransportStdio = "stdio" // 启动本地子进程，通过标准输入输出通信
+	TransportHTTP  = "http"  // Streamable HTTP：连接远程服务
+)
+
+// ServerConfig 描述一个 MCP server 的连接方式。它直接保存在 settings.json 里（设置 → MCP）。
 type ServerConfig struct {
-	Name      string
-	Transport string // "stdio" 或 "http"
-	Command   string // stdio：可执行文件
-	Args      []string
-	Env       map[string]string
-	URL       string // http：服务地址
-	// Risk 是该 server 所有工具的默认风险等级。MCP 协议本身没有风险声明，保守起见默认 exec。
-	Risk permission.Risk
+	Name      string `json:"name"`
+	Transport string `json:"transport"` // stdio / http
+	// stdio：可执行文件、参数、额外的环境变量和工作目录。
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Cwd     string            `json:"cwd,omitempty"`
+	// http：服务地址和额外的请求头（常见的是 Authorization: Bearer ...）。
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	// Risk 是该 server 所有工具的风险等级。MCP 协议本身没有可信的风险声明，保守起见默认 exec（每次都询问）。
+	Risk permission.Risk `json:"risk,omitempty"`
+	// Disabled 为 true 时保留配置但不连接。
+	Disabled bool `json:"disabled,omitempty"`
+}
+
+// serverNameRe 限制 server 名：它会成为工具名的一部分，而各厂商要求工具名只含字母、数字、_ 和 -。
+var serverNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
+// Validate 检查配置是否完整。
+func (c ServerConfig) Validate() error {
+	if !serverNameRe.MatchString(c.Name) {
+		return fmt.Errorf("MCP 名称 %q 只能包含字母、数字、_ 和 -（最多 32 个字符）", c.Name)
+	}
+	switch c.Transport {
+	case TransportStdio:
+		if strings.TrimSpace(c.Command) == "" {
+			return fmt.Errorf("MCP %s：请填写要运行的命令", c.Name)
+		}
+	case TransportHTTP:
+		if !strings.HasPrefix(c.URL, "http://") && !strings.HasPrefix(c.URL, "https://") {
+			return fmt.Errorf("MCP %s：地址需要以 http:// 或 https:// 开头", c.Name)
+		}
+	default:
+		return fmt.Errorf("MCP %s：不支持的传输方式 %q", c.Name, c.Transport)
+	}
+	switch c.Risk {
+	case "", permission.RiskRead, permission.RiskWrite, permission.RiskExec:
+	default:
+		return fmt.Errorf("MCP %s：未知的风险等级 %q", c.Name, c.Risk)
+	}
+	return nil
 }
 
 // ToolInfo 是 tools/list 返回的一个工具。
@@ -35,7 +76,7 @@ type CallResult struct {
 	IsError bool
 }
 
-// Client 是与一个 MCP server 通信的客户端。第一阶段没有实现。
+// Client 是与一个 MCP server 通信的客户端。真实实现是 RPCClient，测试里可以换成假的。
 type Client interface {
 	ListTools(ctx context.Context) ([]ToolInfo, error)
 	CallTool(ctx context.Context, name string, args json.RawMessage) (CallResult, error)
@@ -51,9 +92,18 @@ type ToolAdapter struct {
 }
 
 // QualifiedName 返回带 server 前缀的工具名，例如 mcp__github__create_issue。
+//
+// 不合法的字符替换成 _，总长截断到 64：OpenAI 和 Anthropic 都要求工具名匹配 ^[a-zA-Z0-9_-]{1,64}$，
+// 而 MCP 工具名允许点号等字符。调用 server 时用的是原始名字（ToolAdapter.Info.Name），所以替换不影响调用。
 func QualifiedName(server, name string) string {
-	return "mcp__" + server + "__" + name
+	q := "mcp__" + server + "__" + toolNameRe.ReplaceAllString(name, "_")
+	if len(q) > 64 {
+		q = q[:64]
+	}
+	return q
 }
+
+var toolNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
 func (a *ToolAdapter) Spec() tool.Spec {
 	risk := a.Risk

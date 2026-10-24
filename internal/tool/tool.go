@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/crazyjums/myllmapp/internal/permission"
@@ -103,4 +104,17 @@ func (r *Registry) Specs() []Spec {
 		out = append(out, r.tools[name].Spec())
 	}
 	return out
+}
+
+// Unregister 删除工具（例如断开的 MCP server 的工具），返回是否存在。
+// 正在执行的调用不受影响：它已经拿到了工具实例。
+func (r *Registry) Unregister(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.tools[name]; !ok {
+		return false
+	}
+	delete(r.tools, name)
+	r.order = slices.DeleteFunc(r.order, func(n string) bool { return n == name })
+	return true
 }
