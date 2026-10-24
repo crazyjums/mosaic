@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/crazyjums/myllmapp/internal/core"
+	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 )
 
@@ -254,7 +255,10 @@ func (m *Manager) PermissionMode() string {
 	return m.file.PermissionMode
 }
 
-// SetPermissionMode 切换权限模式并记住。
+// SetPermissionMode 切换权限档位并记住，下次启动直接使用。
+//
+// 例外是 auto（全部放行）：只对本次运行生效，不写入设置文件，文件里保留切换前记住的档位。
+// 否则某次临时开了全部放行，之后每次启动都会在不知不觉中不经确认地执行命令。
 func (m *Manager) SetPermissionMode(mode string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -263,6 +267,9 @@ func (m *Manager) SetPermissionMode(mode string) error {
 	}
 	if err := m.engine.SetPermissionMode(mode); err != nil {
 		return err
+	}
+	if permission.Mode(mode) == permission.ModeAuto || m.file.PermissionMode == mode {
+		return nil
 	}
 	next := cloneFile(m.file)
 	next.PermissionMode = mode

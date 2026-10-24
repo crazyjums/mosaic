@@ -60,13 +60,18 @@ sequenceDiagram
 
 ### 策略（Policy）
 
-内置的 `ModePolicy` 有三种模式：
+内置的 `ModePolicy` 有四种模式（参考 Claude Code 的权限模式），从保守到放开：
 
-| 模式 | read | write | exec |
-| --- | --- | --- | --- |
-| `default` | 放行 | 询问 | 询问 |
-| `auto` | 放行 | 放行 | 放行 |
-| `readonly` | 放行 | 拒绝 | 拒绝 |
+| 模式 | 界面名称 | read | write | exec |
+| --- | --- | --- | --- | --- |
+| `readonly` | 只读 | 放行 | 拒绝 | 拒绝 |
+| `default` | 默认 | 放行 | 询问 | 询问 |
+| `accept_edits` | 自动接受编辑 | 放行 | 放行 | 询问 |
+| `auto` | 全部放行 | 放行 | 放行 | 放行 |
+
+启动时的模式来自配置文件的 `permission_mode`（CLI 可用 `-mode` 覆盖）。运行期间可以随时切换：桌面端在状态栏选择，CLI 用 `/mode <mode>`。切换通过可选接口 `permission.ModeController` 实现，立即生效——策略在每次工具调用前才被询问，所以本轮里还没执行的调用也会按新模式处理；已经弹出的确认请求仍需回答。切到 `auto` 前，桌面端会弹出危险确认（不提供 Enter 快捷确认，默认焦点在"取消"）。
+
+切换会被记住（`settings.json` 的 `permission_mode`，优先于配置文件），**`auto` 除外**：它只对本次运行生效，文件里保留切换前的档位；启动时即使读到旧版本写入的 `auto` 也会忽略。否则某次临时开了全部放行，之后每次启动都会在不知不觉中不经确认地执行命令。想默认就全部放行，只能在 config.toml 或 `-mode auto` 中明确指定。
 
 用户选择"本会话总是允许"（`allow_session`）后，同名工具在本会话内不再询问；`NewSession` / `LoadSession` 时 `Reset`。未知模式回落到 `default`——宁可多问一次。
 

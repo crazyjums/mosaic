@@ -65,13 +65,28 @@ type Policy interface {
 type Mode string
 
 const (
-	// ModeDefault：读操作直接放行，写和执行需要确认。这是推荐的日常模式。
-	ModeDefault Mode = "default"
-	// ModeAuto：全部放行，不再询问。仅适合在一次性沙箱目录里使用。
-	ModeAuto Mode = "auto"
 	// ModeReadOnly：只允许读操作，写和执行直接拒绝。适合"只让它看看代码"。
 	ModeReadOnly Mode = "readonly"
+	// ModeDefault：读操作直接放行，写和执行需要确认。这是推荐的日常模式。
+	ModeDefault Mode = "default"
+	// ModeAcceptEdits：读和写文件直接放行，执行命令仍需确认。适合"放手让它改代码，但命令要过目"。
+	ModeAcceptEdits Mode = "accept_edits"
+	// ModeAuto：全部放行，不再询问。仅适合在一次性沙箱目录里使用。
+	ModeAuto Mode = "auto"
 )
+
+// Modes 按"从保守到放开"的顺序返回所有内置模式，界面和 CLI 据此展示档位。
+func Modes() []Mode { return []Mode{ModeReadOnly, ModeDefault, ModeAcceptEdits, ModeAuto} }
+
+// ParseMode 校验模式字符串。与 NewModePolicy 的"未知即回落"不同，这里用于用户输入，拼错要明确报错。
+func ParseMode(s string) (Mode, error) {
+	for _, m := range Modes() {
+		if string(m) == s {
+			return m, nil
+		}
+	}
+	return "", fmt.Errorf("permission: unknown mode %q (want readonly, default, accept_edits or auto)", s)
+}
 
 // ModePolicy 是基于 Mode 的内置策略实现。
 type ModePolicy struct {
@@ -83,9 +98,7 @@ type ModePolicy struct {
 
 // NewModePolicy 创建策略；未知模式按 ModeDefault 处理，宁可多问一次也不要误放行。
 func NewModePolicy(mode Mode) *ModePolicy {
-	switch mode {
-	case ModeDefault, ModeAuto, ModeReadOnly:
-	default:
+	if _, err := ParseMode(string(mode)); err != nil {
 		mode = ModeDefault
 	}
 	return &ModePolicy{mode: mode, sessionAllow: map[string]bool{}}
@@ -105,13 +118,11 @@ func (p *ModePolicy) Mode() Mode {
 	return p.mode
 }
 
-// SetMode 切换模式。与 NewModePolicy 不同，这里对未知模式报错——
-// 运行时的切换来自界面操作，拼错了应该让调用方知道，而不是悄悄回落。
+// SetMode 切换模式，立即对之后的工具调用生效（包括正在运行的这一轮里还没执行的调用）。
+// "本会话总是允许"的记忆保留：切回 default 时不用重新确认已经允许过的工具。
 func (p *ModePolicy) SetMode(m Mode) error {
-	switch m {
-	case ModeDefault, ModeAuto, ModeReadOnly:
-	default:
-		return fmt.Errorf("permission: unknown mode %q", m)
+	if _, err := ParseMode(string(m)); err != nil {
+		return err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -123,14 +134,18 @@ func (p *ModePolicy) Evaluate(tool string, risk Risk, _ json.RawMessage) Verdict
 	if risk == RiskRead {
 		return Allow
 	}
-	switch p.Mode() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	switch p.mode {
 	case ModeAuto:
 		return Allow
 	case ModeReadOnly:
 		return Deny
+	case ModeAcceptEdits:
+		if risk == RiskWrite {
+			return Allow
+		}
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.sessionAllow[tool] {
 		return Allow
 	}

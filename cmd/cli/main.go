@@ -30,7 +30,7 @@ func main() {
 	flag.StringVar(&f.provider, "provider", "", "厂商配置档名称，覆盖配置中的 default_provider")
 	flag.StringVar(&f.model, "model", "", "模型名称")
 	flag.StringVar(&f.workspace, "workspace", "", "工作区目录，覆盖配置")
-	flag.StringVar(&f.mode, "mode", "", "权限模式：default / auto / readonly")
+	flag.StringVar(&f.mode, "mode", "", "权限模式：readonly / default / accept_edits / auto")
 	flag.StringVar(&f.resume, "resume", "", "恢复指定 ID 的会话")
 	flag.StringVar(&f.prompt, "p", "", "单次执行：发送这条消息，结束后退出")
 	flag.BoolVar(&f.yes, "yes", false, "自动允许所有权限确认（谨慎使用）")
@@ -225,6 +225,7 @@ func (c *cli) command(line string) (quit bool) {
 /load <id>                恢复会话
 /models                   列出厂商配置档和模型
 /model <profile> [model]  切换厂商和模型（会记住，下次启动直接使用）
+/mode [mode]              查看或切换权限模式：readonly / default / accept_edits / auto
 /status                   当前状态
 /quit                     退出`)
 	case "/new":
@@ -269,10 +270,25 @@ func (c *cli) command(line string) (quit bool) {
 		}
 		st := c.eng.Status()
 		fmt.Fprintf(c.info, "已切换到 %s/%s\n", st.Provider, st.Model)
+	case "/mode":
+		if len(fields) < 2 {
+			fmt.Fprintf(c.info, "当前权限模式：%s（可选 readonly / default / accept_edits / auto）\n", c.eng.Status().PermissionMode)
+			return false
+		}
+		// 通过 settings 切换：和桌面端一样会记住（auto 除外）。
+		if err := c.settings.SetPermissionMode(fields[1]); err != nil {
+			fmt.Fprintln(c.info, "错误:", err)
+			return false
+		}
+		if fields[1] == "auto" {
+			fmt.Fprintln(c.info, "⚠ 已切换到 auto：写文件和执行命令都不再询问，请只在可以随意破坏的目录里使用（只对本次运行有效）。")
+		} else {
+			fmt.Fprintln(c.info, "已切换到权限模式", fields[1])
+		}
 	case "/status":
 		st := c.eng.Status()
-		fmt.Fprintf(c.info, "会话 %s「%s」\n厂商 %s · 模型 %s\ntokens 入 %d / 出 %d\n工作区 %s\n",
-			st.SessionID, st.Title, st.Provider, st.Model, st.Usage.InputTokens, st.Usage.OutputTokens, st.Workspace)
+		fmt.Fprintf(c.info, "会话 %s「%s」\n厂商 %s · 模型 %s\ntokens 入 %d / 出 %d\n工作区 %s\n权限模式 %s\n",
+			st.SessionID, st.Title, st.Provider, st.Model, st.Usage.InputTokens, st.Usage.OutputTokens, st.Workspace, st.PermissionMode)
 	default:
 		fmt.Fprintln(c.info, "未知命令，/help 查看帮助")
 	}

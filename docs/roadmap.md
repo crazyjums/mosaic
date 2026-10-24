@@ -5,7 +5,7 @@
 - 单会话流式对话，切换厂商与模型（OpenAI 兼容 + Anthropic 原生 + fake）
 - agent 循环：工具调用 → 执行 → 回传 → 继续，最大步数限制，取消
 - 内置工具：read_file / write_file / list_dir / shell
-- 权限：write/exec 前 `permission_request`，前端弹窗确认；`default` / `auto` / `readonly` 模式；本会话总是允许
+- 权限：write/exec 前 `permission_request`，前端弹窗确认；`readonly` / `default` / `accept_edits` / `auto` 四档模式，可在状态栏或 CLI `/mode` 随时切换；本会话总是允许
 - 前端：消息流、可折叠思考卡片、工具调用卡片、权限弹窗、状态栏（厂商/模型/token）、会话列表
 - 会话保存与恢复（SQLite，纯 Go）
 - CLI 调试入口；浏览器演示模式

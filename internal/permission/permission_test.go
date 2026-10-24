@@ -19,12 +19,32 @@ func TestModePolicy(t *testing.T) {
 		{ModeAuto, RiskExec, Allow},
 		{ModeReadOnly, RiskWrite, Deny},
 		{ModeReadOnly, RiskRead, Allow},
+		{ModeAcceptEdits, RiskRead, Allow},
+		{ModeAcceptEdits, RiskWrite, Allow},
+		{ModeAcceptEdits, RiskExec, Ask},
 		{Mode("typo"), RiskWrite, Ask}, // 未知模式回落到最保守的 default
 	}
 	for _, c := range cases {
 		if got := NewModePolicy(c.mode).Evaluate("t", c.risk, nil); got != c.want {
 			t.Errorf("mode=%s risk=%s: got %s want %s", c.mode, c.risk, got, c.want)
 		}
+	}
+}
+
+func TestSetMode(t *testing.T) {
+	p := NewModePolicy(ModeDefault)
+	p.Remember("shell", DecisionAllowSession)
+	if err := p.SetMode(ModeReadOnly); err != nil || p.Mode() != ModeReadOnly {
+		t.Fatalf("SetMode: %v %s", err, p.Mode())
+	}
+	if p.Evaluate("shell", RiskExec, nil) != Deny {
+		t.Fatal("readonly 应拒绝执行，即使之前允许过")
+	}
+	if err := p.SetMode(ModeDefault); err != nil || p.Evaluate("shell", RiskExec, nil) != Allow {
+		t.Fatal("切回 default 后应保留本会话的允许记忆")
+	}
+	if err := p.SetMode("typo"); err == nil || p.Mode() != ModeDefault {
+		t.Fatal("未知模式应报错且不改变当前模式")
 	}
 }
 

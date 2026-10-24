@@ -9,7 +9,7 @@
 // 组件用 selector 订阅局部状态，流式更新时只重渲染真正变化的部分。
 
 import { create } from "zustand";
-import { backend, type ProfileInfo, type SessionSummary, type WorkspaceInfo } from "../bridge";
+import { backend, type PermissionMode, type ProfileInfo, type SessionSummary, type WorkspaceInfo } from "../bridge";
 import type { Decision } from "../protocol/events";
 import { applyEvent, initialState, type ChatState } from "./reducer";
 
@@ -21,7 +21,7 @@ interface Store extends ChatState {
   workspace: string;
   /** 工作区的 git 信息，状态栏用；定时刷新 */
   workspaceInfo: WorkspaceInfo | null;
-  permissionMode: string;
+  permissionMode: PermissionMode;
   /** 动作失败时显示在界面顶部的提示 */
   toast: string | null;
 
@@ -33,7 +33,7 @@ interface Store extends ChatState {
   loadSession(id: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   setModel(profile: string, model: string): Promise<void>;
-  setPermissionMode(mode: string): Promise<void>;
+  setPermissionMode(mode: PermissionMode): Promise<void>;
   refreshWorkspace(): Promise<void>;
   /** 重新读取厂商列表、当前状态和会话列表（设置页修改厂商后调用） */
   refreshMeta(): Promise<void>;
@@ -66,7 +66,7 @@ export const useChat = create<Store>((set, get) => {
     title: "",
     workspace: "",
     workspaceInfo: null,
-    permissionMode: "",
+    permissionMode: "default",
     toast: null,
 
     async init() {

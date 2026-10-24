@@ -8,6 +8,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 )
 
@@ -21,7 +22,7 @@ type Config struct {
 	// DataDir 存放会话数据库等本地数据，默认 ~/.myllmapp。
 	DataDir string `toml:"data_dir"`
 
-	PermissionMode      string `toml:"permission_mode"` // default / auto / readonly
+	PermissionMode      string `toml:"permission_mode"` // readonly / default / accept_edits / auto
 	MaxSteps            int    `toml:"max_steps"`
 	MaxTokens           int    `toml:"max_tokens"`
 	ShellTimeoutSeconds int    `toml:"shell_timeout_seconds"`
@@ -145,10 +146,8 @@ func (c *Config) validate() error {
 		}
 		seen[p.Name] = true
 	}
-	switch c.PermissionMode {
-	case "default", "auto", "readonly":
-	default:
-		return fmt.Errorf("config: permission_mode must be default, auto or readonly, got %q", c.PermissionMode)
+	if _, err := permission.ParseMode(c.PermissionMode); err != nil {
+		return fmt.Errorf("config: permission_mode: %w", err)
 	}
 	return nil
 }

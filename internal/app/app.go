@@ -115,7 +115,8 @@ func (a *App) GetWorkspaceInfo() workspace.Info {
 	return workspace.Inspect(a.context(), a.engine.Status().Workspace)
 }
 
-// SetPermissionMode 切换权限模式（default / auto / readonly）并记住。
+// SetPermissionMode 切换权限档位（readonly / default / accept_edits / auto），立即生效并记住（auto 除外）。
+// "全部放行"的风险确认在前端完成。
 func (a *App) SetPermissionMode(mode string) (core.Status, error) {
 	if err := a.settings.SetPermissionMode(mode); err != nil {
 		return core.Status{}, err

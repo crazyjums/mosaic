@@ -247,6 +247,9 @@ func TestLocalServerWithoutKey(t *testing.T) {
 
 func TestPermissionModeAndStatusLinePersist(t *testing.T) {
 	m, eng, path := newEnv(t)
+	if err := m.SetPermissionMode("accept_edits"); err != nil {
+		t.Fatal(err)
+	}
 	if err := m.SetPermissionMode("auto"); err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +272,8 @@ func TestPermissionModeAndStatusLinePersist(t *testing.T) {
 
 	// 重新加载（模拟重启）后都还在。
 	m2, _ := NewManager(path, m.base, provider.DefaultRegistry)
-	if m2.PermissionMode() != "auto" || !strings.Contains(string(m2.StatusLine()), `"git"`) {
-		t.Fatalf("应持久化: %q %s", m2.PermissionMode(), m2.StatusLine())
+	// auto 只对本次运行生效，记住的是切换前的档位。
+	if m2.PermissionMode() != "accept_edits" || !strings.Contains(string(m2.StatusLine()), `"git"`) {
+		t.Fatalf("应持久化（auto 除外）: %q %s", m2.PermissionMode(), m2.StatusLine())
 	}
 }

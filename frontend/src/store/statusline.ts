@@ -24,7 +24,7 @@ export const ITEMS: Record<ItemId, ItemMeta> = {
   turn: { label: "本轮耗时 / 步数", description: "运行中实时显示已用时间和第几步；空闲时显示上一轮耗时", defaultEnabled: true },
   workspace: { label: "工作区", description: "工具读写文件的根目录", defaultEnabled: true },
   git: { label: "Git 分支", description: "工作区是 git 仓库时显示分支，以及未提交改动的文件数", defaultEnabled: true },
-  permission: { label: "权限模式", description: "default / auto / readonly，点击切换", defaultEnabled: true },
+  permission: { label: "权限模式", description: "只读 / 默认 / 自动接受编辑 / 全部放行，可直接切换", defaultEnabled: true },
   running: { label: "运行状态", description: "空闲 / 运行中 / 等待确认", defaultEnabled: true },
 };
 

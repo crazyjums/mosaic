@@ -8,6 +8,9 @@
 
 import type { AgentEvent, Decision, Usage } from "../protocol/events";
 
+/** 对应 permission.Mode：权限档位，从保守到放开 */
+export type PermissionMode = "readonly" | "default" | "accept_edits" | "auto";
+
 /** 对应 core.Status */
 export interface Status {
   session_id: string;
@@ -19,7 +22,7 @@ export interface Status {
   workspace: string;
   pending_permissions: string[] | null;
   /** default / auto / readonly */
-  permission_mode: string;
+  permission_mode: PermissionMode;
 }
 
 /** 对应 provider.ProfileInfo（不含密钥） */
@@ -127,7 +130,7 @@ export interface Backend {
   fetchModels(input: ProviderInput): Promise<string[]>;
   // ---- 状态栏 ----
   getWorkspaceInfo(): Promise<WorkspaceInfo>;
-  setPermissionMode(mode: string): Promise<Status>;
+  setPermissionMode(mode: PermissionMode): Promise<Status>;
   /** 从未保存过时返回 null */
   getStatusLineConfig(): Promise<unknown>;
   saveStatusLineConfig(cfg: unknown): Promise<void>;

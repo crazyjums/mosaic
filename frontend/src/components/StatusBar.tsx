@@ -4,18 +4,12 @@ import { useChat } from "../store/chatStore";
 import { contextTokens, currentStep, fmtDuration, fmtTokens, fmtUSD, modelMeta, sessionCost } from "../store/metrics";
 import { useSettings } from "../store/settingsStore";
 import { useStatusLine, type ItemId } from "../store/statusline";
+import PermissionModeSelect from "./PermissionModeSelect";
 
 // 输入框下方的状态栏。显示哪些项、按什么顺序由状态栏配置决定（设置 → 状态栏）。
 //
 // 每一项是一个独立的小组件，返回 null 表示"此刻没有可显示的内容"（例如工作区不是 git 仓库），
 // 这样关掉一项、或某项暂时没数据时，分隔线也不会多出来。
-
-const PERMISSION_MODES = ["default", "auto", "readonly"] as const;
-const PERMISSION_TEXT: Record<string, { label: string; className: string; tip: string }> = {
-  default: { label: "确认写入/执行", className: "", tip: "default：读文件自动放行，写文件和执行命令前询问" },
-  auto: { label: "全部自动放行", className: "text-warn", tip: "auto：所有工具调用都不再询问（谨慎使用）" },
-  readonly: { label: "只读", className: "text-accent", tip: "readonly：只允许读操作，写文件和执行命令直接拒绝" },
-};
 
 export default function StatusBar() {
   const config = useStatusLine((s) => s.config);
@@ -59,7 +53,7 @@ function Item({ id }: { id: ItemId }) {
     case "git":
       return <GitItem />;
     case "permission":
-      return <PermissionItem />;
+      return <PermissionModeSelect />;
     case "running":
       return <RunningItem />;
   }
@@ -200,19 +194,6 @@ function GitItem() {
       ⎇ {info.branch}
       {info.dirty && <span className="text-warn"> ●{info.changed_files}</span>}
     </Tip>
-  );
-}
-
-function PermissionItem() {
-  const mode = useChat((s) => s.permissionMode);
-  const setMode = useChat((s) => s.setPermissionMode);
-  if (!mode) return null;
-  const t = PERMISSION_TEXT[mode] ?? { label: mode, className: "", tip: mode };
-  const next = PERMISSION_MODES[(PERMISSION_MODES.indexOf(mode as (typeof PERMISSION_MODES)[number]) + 1) % PERMISSION_MODES.length];
-  return (
-    <button className={`whitespace-nowrap rounded px-1 hover:bg-panel-2 ${t.className}`} title={`${t.tip}\n点击切换到 ${next}`} onClick={() => void setMode(next)}>
-      🛡 {t.label}
-    </button>
   );
 }
 

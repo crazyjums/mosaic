@@ -453,3 +453,33 @@ func TestReplaceCatalogFailureKeepsOldCatalog(t *testing.T) {
 		t.Fatalf("失败后应能继续使用原厂商: %v", err)
 	}
 }
+
+// 运行中切换档位：本轮里还没执行的工具调用立即按新档位处理。
+func TestSetPermissionModeMidTurn(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, func(e *core.Engine, p event.PermissionRequest) {
+		// 第一次弹窗时切到"全部放行"，然后允许这一次。
+		if err := e.SetPermissionMode("auto"); err != nil {
+			t.Error(err)
+		}
+		_ = e.RespondPermission(p.RequestID, "allow")
+	})
+	if st := h.engine.Status(); st.PermissionMode != "default" {
+		t.Fatalf("初始档位应为 default: %q", st.PermissionMode)
+	}
+	h.engine.Send(context.Background(), "演示")
+	reqs := payloads[event.PermissionRequest](h.rec)
+	if len(reqs) != 1 {
+		t.Fatalf("切到 auto 后不应再弹窗，实际弹了 %d 次", len(reqs))
+	}
+	for _, r := range payloads[event.ToolResult](h.rec) {
+		if r.IsError {
+			t.Fatalf("工具都应执行成功: %+v", r)
+		}
+	}
+	if st := h.engine.Status(); st.PermissionMode != "auto" {
+		t.Fatalf("status: %q", st.PermissionMode)
+	}
+	if err := h.engine.SetPermissionMode("autto"); err == nil {
+		t.Fatal("未知档位应报错")
+	}
+}

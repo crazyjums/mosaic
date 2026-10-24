@@ -7,7 +7,7 @@
 
 import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
-import type { Backend, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo } from "./types";
+import type { Backend, PermissionMode, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo } from "./types";
 
 /** Go 端 internal/app.EventName */
 const EVENT_NAME = "agent:event";
@@ -30,7 +30,7 @@ interface GoApp {
   TestProvider(input: ProviderInput): Promise<TestResult>;
   FetchModels(input: ProviderInput): Promise<string[] | null>;
   GetWorkspaceInfo(): Promise<WorkspaceInfo>;
-  SetPermissionMode(mode: string): Promise<Status>;
+  SetPermissionMode(mode: PermissionMode): Promise<Status>;
   GetStatusLineConfig(): Promise<unknown>;
   SaveStatusLineConfig(cfg: unknown): Promise<void>;
 }

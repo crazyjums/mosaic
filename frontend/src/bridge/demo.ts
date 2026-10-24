@@ -8,10 +8,11 @@
 // 为了让演示可交互，回放时做了三处改写：
 //   1. 用户消息替换成实际输入的文字；
 //   2. 文本增量重新切成小片段，带延迟播放，模拟流式效果；
-//   3. 遇到 permission_request 时真的停下来等用户点击；用户拒绝时，把对应的 tool_result 改成失败。
+//   3. 遇到 permission_request 时按当前权限档位处理（与 Go 端 permission.ModePolicy 一致）：
+//      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
 import type { AgentEvent, Decision, Usage } from "../protocol/events";
-import type { Backend, ProfileInfo, ProviderView, SessionSummary, Status } from "./types";
+import type { Backend, PermissionMode, ProfileInfo, ProviderView, SessionSummary, Status } from "./types";
 import raw from "./demo-events.jsonl?raw";
 
 const recorded: AgentEvent[] = raw
@@ -40,7 +41,7 @@ export function createDemoBackend(): Backend {
   let cancelled = false;
   let seq = 0;
   let provider = "fake";
-  let permissionMode = "default";
+  let permissionMode: PermissionMode = "default";
   let statusLineConfig: unknown = null;
   let model = "demo";
   let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
@@ -82,7 +83,7 @@ export function createDemoBackend(): Backend {
       if (!ids.has(id)) ids.set(id, rid(id.split("_")[0]));
       return ids.get(id)!;
     };
-    const denied = new Set<string>();
+    const denied = new Map<string, string>(); // call_id → 失败原因
     const escaped = JSON.stringify(text).slice(1, -1); // 作为 JSON 字符串内容插入，需要转义
 
     for (const original of recorded) {
@@ -100,18 +101,25 @@ export function createDemoBackend(): Backend {
         case "permission_resolved":
           continue; // 由用户的真实点击生成，见下面的 permission_request
         case "permission_request": {
+          // 与 ModePolicy.Evaluate 相同的规则：不需要询问时，真实内核不会发出权限事件。
+          const risk = ev.data.risk;
+          if (permissionMode === "readonly") {
+            denied.set(ev.data.call_id, `permission denied by policy: ${risk} tools are not allowed in the current mode`);
+            continue;
+          }
+          if (permissionMode === "auto" || (permissionMode === "accept_edits" && risk === "write")) continue;
           const requestId = rid("perm");
           ev.data.request_id = requestId;
           emit(ev);
           const decision = await new Promise<Decision>((resolve) => (pending = { requestId, resolve }));
           pending = null;
           emit({ ...ev, type: "permission_resolved", data: { request_id: requestId, call_id: ev.data.call_id, decision } });
-          if (decision === "deny") denied.add(ev.data.call_id);
+          if (decision === "deny") denied.set(ev.data.call_id, "permission denied by user");
           continue;
         }
         case "tool_result":
           if (denied.has(ev.data.call_id)) {
-            ev.data.output = "permission denied by user";
+            ev.data.output = denied.get(ev.data.call_id)!;
             ev.data.is_error = true;
           }
           break;

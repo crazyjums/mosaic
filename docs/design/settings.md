@@ -61,7 +61,7 @@ sequenceDiagram
 
 ## 其他保存在 settings.json 里的东西
 
-- `permission_mode`：状态栏上切换的权限模式（启动时优先级：命令行 `-mode` > 这里 > config.toml）；
+- `permission_mode`：状态栏上切换的权限模式（启动时优先级：命令行 `-mode` > 这里 > config.toml；`auto` 不会写进这里，旧文件里的 `auto` 也会被忽略）；
 - `statusline`：状态栏配置。后端不解析，原样保存（大小上限 64KB，必须是 JSON 对象），字段由前端定义，见 [前端状态管理](frontend-state.md#状态栏)。
 
 ## 测试

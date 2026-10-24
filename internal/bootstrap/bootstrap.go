@@ -86,12 +86,19 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	}
 
 	// 步骤 5：权限策略。优先级：命令行参数 > 上次在状态栏上的切换 > 配置文件。
+	// 记住的档位不会是 auto（见 settings.SetPermissionMode）；旧版本写进去的 auto 也忽略，
+	// 全部放行只能在本次运行中手动开启，或在配置文件/命令行里明确指定。
 	mode := cfg.PermissionMode
-	if m := settingsMgr.PermissionMode(); m != "" {
+	if m := settingsMgr.PermissionMode(); m != "" && m != string(permission.ModeAuto) {
 		mode = m
 	}
 	if opts.PermissionMode != "" {
 		mode = opts.PermissionMode
+	}
+	// 命令行传错（例如 -mode autto）要明确报错，而不是悄悄回落到 default。
+	if _, err := permission.ParseMode(mode); err != nil {
+		closeFn()
+		return nil, err
 	}
 
 	// 步骤 6：系统提示词。
