@@ -119,13 +119,35 @@ Wails 会启动 Vite 开发服务器并打开桌面窗口，前端热更新，Go
 
 ## 6. 打包
 
+推荐用一键打包脚本 [`scripts/build.sh`](../scripts/build.sh)。它会自动识别当前系统、检查依赖（缺 Wails CLI 会自动安装；Linux 上自动判断 WebKitGTK 4.0/4.1 并加对应构建标签）、跑测试、编译：
+
+```bash
+./scripts/build.sh               # 编译本系统版本：macOS → .app（universal），Linux → 可执行文件，Windows → .exe
+./scripts/build.sh --windows     # 在 macOS / Linux 上交叉编译 Windows 版 .exe
+./scripts/build.sh --all         # 本系统版本 + Windows 版本
+./scripts/build.sh --windows --nsis   # 额外生成 Windows 安装包（需要安装 NSIS：brew install nsis / apt install nsis）
+./scripts/build.sh -h            # 全部参数
+```
+
+| 在哪个系统上运行 | 能编译出 |
+| --- | --- |
+| macOS | macOS `.app`、Windows `.exe` |
+| Linux | Linux 可执行文件、Windows `.exe` |
+| Windows（Git Bash / MSYS2） | Windows `.exe` |
+
+macOS 和 Linux 版本依赖本机的 CGO 与系统 WebView，只能在对应系统上编译；Windows 版不需要 CGO，所以可以交叉编译。
+
+也可以直接用 Wails 命令：
+
 ```bash
 wails build                  # 产物在 build/bin/
 wails build -platform darwin/universal
 wails build -platform windows/amd64 -nsis   # Windows 安装包（需要 NSIS）
 ```
 
-首次 `wails build` 会在 `build/` 下生成图标、Info.plist、Windows manifest 等平台资源，可以按需修改后提交。
+`build/appicon.png` 是应用图标，`build/windows/` 是 Windows 的图标、版本信息和 manifest，改完重新打包即可生效。macOS 的 Info.plist 在第一次于 macOS 上打包时生成到 `build/darwin/`。
+
+> 前端资源只在 production 构建中嵌入（`assets_production.go`）。这是因为 Wails 先生成绑定、后构建前端，生成绑定时 `frontend/dist` 还不存在。
 
 ## 7. 一键检查
 
@@ -138,7 +160,8 @@ make check     # go vet + go test + 前端类型检查/测试/构建
 | 现象 | 原因 / 处理 |
 | --- | --- |
 | `go: downloading go1.26...` | 本机 Go 低于 1.26，自动下载工具链，正常现象 |
-| `pattern all:frontend/dist: no matching files found` | 直接 `go build -tags desktop` 时前端还没构建。用 `wails build`，或先 `cd frontend && npm run build` |
+| `pattern all:frontend/dist: no matching files found` | 手动 `go build -tags desktop,production` 时前端还没构建。用 `wails build` / `scripts/build.sh`，或先 `cd frontend && npm run build` |
+| Linux 虚拟机 / 远程桌面里窗口全黑 | WebKit 的硬件合成不可用，启动前设置 `WEBKIT_DISABLE_COMPOSITING_MODE=1` |
 | Linux 上找不到 `webkit2gtk-4.0` | 新发行版只有 4.1，加 `-tags webkit2_41` |
 | 界面上厂商显示"不可用：missing API key" | 对应环境变量没有设置，或桌面应用没有继承终端的环境变量（macOS 从 Dock 启动时常见）——可以在 `config.toml` 中用 `api_key` 直接配置，或从终端启动 |
 | Anthropic 报 400 与 thinking 相关 | 旧模型或代理不支持 adaptive thinking：配置该配置档 `options.thinking = "omit"` |

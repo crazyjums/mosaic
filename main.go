@@ -4,15 +4,14 @@
 //
 // 构建标签说明：Wails CLI 构建时会自动带上标签——`wails build` 带 desktop,production，
 // `wails dev` 带 dev，生成前端绑定时带 bindings。普通的 `go build ./...`、`go vet ./...`、
-// `go test ./...` 不带这些标签，因此会跳过本文件：既不需要 WebKit 等系统依赖，
-// 也不要求 frontend/dist 已经构建好（下面的 go:embed 需要它）。
+// `go test ./...` 不带这些标签，因此会跳过本文件，也就不需要 WebKit 等系统依赖。
+// 前端资源的嵌入放在 assets_*.go 里，原因见那两个文件的注释。
 //
 // 本文件只做三件事：读配置 → 组装内核 → 把绑定对象交给 Wails。与 cmd/cli/main.go 对照阅读，
 // 可以看出两个入口共享同一套 bootstrap，区别只在"界面"。
 package main
 
 import (
-	"embed"
 	"log"
 
 	"github.com/wailsapp/wails/v2"
@@ -23,9 +22,6 @@ import (
 	"github.com/crazyjums/myllmapp/internal/bootstrap"
 	"github.com/crazyjums/myllmapp/internal/config"
 )
-
-//go:embed all:frontend/dist
-var assets embed.FS
 
 func main() {
 	cfg, err := config.Load("")

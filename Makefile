@@ -1,6 +1,6 @@
 # 常用命令汇总。除 dev / build 外，所有目标都不需要 Wails CLI 和桌面系统依赖。
 
-.PHONY: test vet check cli demo demo-events frontend-install frontend-check frontend-dev dev build
+.PHONY: test vet check cli demo demo-events frontend-install frontend-check frontend-dev dev build package package-windows package-all
 
 ## Go：测试与静态检查
 test:
@@ -40,3 +40,15 @@ dev:
 
 build:
 	wails build
+
+## 一键打包（自动识别系统，见 scripts/build.sh -h）
+package:
+	./scripts/build.sh
+
+## 打包 Windows 版本（macOS / Linux 上交叉编译）
+package-windows:
+	./scripts/build.sh --windows
+
+## 本系统版本 + Windows 版本
+package-all:
+	./scripts/build.sh --all

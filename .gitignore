@@ -51,3 +51,5 @@ frontend/dist/
 frontend/*.tsbuildinfo
 # 演示时 fake provider 写出的文件
 agent-demo/
+# Wails 记录前端依赖是否变化的缓存文件
+frontend/package.json.md5

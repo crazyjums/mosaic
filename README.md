@@ -77,6 +77,9 @@ go run ./cmd/cli -provider anthropic
 ```bash
 wails dev      # 开发模式（Ubuntu 24.04+ 加 -tags webkit2_41）
 wails build    # 打包到 build/bin/
+
+./scripts/build.sh            # 或者用一键打包脚本：自动识别系统并检查依赖
+./scripts/build.sh --windows  # 在 macOS / Linux 上交叉编译 Windows 版
 ```
 
 ## 目录结构
@@ -87,6 +90,9 @@ wails build    # 打包到 build/bin/
 ├── wails.json                  Wails 项目配置
 ├── config.example.toml         配置示例（复制为 config.toml 使用）
 ├── Makefile                    常用命令
+├── scripts/build.sh            一键打包：按当前系统编译桌面应用，可交叉编译 Windows 版
+├── assets_*.go                 前端资源嵌入（只在 production 构建中嵌入）
+├── build/                      Wails 平台资源（图标、Windows manifest）；build/bin/ 是产物，不提交
 ├── cmd/cli/                    终端入口：同一个内核，彩色渲染或 JSONL 输出事件
 ├── internal/
 │   ├── event/                  统一事件协议（带版本号）与进程内事件总线 —— 整个项目的核心契约
