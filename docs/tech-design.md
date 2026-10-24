@@ -27,7 +27,7 @@
 | 后端语言 | Go 1.26 | `modernc.org/sqlite` 最新版要求 Go 1.26；本机 Go 更旧时 `GOTOOLCHAIN=auto`（默认值）会自动下载。 |
 | SQLite 驱动 | **modernc.org/sqlite** | 纯 Go（C 代码机器翻译为 Go），无需 CGO，交叉编译和 CI 都简单。代价：比 `mattn/go-sqlite3` 慢一些、二进制更大，对聊天记录这种量级无影响。 |
 | 配置格式 | **TOML**（`github.com/BurntSushi/toml`） | 支持注释（`config.example.toml` 可以自带说明），比 YAML 少缩进陷阱；JSON 不能写注释，被排除。 |
-| 前端 | React 18 + TypeScript + Vite + Tailwind CSS v4 + Zustand | 按需求指定。Tailwind v4 用官方 Vite 插件，不需要 PostCSS 配置文件。 |
+| 前端 | React 19 + TypeScript 7 + Vite 8 + Tailwind CSS v4 + Zustand 5 | 按需求指定，均取当前稳定版。Tailwind v4 用官方 Vite 插件，不需要 PostCSS 配置文件。 |
 | 前端测试 | Vitest | 只测"事件 → 界面状态"的纯函数 reducer，这是前端最容易写错的部分。 |
 
 ## 3. 分层与依赖方向
@@ -161,3 +161,7 @@ type Tool interface {
 ## 变更记录
 
 - 初版：开工前方案。
+- 实现阶段：
+  - 前端版本落定为 React 19.3 / TypeScript 7.0 / Vite 8.3 / Tailwind 4.3 / Zustand 5.0（初稿写的是 React 18）。
+  - 新增 `internal/archtest`（仓库级守卫测试）与 `provider/sse`（共用 SSE 解析器）两个小包。
+  - 前端浏览器演示模式改为回放 CLI 录制的真实事件流（`frontend/src/bridge/demo-events.jsonl`），而不是另写一套 TS 版 fake。
