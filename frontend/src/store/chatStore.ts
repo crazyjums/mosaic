@@ -9,7 +9,7 @@
 // 组件用 selector 订阅局部状态，流式更新时只重渲染真正变化的部分。
 
 import { create } from "zustand";
-import { backend, type ProfileInfo, type SessionSummary } from "../bridge";
+import { backend, type ProfileInfo, type SessionSummary, type WorkspaceInfo } from "../bridge";
 import type { Decision } from "../protocol/events";
 import { applyEvent, initialState, type ChatState } from "./reducer";
 
@@ -19,6 +19,9 @@ interface Store extends ChatState {
   sessions: SessionSummary[];
   title: string;
   workspace: string;
+  /** 工作区的 git 信息，状态栏用；定时刷新 */
+  workspaceInfo: WorkspaceInfo | null;
+  permissionMode: string;
   /** 动作失败时显示在界面顶部的提示 */
   toast: string | null;
 
@@ -30,6 +33,8 @@ interface Store extends ChatState {
   loadSession(id: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   setModel(profile: string, model: string): Promise<void>;
+  setPermissionMode(mode: string): Promise<void>;
+  refreshWorkspace(): Promise<void>;
   /** 重新读取厂商列表、当前状态和会话列表（设置页修改厂商后调用） */
   refreshMeta(): Promise<void>;
   dismissToast(): void;
@@ -60,6 +65,8 @@ export const useChat = create<Store>((set, get) => {
     sessions: [],
     title: "",
     workspace: "",
+    workspaceInfo: null,
+    permissionMode: "",
     toast: null,
 
     async init() {
@@ -70,8 +77,14 @@ export const useChat = create<Store>((set, get) => {
       // 所有事件都流经 reducer。一轮结束后刷新会话列表和状态栏数据。
       b.onEvent((ev) => {
         set((s) => applyEvent(s, ev));
-        if (ev.type === "turn_end" && !ev.data.replay) void refreshMeta();
+        if (ev.type === "turn_end" && !ev.data.replay) {
+          void refreshMeta();
+          void get().refreshWorkspace(); // agent 可能改了文件，git 状态要更新
+        }
       });
+      // git 状态也可能被外部改变（用户在终端里提交），定时刷新一下。
+      void get().refreshWorkspace();
+      setInterval(() => void get().refreshWorkspace(), 15000);
 
       await guard(async () => {
         const [st, profiles, sessions] = await Promise.all([b.getStatus(), b.getProfiles(), b.listSessions()]);
@@ -83,6 +96,7 @@ export const useChat = create<Store>((set, get) => {
           running: st.running,
           title: st.title,
           workspace: st.workspace,
+          permissionMode: st.permission_mode,
           profiles,
           sessions,
         });
@@ -144,6 +158,20 @@ export const useChat = create<Store>((set, get) => {
       }),
 
     refreshMeta: () => guard(refreshMeta),
+
+    setPermissionMode: (mode) =>
+      guard(async () => {
+        const st = await backend().setPermissionMode(mode);
+        set({ permissionMode: st.permission_mode });
+      }),
+
+    async refreshWorkspace() {
+      try {
+        set({ workspaceInfo: await backend().getWorkspaceInfo() });
+      } catch {
+        // 读不到 git 信息只是少显示一项，不打扰用户
+      }
+    },
     dismissToast: () => set({ toast: null }),
   };
 });

@@ -27,7 +27,15 @@ export const PRESETS: Preset[] = [
   {
     id: "anthropic", label: "Anthropic（Claude）", name: "anthropic", type: "anthropic", baseURL: "https://api.anthropic.com",
     models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
-    options: { thinking: "adaptive" },
+    // 上下文窗口与单价（美元 / 百万 token）用于状态栏；价格会变，以官网为准，可以在高级选项里修改。
+    options: {
+      thinking: "adaptive",
+      models_meta: {
+        "claude-opus-5-5": { context_window: 1000000, input_price: 4, output_price: 20 },
+        "claude-sonnet-5-5": { context_window: 1000000, input_price: 2, output_price: 10 },
+        "claude-haiku-5-5": { context_window: 1000000, input_price: 0.1, output_price: 0.5 },
+      },
+    },
     hint: "使用 Anthropic Console 的 API Key。原生协议，支持显示思考过程。",
   },
   { id: "deepseek", label: "DeepSeek", name: "deepseek", type: "openai", baseURL: "https://api.deepseek.com/v1", models: ["deepseek-chat", "deepseek-reasoner"] },

@@ -52,6 +52,16 @@ describe("applyEvent", () => {
     expect(denied.tools[req.call_id].status).toBe("denied");
   });
 
+  it("运行中每次 message_end 都实时累加会话用量，turn_end 用权威值覆盖", () => {
+    const firstEnd = recorded.findIndex((e) => e.type === "message_end");
+    const mid = replay(recorded.slice(0, firstEnd + 1));
+    expect(mid.sessionUsage.output_tokens).toBeGreaterThan(0);
+    const done = replay(recorded);
+    const end = recorded[recorded.length - 1];
+    expect(end.type).toBe("turn_end");
+    if (end.type === "turn_end") expect(done.sessionUsage).toEqual(end.data.session_usage);
+  });
+
   it("忽略其他会话的事件", () => {
     const s = initialState("sess_other");
     expect(applyEvent(s, recorded[0])).toBe(s);

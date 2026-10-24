@@ -76,6 +76,18 @@ body {
   }
 }
 
+/* 状态栏：某一项此刻没有内容（组件返回 null）时整项隐藏；相邻两个有内容的项之间画一条竖线。
+   用 CSS 而不是在 JS 里判断，是因为每一项是否为空只有它自己的组件知道。 */
+.statusline-item { display: flex; align-items: center; }
+.statusline-item:empty { display: none; }
+.statusline-item:not(:empty) ~ .statusline-item:not(:empty)::before {
+  content: "";
+  width: 1px;
+  height: 0.75rem;
+  margin: 0 0.625rem;
+  background: var(--border);
+}
+
 /* Markdown 正文的最小样式（不引入 typography 插件，保持依赖精简）。 */
 .md > * + * { margin-top: 0.6em; }
 .md h1, .md h2, .md h3 { font-weight: 600; margin-top: 1em; }

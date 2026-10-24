@@ -40,6 +40,8 @@ export function createDemoBackend(): Backend {
   let cancelled = false;
   let seq = 0;
   let provider = "fake";
+  let permissionMode = "default";
+  let statusLineConfig: unknown = null;
   let model = "demo";
   let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
 
@@ -68,6 +70,7 @@ export function createDemoBackend(): Backend {
       running,
       workspace: "/demo/workspace（浏览器演示）",
       pending_permissions: pending ? [pending.requestId] : [],
+      permission_mode: permissionMode,
     };
   }
 
@@ -163,7 +166,8 @@ export function createDemoBackend(): Backend {
   // 设置页的数据也放在内存里：可以添加、编辑、删除，但无法真正连接厂商（浏览器里没有后端）。
   let providers: ProviderView[] = [
     {
-      name: "fake", type: "fake", base_url: "", models: ["demo", "echo"], default_model: "demo", options: null,
+      name: "fake", type: "fake", base_url: "", models: ["demo", "echo"], default_model: "demo",
+      options: { models_meta: { demo: { context_window: 200000, input_price: 3, output_price: 15 } } },
       has_api_key: false, api_key_hint: "", source: "config", deletable: false, available: true,
     },
     {
@@ -176,6 +180,7 @@ export function createDemoBackend(): Backend {
     providers.map((p) => ({
       name: p.name, type: p.type, models: p.models, default_model: p.default_model,
       has_api_key: p.has_api_key, available: p.available, error: p.error,
+      model_meta: (p.options?.models_meta as ProfileInfo["model_meta"]) ?? null,
     }));
   const demoOnly = "浏览器演示模式没有连接 Go 后端，无法访问真实厂商。请在桌面端（wails dev / 打包后的应用）中使用。";
 
@@ -230,6 +235,17 @@ export function createDemoBackend(): Backend {
     },
     deleteProvider: async (name) => {
       providers = providers.filter((p) => p.name !== name);
+    },
+    getWorkspaceInfo: async () => ({
+      path: "/demo/workspace", name: "workspace", is_repo: true, branch: "main", dirty: true, changed_files: 2,
+    }),
+    setPermissionMode: async (mode) => {
+      permissionMode = mode;
+      return status();
+    },
+    getStatusLineConfig: async () => statusLineConfig,
+    saveStatusLineConfig: async (cfg) => {
+      statusLineConfig = cfg;
     },
     testProvider: async (input) => ({ ok: false, model: input.default_model, latency_ms: 0, error: demoOnly }),
     fetchModels: async () => {

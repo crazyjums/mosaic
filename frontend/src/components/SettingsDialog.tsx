@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { ProviderInput, ProviderView, TestResult } from "../bridge";
+import type { ModelMeta, ProviderInput, ProviderView, TestResult } from "../bridge";
 import { PRESETS, type Preset } from "../store/presets";
 import { useSettings } from "../store/settingsStore";
+import StatusLineSettings from "./StatusLineSettings";
 
 // 设置：模型厂商。左侧是配置档列表，右侧是编辑表单。
 // 保存后立即生效（Go 端会热替换厂商目录），不需要重启应用。
@@ -15,7 +16,7 @@ const SOURCE_LABEL: Record<ProviderView["source"], string> = {
 const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示" };
 
 export default function SettingsDialog() {
-  const { open, providers, error, hide } = useSettings();
+  const { open, tab, setTab, providers, error, hide } = useSettings();
   // selected：正在编辑的配置档名称；null 表示"新建"
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -40,9 +41,33 @@ export default function SettingsDialog() {
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6" onMouseDown={hide}>
       <div
-        className="flex h-[min(720px,90vh)] w-full max-w-5xl overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
+        className="flex h-[min(760px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
+        <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-3">
+          {(
+            [
+              ["providers", "模型厂商"],
+              ["statusline", "状态栏"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={`rounded-md px-3 py-1 text-sm ${tab === id ? "bg-panel-2 font-medium text-fg" : "text-muted hover:text-fg"}`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+          <div className="flex-1" />
+          <button className="px-2 text-muted hover:text-fg" onClick={hide} title="关闭（Esc）">
+            ✕
+          </button>
+        </div>
+        {tab === "statusline" ? (
+          <StatusLineSettings />
+        ) : (
+      <div className="flex min-h-0 flex-1">
         {/* 左：配置档列表 */}
         <aside className="flex w-60 shrink-0 flex-col border-r border-line">
           <div className="px-4 pb-2 pt-4 text-sm font-semibold">模型厂商</div>
@@ -76,15 +101,14 @@ export default function SettingsDialog() {
 
         {/* 右：表单。key 保证切换配置档时表单状态重置 */}
         <section className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-12 shrink-0 items-center justify-between border-b border-line px-5">
+          <header className="flex h-12 shrink-0 items-center border-b border-line px-5">
             <span className="text-sm font-medium">{current ? `编辑：${current.name}` : "添加厂商"}</span>
-            <button className="text-muted hover:text-fg" onClick={hide} title="关闭（Esc）">
-              ✕
-            </button>
           </header>
           {error && <div className="border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">{error}</div>}
           <ProviderForm key={current?.name ?? "__new__"} current={current} onSaved={setSelected} />
         </section>
+      </div>
+        )}
       </div>
     </div>
   );
@@ -393,6 +417,11 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
                 </Field>
               </>
             )}
+            {form.models.length > 0 && (
+              <Field label="模型信息（用于状态栏显示上下文占用和预估花费，可留空）">
+                <ModelMetaTable models={form.models} meta={metaOf(form.options)} onChange={(m) => patch({ options: { ...form.options, models_meta: m } })} />
+              </Field>
+            )}
           </div>
         </details>
 
@@ -424,6 +453,50 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
         </button>
       </footer>
     </>
+  );
+}
+
+type MetaMap = Record<string, ModelMeta>;
+
+function metaOf(options: Record<string, unknown>): MetaMap {
+  const m = options.models_meta;
+  return m && typeof m === "object" ? (m as MetaMap) : {};
+}
+
+// 每个模型一行：上下文窗口、输入单价、输出单价。空着表示不知道，状态栏就不显示对应的比例或花费。
+function ModelMetaTable({ models, meta, onChange }: { models: string[]; meta: MetaMap; onChange: (m: MetaMap) => void }) {
+  const set = (model: string, key: keyof ModelMeta, raw: string) => {
+    const next: MetaMap = { ...meta, [model]: { ...meta[model] } };
+    const v = parseFloat(raw);
+    if (raw.trim() === "" || !Number.isFinite(v) || v <= 0) delete next[model][key];
+    else next[model][key] = key === "context_window" ? Math.round(v) : v;
+    if (Object.keys(next[model]).length === 0) delete next[model];
+    onChange(next);
+  };
+  const cell = "w-full rounded border border-line bg-bg px-2 py-1 text-right font-mono text-xs outline-none focus:border-accent/60";
+  return (
+    <table className="w-full text-xs">
+      <thead className="text-muted">
+        <tr>
+          <th className="pb-1 text-left font-normal">模型</th>
+          <th className="w-32 pb-1 text-right font-normal">上下文窗口（tokens）</th>
+          <th className="w-28 pb-1 text-right font-normal">输入 $/百万</th>
+          <th className="w-28 pb-1 text-right font-normal">输出 $/百万</th>
+        </tr>
+      </thead>
+      <tbody>
+        {models.map((m) => (
+          <tr key={m}>
+            <td className="truncate py-0.5 pr-2 font-mono">{m}</td>
+            {(["context_window", "input_price", "output_price"] as const).map((k) => (
+              <td key={k} className="py-0.5 pl-2">
+                <input className={cell} inputMode="decimal" placeholder="—" defaultValue={meta[m]?.[k] ?? ""} onBlur={(e) => set(m, k, e.target.value)} />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

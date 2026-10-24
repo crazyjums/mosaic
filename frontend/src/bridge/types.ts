@@ -18,6 +18,8 @@ export interface Status {
   running: boolean;
   workspace: string;
   pending_permissions: string[] | null;
+  /** default / auto / readonly */
+  permission_mode: string;
 }
 
 /** 对应 provider.ProfileInfo（不含密钥） */
@@ -29,6 +31,25 @@ export interface ProfileInfo {
   has_api_key: boolean;
   available: boolean;
   error?: string;
+  /** 每个模型的上下文窗口与单价（美元 / 百万 token），只包含配置过的模型 */
+  model_meta: Record<string, ModelMeta> | null;
+}
+
+/** 对应 provider.ModelMeta */
+export interface ModelMeta {
+  context_window?: number;
+  input_price?: number;
+  output_price?: number;
+}
+
+/** 对应 workspace.Info */
+export interface WorkspaceInfo {
+  path: string;
+  name: string;
+  is_repo: boolean;
+  branch?: string;
+  dirty: boolean;
+  changed_files: number;
 }
 
 /** 对应 core.SessionSummary */
@@ -104,6 +125,12 @@ export interface Backend {
   deleteProvider(name: string): Promise<void>;
   testProvider(input: ProviderInput): Promise<TestResult>;
   fetchModels(input: ProviderInput): Promise<string[]>;
+  // ---- 状态栏 ----
+  getWorkspaceInfo(): Promise<WorkspaceInfo>;
+  setPermissionMode(mode: string): Promise<Status>;
+  /** 从未保存过时返回 null */
+  getStatusLineConfig(): Promise<unknown>;
+  saveStatusLineConfig(cfg: unknown): Promise<void>;
   /** 订阅事件，返回取消订阅函数 */
   onEvent(cb: (ev: AgentEvent) => void): () => void;
 }

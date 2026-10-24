@@ -91,6 +91,10 @@ export interface ChatState {
   tasks: Record<string, TaskView>;
   lastSeq: number;
   versionWarning: boolean;
+  /** 当前这一轮开始的时间（毫秒时间戳）；不在运行中时为 null。状态栏用它显示实时耗时。 */
+  turnStartedAt: number | null;
+  /** 上一轮的总耗时（毫秒） */
+  lastTurnMs: number | null;
 }
 
 export const zeroUsage = (): Usage => ({ input_tokens: 0, output_tokens: 0 });
@@ -109,6 +113,8 @@ export function initialState(sessionId: string | null = null): ChatState {
     tasks: {},
     lastSeq: 0,
     versionWarning: false,
+    turnStartedAt: null,
+    lastTurnMs: null,
   };
 }
 
@@ -127,7 +133,13 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
 
   switch (ev.type) {
     case "turn_start":
-      return { ...s, running: !ev.data.replay, provider: ev.data.provider, model: ev.data.model };
+      return {
+        ...s,
+        running: !ev.data.replay,
+        provider: ev.data.provider,
+        model: ev.data.model,
+        turnStartedAt: ev.data.replay ? s.turnStartedAt : Date.parse(ev.ts),
+      };
 
     case "user_message":
       return { ...s, timeline: [...s.timeline, { kind: "user", id: ev.id, text: ev.data.text }] };
@@ -168,13 +180,17 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
       return updateMessage(next, ev.message_id, (m) => ({ ...m, blocks: [...m.blocks, { type: "tool", callId: d.call_id }] }));
     }
 
-    case "message_end":
-      return updateMessage(s, ev.message_id, (m) => ({
+    case "message_end": {
+      // 每次模型调用结束就把用量累加进会话用量，状态栏的 token 数随之实时变化；
+      // turn_end 会再用后端的权威值（session_usage）覆盖，所以这里的累加不会累积误差。
+      const live = s.running ? addUsage(s.sessionUsage, ev.data.usage) : s.sessionUsage;
+      return updateMessage({ ...s, sessionUsage: live }, ev.message_id, (m) => ({
         ...m,
         streaming: false,
         stopReason: ev.data.stop_reason,
         usage: ev.data.usage,
       }));
+    }
 
     case "permission_request": {
       const d = ev.data;
@@ -214,6 +230,8 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
         running: false,
         permissions: [],
         sessionUsage: d.session_usage,
+        turnStartedAt: null,
+        lastTurnMs: !d.replay && s.turnStartedAt !== null ? Date.parse(ev.ts) - s.turnStartedAt : s.lastTurnMs,
         // 本轮所有还在流式中的消息都结束了（例如被取消时可能没有 message_end）。
         timeline: [
           ...s.timeline.map((it) => (it.kind === "assistant" && it.streaming ? { ...it, streaming: false } : it)),
@@ -261,6 +279,15 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
     }
   }
   return s;
+}
+
+function addUsage(a: Usage, b: Usage): Usage {
+  return {
+    input_tokens: a.input_tokens + b.input_tokens,
+    output_tokens: a.output_tokens + b.output_tokens,
+    cache_read_tokens: (a.cache_read_tokens ?? 0) + (b.cache_read_tokens ?? 0),
+    cache_write_tokens: (a.cache_write_tokens ?? 0) + (b.cache_write_tokens ?? 0),
+  };
 }
 
 /** 追加文本增量：与最后一个同类块合并，否则新开一个块。 */

@@ -7,7 +7,7 @@
 
 import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
-import type { Backend, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult } from "./types";
+import type { Backend, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo } from "./types";
 
 /** Go 端 internal/app.EventName */
 const EVENT_NAME = "agent:event";
@@ -29,6 +29,10 @@ interface GoApp {
   DeleteProvider(name: string): Promise<void>;
   TestProvider(input: ProviderInput): Promise<TestResult>;
   FetchModels(input: ProviderInput): Promise<string[] | null>;
+  GetWorkspaceInfo(): Promise<WorkspaceInfo>;
+  SetPermissionMode(mode: string): Promise<Status>;
+  GetStatusLineConfig(): Promise<unknown>;
+  SaveStatusLineConfig(cfg: unknown): Promise<void>;
 }
 
 interface WailsWindow {
@@ -66,6 +70,10 @@ export function createWailsBackend(): Backend {
     deleteProvider: (name) => app.DeleteProvider(name),
     testProvider: (input) => app.TestProvider(input),
     fetchModels: async (input) => (await app.FetchModels(input)) ?? [],
+    getWorkspaceInfo: () => app.GetWorkspaceInfo(),
+    setPermissionMode: (mode) => app.SetPermissionMode(mode),
+    getStatusLineConfig: () => app.GetStatusLineConfig(),
+    saveStatusLineConfig: (cfg) => app.SaveStatusLineConfig(cfg),
     onEvent(cb: (ev: AgentEvent) => void) {
       return runtime.EventsOn(EVENT_NAME, (data) => {
         // 不认识的事件类型直接忽略（协议约定的向前兼容）。

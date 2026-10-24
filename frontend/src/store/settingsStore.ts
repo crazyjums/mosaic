@@ -6,13 +6,17 @@ import { create } from "zustand";
 import { backend, type ProviderInput, type ProviderView, type TestResult } from "../bridge";
 import { useChat } from "./chatStore";
 
+export type SettingsTab = "providers" | "statusline";
+
 interface SettingsStore {
   open: boolean;
+  tab: SettingsTab;
   providers: ProviderView[];
   loading: boolean;
   error: string | null;
 
-  show(): Promise<void>;
+  show(tab?: SettingsTab): Promise<void>;
+  setTab(tab: SettingsTab): void;
   hide(): void;
   reload(): Promise<void>;
   save(input: ProviderInput): Promise<boolean>;
@@ -25,14 +29,16 @@ const message = (e: unknown) => String(e instanceof Error ? e.message : e);
 
 export const useSettings = create<SettingsStore>((set, get) => ({
   open: false,
+  tab: "providers",
   providers: [],
   loading: false,
   error: null,
 
-  async show() {
-    set({ open: true, error: null });
+  async show(tab = "providers") {
+    set({ open: true, tab, error: null });
     await get().reload();
   },
+  setTab: (tab) => set({ tab }),
   hide: () => set({ open: false }),
 
   async reload() {
