@@ -70,14 +70,16 @@ type Hook interface {
 	Handle(ctx context.Context, in HookInput) (HookDecision, error)
 }
 
-// StatusInfo 是状态栏脚本可以读取的信息。
+// StatusInfo 是状态栏脚本可以读取的信息。CommandStatusLine 把它序列化成 JSON 写到脚本的标准输入。
 type StatusInfo struct {
-	SessionID    string
-	Provider     string
-	Model        string
-	InputTokens  int
-	OutputTokens int
-	Workspace    string
+	SessionID    string `json:"session_id"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	Workspace    string `json:"workspace"`
+	// Extra 是界面层算出的附加信息（上下文占用、花费、git 分支等），字段由调用方决定。
+	Extra map[string]any `json:"extra,omitempty"`
 }
 
 // StatusLine 生成自定义状态栏文本。
