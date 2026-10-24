@@ -8,9 +8,11 @@ import (
 
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/core"
+	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	_ "github.com/crazyjums/myllmapp/internal/provider/all" // 注册所有内置厂商适配器
+	"github.com/crazyjums/myllmapp/internal/secret"
 	"github.com/crazyjums/myllmapp/internal/settings"
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool"
@@ -27,6 +29,8 @@ type Options struct {
 	Workspace string
 	// FallbackWorkspace 是配置文件和界面都没有指定工作区时使用的目录（桌面端的默认工作区）。
 	FallbackWorkspace string
+	// Secrets 是保存 API Key 的钥匙串；为 nil 时使用系统钥匙串（只有在设置里开启后才会真正读写）。
+	Secrets secret.Store
 }
 
 // Built 是组装结果。调用方用完后必须调用 Close。
@@ -47,7 +51,11 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	if err != nil {
 		return nil, err
 	}
-	settingsMgr, err := settings.NewManager(filepath.Join(dataDir, settings.FileName), cfg.Profiles(), provider.DefaultRegistry)
+	secrets := opts.Secrets
+	if secrets == nil {
+		secrets = secret.NewKeyring()
+	}
+	settingsMgr, err := settings.NewManagerWithSecrets(filepath.Join(dataDir, settings.FileName), cfg.Profiles(), provider.DefaultRegistry, secrets)
 	if err != nil {
 		return nil, err
 	}
@@ -116,26 +124,40 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		return nil, err
 	}
 
+	// 权限规则包在档位外面：命中规则的调用直接放行/拒绝/询问，没命中的再按档位处理。
+	policy := permission.NewRulePolicy(permission.NewModePolicy(permission.Mode(mode)), settingsMgr.PermissionRules())
+
 	engine, err := core.NewEngine(core.EngineConfig{
 		Catalog:        catalog,
 		Tools:          tools,
 		Store:          st,
-		Policy:         permission.NewModePolicy(permission.Mode(mode)),
+		Policy:         policy,
 		Workspace:      workspace,
 		SystemPrompt:   eff.SystemPrompt, // 为空时 Engine 每轮用 core.DefaultSystemPrompt(当前工作区)
 		MaxSteps:       eff.MaxSteps,
 		MaxTokens:      eff.MaxTokens,
 		DefaultProfile: profile,
 		DefaultModel:   model,
+		DisabledTools:  settingsMgr.DisabledTools(),
+		TitleMode:      eff.TitleMode,
 	})
 	if err != nil {
 		closeFn()
 		return nil, err
 	}
+
+	// 步骤 6：MCP。在后台连接，连上后工具自动出现在工具表里，不拖慢启动。
+	mcpMgr := mcp.NewManager(tools)
+	mcpMgr.Apply(settingsMgr.MCPServers())
+
 	settingsMgr.Attach(engine)
 	shellTool, _ := shell.(*builtin.Shell)
-	settingsMgr.SetRuntimeBase(settings.RuntimeBase{Defaults: defaults, WorkspaceOverride: override, Shell: shellTool})
-	return &Built{Engine: engine, Settings: settingsMgr, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeFn}, nil
+	settingsMgr.SetRuntimeBase(settings.RuntimeBase{Defaults: defaults, WorkspaceOverride: override, Shell: shellTool, MCP: mcpMgr})
+	closeAll := func() error {
+		mcpMgr.Close()
+		return closeFn()
+	}
+	return &Built{Engine: engine, Settings: settingsMgr, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeAll}, nil
 }
 
 // DesktopWorkspace 返回桌面端应使用的工作区；返回空字符串表示沿用配置文件中的设置。

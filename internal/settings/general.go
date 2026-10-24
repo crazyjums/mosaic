@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/crazyjums/myllmapp/internal/core"
+	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool/builtin"
 )
@@ -24,7 +25,15 @@ type General struct {
 	MaxTokens           int    `json:"max_tokens,omitempty"`
 	ShellTimeoutSeconds int    `json:"shell_timeout_seconds,omitempty"`
 	SystemPrompt        string `json:"system_prompt,omitempty"`
+	// TitleMode 决定会话标题怎么来：空或 first_message 截取第一句，model 由模型生成。
+	TitleMode string `json:"title_mode,omitempty"`
 }
+
+// 会话标题的生成方式。
+const (
+	TitleFirstMessage = "first_message"
+	TitleModel        = "model"
+)
 
 // 校验上限：防止误输入（多打几个 0）造成意外的费用或长时间阻塞。
 const (
@@ -42,6 +51,8 @@ type RuntimeBase struct {
 	WorkspaceOverride string
 	// Shell 是内置 shell 工具，用于修改超时后立即生效。
 	Shell *builtin.Shell
+	// MCP 管理 MCP server 的连接；为 nil 时（例如测试）只保存配置。
+	MCP *mcp.Manager
 }
 
 // GeneralView 是发给前端的视图。
@@ -112,6 +123,9 @@ func ResolveGeneral(saved, defaults General, workspaceOverride string) (eff Gene
 	if saved.SystemPrompt != "" {
 		eff.SystemPrompt = saved.SystemPrompt
 	}
+	if saved.TitleMode != "" {
+		eff.TitleMode = saved.TitleMode
+	}
 	return eff, warning
 }
 
@@ -119,6 +133,9 @@ func ResolveGeneral(saved, defaults General, workspaceOverride string) (eff Gene
 func displayDefaults(g General) General {
 	if g.MaxSteps == 0 {
 		g.MaxSteps = core.DefaultMaxSteps
+	}
+	if g.TitleMode == "" {
+		g.TitleMode = TitleFirstMessage
 	}
 	if g.ShellTimeoutSeconds == 0 {
 		g.ShellTimeoutSeconds = int(builtin.DefaultShellTimeout / time.Second)
@@ -169,6 +186,8 @@ func (m *Manager) SaveGeneral(g General) error {
 		return fmt.Errorf("命令超时应在 1～%d 秒之间", maxShellTimeoutSecs)
 	case utf8.RuneCountInString(g.SystemPrompt) > maxSystemPromptLen:
 		return fmt.Errorf("系统提示词过长（上限 %d 字）", maxSystemPromptLen)
+	case g.TitleMode != "" && g.TitleMode != TitleFirstMessage && g.TitleMode != TitleModel:
+		return fmt.Errorf("未知的标题方式 %q", g.TitleMode)
 	}
 
 	// 步骤 2：应用到 Engine（运行中会返回 ErrBusy，此时什么都不改）和 shell 工具。
@@ -178,6 +197,7 @@ func (m *Manager) SaveGeneral(g General) error {
 		SystemPrompt: eff.SystemPrompt,
 		MaxSteps:     eff.MaxSteps,
 		MaxTokens:    eff.MaxTokens,
+		TitleMode:    eff.TitleMode,
 	}); err != nil {
 		return err
 	}
@@ -188,7 +208,7 @@ func (m *Manager) SaveGeneral(g General) error {
 	// 步骤 3：持久化。
 	next := cloneFile(m.file)
 	next.General = g
-	if err := Save(m.path, next); err != nil {
+	if err := m.persist(next); err != nil {
 		return err
 	}
 	m.file = next

@@ -13,6 +13,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
+	"github.com/crazyjums/myllmapp/internal/secret"
 )
 
 // ProviderView 是发给前端的配置档视图。注意：不含 API Key 明文。
@@ -65,15 +66,28 @@ type Manager struct {
 	engine   *core.Engine
 	// rtBase 是常规设置（运行参数）的默认值与钩子，见 general.go。注意与上面的 base（厂商配置档）区分。
 	rtBase RuntimeBase
+
+	// 钥匙串，见 keychain.go。secrets 为 nil 表示不支持（CLI 测试、无钥匙串的环境）。
+	secrets    secret.Store
+	inKeychain map[string]bool // 当前保存在钥匙串里的配置档名
+	unresolved map[string]bool // 启动时没能从钥匙串读出密钥的配置档名
+	keyWarning string
 }
 
-// NewManager 读取设置文件。path 为 settings.json 的路径；base 为配置文件中的配置档。
+// NewManager 读取设置文件。path 为 settings.json 的路径；base 为配置文件中的配置档。不使用钥匙串。
 func NewManager(path string, base []provider.ProfileConfig, reg *provider.Registry) (*Manager, error) {
+	return NewManagerWithSecrets(path, base, reg, nil)
+}
+
+// NewManagerWithSecrets 同 NewManager，并用 secrets 读写保存在钥匙串里的密钥。
+func NewManagerWithSecrets(path string, base []provider.ProfileConfig, reg *provider.Registry, secrets secret.Store) (*Manager, error) {
 	f, err := Load(path)
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{path: path, file: f, base: base, registry: reg}, nil
+	m := &Manager{path: path, file: f, base: base, registry: reg, secrets: secrets}
+	m.resolveSecrets()
+	return m, nil
 }
 
 // Attach 关联 Engine。Engine 需要用 Catalog() 创建，所以只能在 Manager 之后创建、再关联回来。
@@ -198,7 +212,7 @@ func (m *Manager) Save(in ProviderInput) error {
 	}
 
 	// 步骤 4：持久化。
-	if err := Save(m.path, next); err != nil {
+	if err := m.persist(next); err != nil {
 		return err
 	}
 	m.file = next
@@ -220,7 +234,7 @@ func (m *Manager) Delete(name string) error {
 	if err := m.apply(next); err != nil {
 		return err
 	}
-	if err := Save(m.path, next); err != nil {
+	if err := m.persist(next); err != nil {
 		return err
 	}
 	m.file = next
@@ -243,7 +257,7 @@ func (m *Manager) Select(profile, model string) error {
 	}
 	next := cloneFile(m.file)
 	next.DefaultProvider, next.DefaultModel = st.Provider, st.Model
-	if err := Save(m.path, next); err != nil {
+	if err := m.persist(next); err != nil {
 		return err
 	}
 	m.file = next
@@ -275,44 +289,52 @@ func (m *Manager) SetPermissionMode(mode string) error {
 	}
 	next := cloneFile(m.file)
 	next.PermissionMode = mode
-	if err := Save(m.path, next); err != nil {
+	if err := m.persist(next); err != nil {
 		return err
 	}
 	m.file = next
 	return nil
 }
 
-// maxStatusLineSize 限制状态栏配置的大小，防止前端的 bug 把设置文件写得巨大。
-const maxStatusLineSize = 64 << 10
+// maxOpaqueSize 限制前端不透明配置（状态栏、界面偏好）的大小，防止前端的 bug 把设置文件写得巨大。
+const maxOpaqueSize = 64 << 10
 
 // StatusLine 返回保存的状态栏配置（JSON 对象）；从未保存过时返回 null，前端使用默认配置。
 func (m *Manager) StatusLine() json.RawMessage {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.file.StatusLine) == 0 {
-		return json.RawMessage("null")
-	}
-	return m.file.StatusLine
+	return orNull(m.file.StatusLine)
 }
 
 // SaveStatusLine 保存状态栏配置。只校验"是一个 JSON 对象"，字段含义由前端定义。
 func (m *Manager) SaveStatusLine(raw json.RawMessage) error {
-	if len(raw) > maxStatusLineSize {
-		return fmt.Errorf("settings: statusline config too large (%d bytes)", len(raw))
+	return m.saveOpaque(raw, "statusline", func(f *File, v json.RawMessage) { f.StatusLine = v })
+}
+
+func (m *Manager) saveOpaque(raw json.RawMessage, what string, set func(*File, json.RawMessage)) error {
+	if len(raw) > maxOpaqueSize {
+		return fmt.Errorf("settings: %s config too large (%d bytes)", what, len(raw))
 	}
 	var obj map[string]any
 	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
-		return errors.New("settings: statusline config must be a JSON object")
+		return fmt.Errorf("settings: %s config must be a JSON object", what)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	next := cloneFile(m.file)
-	next.StatusLine = append(json.RawMessage(nil), raw...)
-	if err := Save(m.path, next); err != nil {
+	set(&next, append(json.RawMessage(nil), raw...))
+	if err := m.persist(next); err != nil {
 		return err
 	}
 	m.file = next
 	return nil
+}
+
+func orNull(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return json.RawMessage("null")
+	}
+	return raw
 }
 
 // Test 用表单中的配置发一条极短的消息，验证 Base URL、密钥和模型名是否都正确。
@@ -504,6 +526,9 @@ func (m *Manager) currentIsFake() bool {
 
 func cloneFile(f File) File {
 	f.Providers = slices.Clone(f.Providers)
+	f.PermissionRules = slices.Clone(f.PermissionRules)
+	f.DisabledTools = slices.Clone(f.DisabledTools)
+	f.MCPServers = slices.Clone(f.MCPServers)
 	return f
 }
 

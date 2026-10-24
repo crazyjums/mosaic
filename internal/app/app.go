@@ -9,6 +9,8 @@ import (
 
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/mcp"
+	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/settings"
 	"github.com/crazyjums/myllmapp/internal/workspace"
@@ -158,6 +160,67 @@ func (a *App) OpenDataDir() error { return openInFileManager(a.settings.DataInfo
 
 // ClearSessions 删除所有历史会话（包括当前会话），返回删除的数量。
 func (a *App) ClearSessions() (int, error) { return a.engine.DeleteAllSessions(a.context()) }
+
+// ---- 设置：权限与工具 ----
+
+// ListTools 列出所有工具（含已连接的 MCP 工具）及开关状态。
+func (a *App) ListTools() []core.ToolInfo { return a.settings.Tools() }
+
+// SetDisabledTools 设置被禁用的工具，从下一次模型调用开始生效。
+func (a *App) SetDisabledTools(names []string) error { return a.settings.SetDisabledTools(names) }
+
+func (a *App) GetPermissionRules() []permission.Rule { return a.settings.PermissionRules() }
+
+// SetPermissionRules 保存细粒度权限规则（整体替换），立即生效。
+func (a *App) SetPermissionRules(rules []permission.Rule) error {
+	return a.settings.SetPermissionRules(rules)
+}
+
+// ---- 设置：状态栏脚本 ----
+
+func (a *App) GetStatusLineScript() string { return a.settings.StatusLineScript() }
+
+func (a *App) SetStatusLineScript(cmd string) error { return a.settings.SetStatusLineScript(cmd) }
+
+// RunStatusLine 运行已保存的状态栏命令。extra 是前端算出的附加信息（上下文占用、花费等），
+// 会和会话信息一起以 JSON 写到命令的标准输入。命令本身只从设置文件读取。
+func (a *App) RunStatusLine(extra map[string]any) (string, error) {
+	return a.settings.RunStatusLine(a.context(), extra)
+}
+
+// TestStatusLineScript 试运行设置页里正在编辑的命令，不保存。
+func (a *App) TestStatusLineScript(cmd string) (string, error) {
+	return a.settings.TestStatusLineScript(a.context(), cmd)
+}
+
+// ---- 设置：MCP ----
+
+func (a *App) ListMCPServers() []mcp.ServerConfig { return a.settings.MCPServers() }
+
+// SaveMCPServers 保存整个 MCP server 列表，连接在后台同步。
+func (a *App) SaveMCPServers(list []mcp.ServerConfig) error { return a.settings.SaveMCPServers(list) }
+
+// GetMCPStatus 返回各 server 的连接状态，设置页打开时轮询。
+func (a *App) GetMCPStatus() []mcp.ServerStatus { return a.settings.MCPStatuses() }
+
+func (a *App) ReconnectMCP(name string) error { return a.settings.ReconnectMCP(name) }
+
+// ---- 设置：外观与钥匙串 ----
+
+// GetUIPrefs 返回界面偏好（主题、字号、语言等）；从未保存过时为 null。
+func (a *App) GetUIPrefs() json.RawMessage { return a.settings.UIPrefs() }
+
+func (a *App) SaveUIPrefs(prefs json.RawMessage) error { return a.settings.SaveUIPrefs(prefs) }
+
+func (a *App) GetKeychain() settings.KeychainStatus { return a.settings.Keychain() }
+
+// SetUseKeychain 开启或关闭"API Key 保存到系统钥匙串"，并立即迁移已有的密钥。
+func (a *App) SetUseKeychain(on bool) (settings.KeychainStatus, error) {
+	if err := a.settings.SetUseKeychain(on); err != nil {
+		return settings.KeychainStatus{}, err
+	}
+	return a.settings.Keychain(), nil
+}
 
 // Send 发送一条消息并立即返回；对话过程全部通过事件推送。
 //

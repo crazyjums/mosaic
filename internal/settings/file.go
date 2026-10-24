@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/crazyjums/myllmapp/internal/mcp"
+	"github.com/crazyjums/myllmapp/internal/permission"
 )
 
 // FileName 是设置文件名，位于数据目录下。
@@ -16,10 +19,12 @@ const fileVersion = 1
 
 // ProviderSetting 是界面上配置的一个厂商配置档。字段与 provider.ProfileConfig 对应。
 type ProviderSetting struct {
-	Name         string         `json:"name"`
-	Type         string         `json:"type"`
-	BaseURL      string         `json:"base_url,omitempty"`
-	APIKey       string         `json:"api_key,omitempty"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	BaseURL string `json:"base_url,omitempty"`
+	APIKey  string `json:"api_key,omitempty"`
+	// APIKeyRef 为 "keychain" 表示密钥保存在系统钥匙串里，文件中的 APIKey 为空（见 keychain.go）。
+	APIKeyRef    string         `json:"api_key_ref,omitempty"`
 	Models       []string       `json:"models"`
 	DefaultModel string         `json:"default_model,omitempty"`
 	Options      map[string]any `json:"options,omitempty"`
@@ -45,6 +50,27 @@ type File struct {
 	// 新增一个状态栏项只需要改前端，不需要动 Go 代码和文件格式。
 	// 考虑过存在浏览器的 localStorage 里，但那样 CLI 和备份工具都看不到，换机器迁移也不方便。
 	StatusLine json.RawMessage `json:"statusline,omitempty"`
+
+	// ---- 设置 → 权限与工具 ----
+
+	// PermissionRules 是细粒度的权限规则（按工具名和命令/路径匹配），优先于权限档位。
+	PermissionRules []permission.Rule `json:"permission_rules,omitempty"`
+	// DisabledTools 是被关掉的工具名（含 MCP 工具，名字带 mcp__ 前缀）。
+	DisabledTools []string `json:"disabled_tools,omitempty"`
+
+	// StatusLineScript 是自定义状态栏命令，输出显示在状态栏的"脚本"项中。
+	// 它和 StatusLine 分开存：StatusLine 是前端随意改写的不透明 JSON，而命令会被执行，
+	// 只能通过专门的方法修改，运行时也只从这里读取，不接受前端传入的命令。
+	StatusLineScript string `json:"statusline_script,omitempty"`
+
+	// MCPServers 是 MCP server 的连接配置（设置 → MCP）。
+	MCPServers []mcp.ServerConfig `json:"mcp_servers,omitempty"`
+
+	// UseKeychain 为 true 时，厂商的 API Key 保存在系统钥匙串里，而不是本文件中。
+	UseKeychain bool `json:"use_keychain,omitempty"`
+
+	// UI 是外观、交互、语言等纯界面偏好，与 StatusLine 一样由后端原样保存（设置 → 外观）。
+	UI json.RawMessage `json:"ui,omitempty"`
 }
 
 // Load 读取设置文件。文件不存在时返回空设置（第一次启动的正常情况）。
