@@ -55,6 +55,21 @@ type contentBlock struct {
 	Source *imageSource `json:"source,omitempty"`
 }
 
+// MarshalJSON 保证 thinking 块总是带上 thinking 字段。
+//
+// 通用结构体上的 omitempty 会在思考文本为空（只有签名）时把字段整个省略，
+// 而 API 要求 thinking 块必须有这个字段，缺了会返回 400，之后整个会话都无法继续。
+func (c contentBlock) MarshalJSON() ([]byte, error) {
+	type plain contentBlock // 去掉方法，避免递归
+	if c.Type != "thinking" {
+		return json.Marshal(plain(c))
+	}
+	return json.Marshal(struct {
+		plain
+		Thinking string `json:"thinking"` // 外层同名字段覆盖内嵌的 omitempty 版本
+	}{plain(c), c.Thinking})
+}
+
 type imageSource struct {
 	Type      string `json:"type"` // "base64"
 	MediaType string `json:"media_type"`

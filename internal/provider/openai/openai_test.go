@@ -163,3 +163,53 @@ func TestNormalizeArgs(t *testing.T) {
 		t.Fatal("非法参数应被包装为合法 JSON")
 	}
 }
+
+func streamFrom(t *testing.T, body string) (*Provider, func()) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, body)
+	}))
+	p, err := New(provider.ProfileConfig{BaseURL: srv.URL, APIKey: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p.(*Provider), srv.Close
+}
+
+// 连接中途断开（没有 finish_reason 也没有 [DONE]）必须报错，不能把残缺输出当作完整回复。
+func TestStreamCutOffIsError(t *testing.T) {
+	p, done := streamFrom(t, "data: {\"choices\":[{\"delta\":{\"content\":\"写到一半\"}}]}\n\n")
+	defer done()
+	if err := p.Stream(context.Background(), provider.Request{}, func(provider.Delta) {}); err == nil {
+		t.Fatal("断流应返回错误")
+	}
+
+	// 只有 finish_reason、没有 [DONE] 的兼容服务算正常结束。
+	p2, done2 := streamFrom(t, "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\n")
+	defer done2()
+	if err := p2.Stream(context.Background(), provider.Request{}, func(provider.Delta) {}); err != nil {
+		t.Fatalf("有 finish_reason 应视为正常结束: %v", err)
+	}
+}
+
+// 不返回调用 id 的服务：补上唯一的 id。
+func TestMissingToolCallIDIsFilled(t *testing.T) {
+	p, done := streamFrom(t, `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"a","arguments":"{}"}},{"index":1,"function":{"name":"b","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+
+`)
+	defer done()
+	var ids []string
+	if err := p.Stream(context.Background(), provider.Request{}, func(d provider.Delta) {
+		if d.Type == provider.DeltaToolCall {
+			ids = append(ids, d.ToolCall.ID)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 || ids[0] == "" || ids[1] == "" || ids[0] == ids[1] {
+		t.Fatalf("应补上唯一的调用 id: %q", ids)
+	}
+}

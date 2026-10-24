@@ -3,6 +3,8 @@ package openai
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -148,16 +150,23 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 	calls := map[int]*pendingCall{}
 	var usage *provider.Usage
 	finish := ""
+	// ended 表示收到过正常结束的信号（[DONE] 或 finish_reason）。有些兼容服务不发 [DONE]，
+	// 所以两者有其一即可；都没有就断流了，说明连接被意外中断，不能把残缺的输出当作完整回复。
+	ended := false
 	r := sse.NewReader(resp.Body)
 	for {
 		ev, err := r.Next()
 		if errors.Is(err, io.EOF) {
+			if !ended {
+				return errors.New("openai: stream ended before finish_reason / [DONE]")
+			}
 			break
 		}
 		if err != nil {
 			return err
 		}
 		if ev.Data == "[DONE]" {
+			ended = true
 			break
 		}
 		var chunk streamChunk
@@ -198,6 +207,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 			}
 			if ch.FinishReason != "" {
 				finish = ch.FinishReason
+				ended = true
 			}
 		}
 	}
@@ -211,6 +221,11 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 	sort.Ints(indexes)
 	for _, i := range indexes {
 		pc := calls[i]
+		// 部分兼容服务（一些本地服务和兼容层）不返回调用 id。空 id 会让界面上的工具卡片互相覆盖，
+		// 下一次请求的 tool_call_id 也对不上，所以在这里补一个。
+		if pc.id == "" {
+			pc.id = fmt.Sprintf("call_%d_%s", i, randHex())
+		}
 		onDelta(provider.Delta{Type: provider.DeltaToolCall, ToolCall: &provider.ToolCall{
 			ID: pc.id, Name: pc.name, Input: normalizeArgs(pc.args.String()),
 		}})
@@ -224,6 +239,12 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 	}
 	onDelta(provider.Delta{Type: provider.DeltaStop, StopReason: stop})
 	return nil
+}
+
+func randHex() string {
+	var b [6]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 // normalizeArgs 保证工具参数是合法 JSON 对象。

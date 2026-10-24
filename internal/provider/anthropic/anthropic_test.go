@@ -214,3 +214,22 @@ func TestConvertMessagesPreservesThinking(t *testing.T) {
 		t.Fatalf("tool_result: %+v", r)
 	}
 }
+
+// 只有签名、思考文本为空的块回传时也必须带 thinking 字段，否则 API 返回 400。
+func TestThinkingFieldAlwaysPresent(t *testing.T) {
+	out := convertMessages([]provider.Message{{Role: provider.RoleAssistant, Content: []provider.Block{
+		{Type: provider.BlockThinking, Signature: "S"},
+		{Type: provider.BlockText, Text: "hi"},
+	}}})
+	b, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"thinking":""`) {
+		t.Fatalf("thinking 字段缺失: %s", s)
+	}
+	if strings.Count(s, `"thinking":`) != 1 {
+		t.Fatalf("thinking 字段应只出现一次: %s", s)
+	}
+}
