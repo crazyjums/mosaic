@@ -58,9 +58,18 @@ func Default() *Config {
 		PermissionMode:  "default",
 		Providers: []ProviderConfig{
 			{Name: "fake", Type: "fake", Models: []string{"demo", "echo"}, DefaultModel: "demo",
-				Options: map[string]any{"scenario": "demo", "delay_ms": int64(25)}},
+				// 给演示模型也配上上下文窗口和（假想的）单价，这样不配置真实厂商也能看到状态栏的全部效果。
+				Options: map[string]any{"scenario": "demo", "delay_ms": int64(25), "models_meta": map[string]any{
+					"demo": map[string]any{"context_window": 200000, "input_price": 3.0, "output_price": 15.0},
+				}}},
 			{Name: "anthropic", Type: "anthropic", APIKeyEnv: "ANTHROPIC_API_KEY",
-				Models: []string{"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}, DefaultModel: "claude-opus-5-5"},
+				Models: []string{"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}, DefaultModel: "claude-opus-5-5",
+				// 上下文窗口与单价（美元 / 百万 token）只用于状态栏显示，价格以官网为准。
+				Options: map[string]any{"models_meta": map[string]any{
+					"claude-opus-5-5":   map[string]any{"context_window": 1000000, "input_price": 4.0, "output_price": 20.0},
+					"claude-sonnet-5-5": map[string]any{"context_window": 1000000, "input_price": 2.0, "output_price": 10.0},
+					"claude-haiku-5-5":  map[string]any{"context_window": 1000000, "input_price": 0.1, "output_price": 0.5},
+				}}},
 			{Name: "openai", Type: "openai", APIKeyEnv: "OPENAI_API_KEY", BaseURL: "https://api.openai.com/v1",
 				Models: []string{"gpt-4o-mini"}},
 			{Name: "deepseek", Type: "openai", APIKeyEnv: "DEEPSEEK_API_KEY", BaseURL: "https://api.deepseek.com/v1",

@@ -85,8 +85,11 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		st, closeFn = sqlite, sqlite.Close
 	}
 
-	// 步骤 5：权限策略。
+	// 步骤 5：权限策略。优先级：命令行参数 > 上次在状态栏上的切换 > 配置文件。
 	mode := cfg.PermissionMode
+	if m := settingsMgr.PermissionMode(); m != "" {
+		mode = m
+	}
 	if opts.PermissionMode != "" {
 		mode = opts.PermissionMode
 	}

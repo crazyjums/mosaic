@@ -244,3 +244,32 @@ func TestLocalServerWithoutKey(t *testing.T) {
 		t.Fatalf("无密钥的 OpenAI 兼容服务应能保存: %v", err)
 	}
 }
+
+func TestPermissionModeAndStatusLinePersist(t *testing.T) {
+	m, eng, path := newEnv(t)
+	if err := m.SetPermissionMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+	if eng.Status().PermissionMode != "auto" {
+		t.Fatal("权限模式应立即生效")
+	}
+	if err := m.SetPermissionMode("yolo"); err == nil {
+		t.Fatal("未知模式应报错")
+	}
+
+	if string(m.StatusLine()) != "null" {
+		t.Fatal("从未保存时应返回 null")
+	}
+	if err := m.SaveStatusLine([]byte(`[1,2]`)); err == nil {
+		t.Fatal("非对象应报错")
+	}
+	if err := m.SaveStatusLine([]byte(`{"version":1,"items":[{"id":"git","enabled":false}]}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	// 重新加载（模拟重启）后都还在。
+	m2, _ := NewManager(path, m.base, provider.DefaultRegistry)
+	if m2.PermissionMode() != "auto" || !strings.Contains(string(m2.StatusLine()), `"git"`) {
+		t.Fatalf("应持久化: %q %s", m2.PermissionMode(), m2.StatusLine())
+	}
+}

@@ -69,3 +69,22 @@ func TestMessageHelpers(t *testing.T) {
 		t.Fatalf("text=%q calls=%d", m.Text(), len(m.ToolCalls()))
 	}
 }
+
+func TestProfileInfoModelMeta(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register("stub", func(cfg ProfileConfig) (Provider, error) { return stubProvider{cfg.Name}, nil })
+	cat := NewCatalog(reg, []ProfileConfig{{Name: "a", Type: "stub", Options: map[string]any{
+		"models_meta": map[string]any{
+			"big":   map[string]any{"context_window": int64(200000), "input_price": int64(3), "output_price": 15.0}, // TOML 风格的 int64
+			"small": map[string]any{"input_price": 0.1},                                                             // JSON 风格的 float64
+			"empty": map[string]any{},
+		},
+	}}})
+	meta := cat.Profiles()[0].ModelMeta
+	if meta["big"] != (ModelMeta{ContextWindow: 200000, InputPrice: 3, OutputPrice: 15}) || meta["small"].InputPrice != 0.1 {
+		t.Fatalf("meta: %+v", meta)
+	}
+	if _, ok := meta["empty"]; ok {
+		t.Fatal("全为 0 的条目不应出现")
+	}
+}

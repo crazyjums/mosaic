@@ -90,6 +90,53 @@ type ProfileInfo struct {
 	// Available 为 false 时 Error 说明原因（例如缺少密钥），界面应置灰该选项。
 	Available bool   `json:"available"`
 	Error     string `json:"error,omitempty"`
+
+	// ModelMeta 是每个模型的附加信息（上下文窗口、单价），来自配置档 options 中的 models_meta，
+	// 用于状态栏显示上下文占用和预估花费。没有配置的模型不在这个表里，界面就不显示比例和花费。
+	ModelMeta map[string]ModelMeta `json:"model_meta"`
+}
+
+// ModelMeta 是单个模型的附加信息。字段为 0 表示未配置。
+//
+// 为什么按模型而不是按厂商：同一个厂商的模型差别很大（同一家的大小模型单价能差几十倍，
+// 上下文窗口也不同），按厂商只填一个数会让花费估算严重失真。
+type ModelMeta struct {
+	ContextWindow int `json:"context_window,omitempty"`
+	// 单价的单位是"美元 / 百万 token"。
+	InputPrice  float64 `json:"input_price,omitempty"`
+	OutputPrice float64 `json:"output_price,omitempty"`
+}
+
+// parseModelMeta 从 options["models_meta"] 解析每个模型的附加信息。
+// 结构：{"模型名": {"context_window": 200000, "input_price": 3, "output_price": 15}}。
+// TOML 和 JSON 解析出的数字类型不同（int64 / float64），都要支持。
+func parseModelMeta(opts map[string]any) map[string]ModelMeta {
+	raw, _ := opts["models_meta"].(map[string]any)
+	out := map[string]ModelMeta{}
+	for model, v := range raw {
+		m, _ := v.(map[string]any)
+		meta := ModelMeta{
+			ContextWindow: int(number(m["context_window"])),
+			InputPrice:    number(m["input_price"]),
+			OutputPrice:   number(m["output_price"]),
+		}
+		if meta != (ModelMeta{}) {
+			out[model] = meta
+		}
+	}
+	return out
+}
+
+func number(v any) float64 {
+	switch x := v.(type) {
+	case int:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case float64:
+		return x
+	}
+	return 0
 }
 
 // Catalog 是"当前可用的所有厂商实例"，按配置档名称索引。
@@ -149,6 +196,7 @@ func (c *Catalog) Profiles() []ProfileInfo {
 			DefaultModel: cfg.DefaultModel,
 			HasAPIKey:    cfg.APIKey != "",
 			Available:    c.errors[name] == nil,
+			ModelMeta:    parseModelMeta(cfg.Options),
 		}
 		if err := c.errors[name]; err != nil {
 			info.Error = err.Error()

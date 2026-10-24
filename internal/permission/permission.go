@@ -91,11 +91,39 @@ func NewModePolicy(mode Mode) *ModePolicy {
 	return &ModePolicy{mode: mode, sessionAllow: map[string]bool{}}
 }
 
+// ModeSwitcher 是可选能力：支持在运行时切换模式的策略实现它（界面上点击状态栏切换权限模式）。
+// 用可选接口而不是加进 Policy：以后基于规则的策略未必有"模式"这个概念。
+type ModeSwitcher interface {
+	Mode() Mode
+	SetMode(Mode) error
+}
+
+// Mode 返回当前模式。
+func (p *ModePolicy) Mode() Mode {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.mode
+}
+
+// SetMode 切换模式。与 NewModePolicy 不同，这里对未知模式报错——
+// 运行时的切换来自界面操作，拼错了应该让调用方知道，而不是悄悄回落。
+func (p *ModePolicy) SetMode(m Mode) error {
+	switch m {
+	case ModeDefault, ModeAuto, ModeReadOnly:
+	default:
+		return fmt.Errorf("permission: unknown mode %q", m)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.mode = m
+	return nil
+}
+
 func (p *ModePolicy) Evaluate(tool string, risk Risk, _ json.RawMessage) Verdict {
 	if risk == RiskRead {
 		return Allow
 	}
-	switch p.mode {
+	switch p.Mode() {
 	case ModeAuto:
 		return Allow
 	case ModeReadOnly:

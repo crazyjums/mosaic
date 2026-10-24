@@ -96,3 +96,17 @@ func TestBrokerInvalidDecision(t *testing.T) {
 		t.Fatal("非法决定应报错")
 	}
 }
+
+func TestModePolicySetMode(t *testing.T) {
+	p := NewModePolicy(ModeDefault)
+	var _ ModeSwitcher = p
+	if err := p.SetMode(ModeReadOnly); err != nil || p.Mode() != ModeReadOnly {
+		t.Fatalf("切换失败: %v %s", err, p.Mode())
+	}
+	if p.Evaluate("write_file", RiskWrite, nil) != Deny {
+		t.Fatal("切换后应立即按新模式裁决")
+	}
+	if err := p.SetMode(Mode("typo")); err == nil || p.Mode() != ModeReadOnly {
+		t.Fatal("未知模式应报错且不改变当前模式")
+	}
+}

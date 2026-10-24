@@ -125,6 +125,8 @@ type Status struct {
 	Workspace string         `json:"workspace"`
 	// PendingPermissions 让重新连接的界面知道是否有弹窗需要恢复。
 	PendingPermissions []string `json:"pending_permissions"`
+	// PermissionMode 是当前权限模式；策略不支持模式时为空。
+	PermissionMode string `json:"permission_mode"`
 }
 
 func (e *Engine) Status() Status {
@@ -141,7 +143,25 @@ func (e *Engine) Status() Status {
 		Running:            running,
 		Workspace:          e.cfg.Workspace,
 		PendingPermissions: e.broker.PendingIDs(),
+		PermissionMode:     e.permissionMode(),
 	}
+}
+
+func (e *Engine) permissionMode() string {
+	if ms, ok := e.cfg.Policy.(permission.ModeSwitcher); ok {
+		return string(ms.Mode())
+	}
+	return ""
+}
+
+// SetPermissionMode 切换权限模式（default / auto / readonly），立即对之后的工具调用生效。
+// 运行中也允许切换：例如用户看到 agent 要连续写很多文件，可以临时切到 auto。
+func (e *Engine) SetPermissionMode(mode string) error {
+	ms, ok := e.cfg.Policy.(permission.ModeSwitcher)
+	if !ok {
+		return fmt.Errorf("engine: current permission policy does not support modes")
+	}
+	return ms.SetMode(permission.Mode(mode))
 }
 
 // Profiles 返回所有厂商配置档（不含密钥），用于界面上的厂商/模型选择器。

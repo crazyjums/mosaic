@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -10,6 +11,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/settings"
+	"github.com/crazyjums/myllmapp/internal/workspace"
 )
 
 // EventName 是前端订阅的 Wails 事件名。所有内核事件都走这一个通道，由前端按 type 分发。
@@ -105,6 +107,27 @@ func (a *App) TestProvider(in settings.ProviderInput) settings.TestResult {
 func (a *App) FetchModels(in settings.ProviderInput) ([]string, error) {
 	return a.settings.ListModels(a.context(), in)
 }
+
+// ---- 状态栏 ----
+
+// GetWorkspaceInfo 返回工作区的 git 分支等信息，状态栏定时调用。
+func (a *App) GetWorkspaceInfo() workspace.Info {
+	return workspace.Inspect(a.context(), a.engine.Status().Workspace)
+}
+
+// SetPermissionMode 切换权限模式（default / auto / readonly）并记住。
+func (a *App) SetPermissionMode(mode string) (core.Status, error) {
+	if err := a.settings.SetPermissionMode(mode); err != nil {
+		return core.Status{}, err
+	}
+	return a.engine.Status(), nil
+}
+
+// GetStatusLineConfig 返回保存的状态栏配置；从未保存过时为 null。
+func (a *App) GetStatusLineConfig() json.RawMessage { return a.settings.StatusLine() }
+
+// SaveStatusLineConfig 保存状态栏配置（字段含义由前端定义）。
+func (a *App) SaveStatusLineConfig(cfg json.RawMessage) error { return a.settings.SaveStatusLine(cfg) }
 
 // Send 发送一条消息并立即返回；对话过程全部通过事件推送。
 //

@@ -66,6 +66,23 @@ thinking = "adaptive"       # adaptive：开启自适应思考并返回可读的
 effort = "medium"           # low / medium / high / xhigh / max，留空使用模型默认值
 refusal_fallback = true     # 请求被安全策略拒绝时由服务端自动换模型重试（fallbacks="default"）
 
+# 每个模型的上下文窗口（tokens）和单价（美元 / 百万 token），只用于状态栏显示上下文占用和预估花费。
+# 价格以官网为准；不填则状态栏不显示对应的比例 / 花费。其他厂商也可以这样配置。
+[providers.options.models_meta.claude-opus-5-5]
+context_window = 1000000
+input_price = 4
+output_price = 20
+
+[providers.options.models_meta.claude-sonnet-5-5]
+context_window = 1000000
+input_price = 2
+output_price = 10
+
+[providers.options.models_meta.claude-haiku-5-5]
+context_window = 1000000
+input_price = 0.1
+output_price = 0.5
+
 # OpenAI 官方。
 [[providers]]
 name = "openai"

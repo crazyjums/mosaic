@@ -32,6 +32,16 @@ type File struct {
 	DefaultProvider string            `json:"default_provider,omitempty"`
 	DefaultModel    string            `json:"default_model,omitempty"`
 	Providers       []ProviderSetting `json:"providers"`
+
+	// PermissionMode 记住在状态栏上切换的权限模式；为空表示使用 config.toml 中的设置。
+	PermissionMode string `json:"permission_mode,omitempty"`
+
+	// StatusLine 是前端状态栏的配置（显示哪些项、顺序、显示方式）。
+	//
+	// 后端把它当作不透明的 JSON 原样保存，不解析其中的字段：状态栏长什么样是纯界面的事，
+	// 新增一个状态栏项只需要改前端，不需要动 Go 代码和文件格式。
+	// 考虑过存在浏览器的 localStorage 里，但那样 CLI 和备份工具都看不到，换机器迁移也不方便。
+	StatusLine json.RawMessage `json:"statusline,omitempty"`
 }
 
 // Load 读取设置文件。文件不存在时返回空设置（第一次启动的正常情况）。

@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -239,6 +240,65 @@ func (m *Manager) Select(profile, model string) error {
 	}
 	next := cloneFile(m.file)
 	next.DefaultProvider, next.DefaultModel = st.Provider, st.Model
+	if err := Save(m.path, next); err != nil {
+		return err
+	}
+	m.file = next
+	return nil
+}
+
+// PermissionMode 返回记住的权限模式（可能为空）。
+func (m *Manager) PermissionMode() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.file.PermissionMode
+}
+
+// SetPermissionMode 切换权限模式并记住。
+func (m *Manager) SetPermissionMode(mode string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.engine == nil {
+		return errors.New("settings: engine not attached")
+	}
+	if err := m.engine.SetPermissionMode(mode); err != nil {
+		return err
+	}
+	next := cloneFile(m.file)
+	next.PermissionMode = mode
+	if err := Save(m.path, next); err != nil {
+		return err
+	}
+	m.file = next
+	return nil
+}
+
+// maxStatusLineSize 限制状态栏配置的大小，防止前端的 bug 把设置文件写得巨大。
+const maxStatusLineSize = 64 << 10
+
+// StatusLine 返回保存的状态栏配置（JSON 对象）；从未保存过时返回 null，前端使用默认配置。
+func (m *Manager) StatusLine() json.RawMessage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.file.StatusLine) == 0 {
+		return json.RawMessage("null")
+	}
+	return m.file.StatusLine
+}
+
+// SaveStatusLine 保存状态栏配置。只校验"是一个 JSON 对象"，字段含义由前端定义。
+func (m *Manager) SaveStatusLine(raw json.RawMessage) error {
+	if len(raw) > maxStatusLineSize {
+		return fmt.Errorf("settings: statusline config too large (%d bytes)", len(raw))
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+		return errors.New("settings: statusline config must be a JSON object")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	next := cloneFile(m.file)
+	next.StatusLine = append(json.RawMessage(nil), raw...)
 	if err := Save(m.path, next); err != nil {
 		return err
 	}
