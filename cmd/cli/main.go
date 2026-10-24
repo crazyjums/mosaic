@@ -20,7 +20,7 @@ import (
 
 type flags struct {
 	config, provider, model, workspace, mode, resume, prompt string
-	yes, jsonOut, noStore, list                                bool
+	yes, jsonOut, noStore, list                              bool
 }
 
 func main() {
