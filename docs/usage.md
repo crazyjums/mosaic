@@ -64,6 +64,8 @@ export DEEPSEEK_API_KEY=...
 
 数据（会话数据库）默认在 `~/.myllmapp/sessions.db`，可用 `data_dir` 修改。
 
+工作区：CLI 默认是运行命令时所在的目录；桌面端在 `workspace` 留空或为 `"."` 时使用 `~/.myllmapp/workspace`（启动时自动创建）。从 Finder / 开始菜单启动时"当前目录"通常是 `/` 或安装目录，不适合作为工作区。想让桌面端操作某个项目，请在配置文件里写它的绝对路径。
+
 ## 3. 用 CLI 调试
 
 CLI 和桌面端使用完全相同的内核，是调试 agent 行为最快的方式。

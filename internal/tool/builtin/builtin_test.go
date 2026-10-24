@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/crazyjums/myllmapp/internal/tool"
 )
@@ -58,6 +59,60 @@ func TestPathEscapeRejected(t *testing.T) {
 		if r := run(t, reg, ws, "read_file", in); !r.IsError || !strings.Contains(r.Output, "outside the workspace") {
 			t.Errorf("%s 应被拒绝: %+v", in, r)
 		}
+	}
+}
+
+// 工作区里指向外部的符号链接不能被用来读写工作区之外的文件。
+func TestSymlinkEscapeRejected(t *testing.T) {
+	ws, outside := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("s"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(ws, "link")); err != nil {
+		t.Skipf("无法创建符号链接（Windows 需要开发者模式）: %v", err)
+	}
+	reg := newRegistry()
+	for name, in := range map[string]string{
+		"read_file":  `{"path":"link/secret.txt"}`,
+		"write_file": `{"path":"link/new/x.txt","content":"x"}`,
+		"list_dir":   `{"path":"link"}`,
+	} {
+		if r := run(t, reg, ws, name, in); !r.IsError || !strings.Contains(r.Output, "outside the workspace") {
+			t.Errorf("%s %s 应被拒绝: %+v", name, in, r)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(outside, "new")); !os.IsNotExist(err) {
+		t.Fatal("不应在工作区之外创建文件")
+	}
+
+	// 悬空链接（目标还不存在）也不能被用来在外部创建文件。
+	target := filepath.Join(outside, "created-via-dangling.txt")
+	if err := os.Symlink(target, filepath.Join(ws, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+	if r := run(t, reg, ws, "write_file", `{"path":"dangling","content":"x"}`); !r.IsError {
+		t.Fatalf("经悬空链接写文件应被拒绝: %+v", r)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("不应经悬空链接在工作区之外创建文件")
+	}
+
+	// 指向工作区内部的链接仍然可用。
+	if err := os.Mkdir(filepath.Join(ws, "real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(ws, "real"), filepath.Join(ws, "inner")); err != nil {
+		t.Fatal(err)
+	}
+	if r := run(t, reg, ws, "write_file", `{"path":"inner/a.txt","content":"ok"}`); r.IsError {
+		t.Fatalf("工作区内的链接应可用: %+v", r)
+	}
+}
+
+func TestTruncateKeepsRunes(t *testing.T) {
+	out := truncate("汉字汉字", 4) // 每个汉字 3 字节，4 字节处落在第二个字中间
+	if !strings.HasPrefix(out, "汉\n") || !utf8.ValidString(out) {
+		t.Fatalf("应在字符边界截断: %q", out)
 	}
 }
 

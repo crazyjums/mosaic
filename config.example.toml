@@ -12,6 +12,8 @@ default_provider = "fake"
 default_model = ""
 
 # 工具的工作区根目录。读写文件、执行命令都限定在这个目录里。相对路径相对于启动时的当前目录。
+# 桌面端：留空或 "." 时使用 <data_dir>/workspace（从 Finder / 开始菜单启动时"当前目录"没有意义），
+# 想让桌面端操作某个项目，请写绝对路径。CLI 的 "." 就是运行命令时所在的目录。
 workspace = "."
 
 # 本地数据目录（会话数据库 sessions.db）。留空为 ~/.myllmapp

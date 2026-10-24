@@ -117,6 +117,26 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	return &Built{Engine: engine, Settings: settingsMgr, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeFn}, nil
 }
 
+// DesktopWorkspace 返回桌面端应使用的工作区；返回空字符串表示沿用配置文件中的设置。
+//
+// 配置里的默认值 "." 表示"启动时的当前目录"，这对 CLI 很自然，对桌面应用却没有意义：
+// 从 Finder / 开始菜单启动时当前目录通常是 / 或安装目录，模型的只读工具（默认无需确认）
+// 就能读到整个磁盘。所以桌面端在没有明确配置工作区时，使用数据目录下专门的 workspace 目录（不存在则创建）。
+func DesktopWorkspace(cfg *config.Config) (string, error) {
+	if cfg.Workspace != "" && cfg.Workspace != "." {
+		return "", nil
+	}
+	dataDir, err := cfg.ResolveDataDir()
+	if err != nil {
+		return "", err
+	}
+	ws := filepath.Join(dataDir, "workspace")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		return "", fmt.Errorf("bootstrap: create workspace: %w", err)
+	}
+	return ws, nil
+}
+
 // pickDefault 决定启动时使用的厂商和模型：
 // 上次在界面上的选择 > 配置文件的 default_provider > 第一个可用的配置档。
 // 选中的配置档不可用（例如密钥被删了）时继续往后找，而不是让程序起不来。

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -97,5 +98,26 @@ func TestBuildFallsBackWhenRememberedUnavailable(t *testing.T) {
 	defer b.Close()
 	if st := b.Engine.Status(); st.Provider != "fake" {
 		t.Fatalf("应回落到第一个可用的厂商: %+v", st)
+	}
+}
+
+// 桌面端没有明确配置工作区时，不能用启动时的当前目录（可能是 /），而是用数据目录下的专门目录。
+func TestDesktopWorkspace(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	ws, err := DesktopWorkspace(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(cfg.DataDir, "workspace"); ws != want {
+		t.Fatalf("workspace = %q, want %q", ws, want)
+	}
+	if fi, err := os.Stat(ws); err != nil || !fi.IsDir() {
+		t.Fatalf("应创建工作区目录: %v", err)
+	}
+
+	cfg.Workspace = "/some/project"
+	if ws, _ := DesktopWorkspace(cfg); ws != "" {
+		t.Fatalf("明确配置了工作区时应沿用配置: %q", ws)
 	}
 }

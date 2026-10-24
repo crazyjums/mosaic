@@ -28,7 +28,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	built, err := bootstrap.Build(cfg, bootstrap.Options{})
+	ws, err := bootstrap.DesktopWorkspace(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: ws})
 	if err != nil {
 		log.Fatal(err)
 	}
