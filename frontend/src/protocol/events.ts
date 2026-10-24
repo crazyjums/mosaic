@@ -60,6 +60,9 @@ export interface PayloadMap {
   context_compacted: { before_tokens: number; after_tokens: number; removed_messages: number; summary?: string };
 
   error: { code: string; message: string; fatal: boolean };
+
+  /** 会话元数据变了（目前是由模型生成的标题，在第一轮结束之后到达） */
+  session_updated: { title: string };
 }
 
 export type EventType = keyof PayloadMap;
@@ -86,7 +89,7 @@ const KNOWN_TYPES = new Set<string>([
   "message_start", "text_delta", "thinking_delta", "image", "message_end",
   "tool_call", "tool_result", "permission_request", "permission_resolved",
   "subagent_start", "subagent_end", "task_start", "task_log", "task_end",
-  "context_compacted", "error",
+  "context_compacted", "error", "session_updated",
 ]);
 
 /** 判断一个来自后端的对象是否是本前端认识的事件。 */

@@ -1,14 +1,15 @@
 // 桌面端桥接：调用 Wails 注入的 window.go 和 window.runtime。
 //
 // 没有使用 `wails generate module` 生成的 wailsjs 绑定，而是手写这一小层：
-//   - 绑定方法只有十来个，手写的类型更精确（生成的代码会把 Go 结构体变成 class）；
+//   - 绑定方法不多（四十个左右，都是一行转发），手写的类型更精确（生成的代码会把 Go 结构体变成 class）；
 //   - 前端因此可以在没有 Wails 的环境里构建和类型检查（云端 CI、浏览器演示）。
 // 代价是 Go 端方法签名变化时要手动同步这里——方法很少，可以接受。
 
 import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import type {
-  Backend, DataInfo, General, GeneralView, PermissionMode, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo,
+  Backend, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -41,6 +42,22 @@ interface GoApp {
   GetDataInfo(): Promise<DataInfo>;
   OpenDataDir(): Promise<void>;
   ClearSessions(): Promise<number>;
+  ListTools(): Promise<ToolInfo[] | null>;
+  SetDisabledTools(names: string[]): Promise<void>;
+  GetPermissionRules(): Promise<PermissionRule[] | null>;
+  SetPermissionRules(rules: PermissionRule[]): Promise<void>;
+  GetStatusLineScript(): Promise<string>;
+  SetStatusLineScript(cmd: string): Promise<void>;
+  RunStatusLine(extra: Record<string, unknown>): Promise<string>;
+  TestStatusLineScript(cmd: string): Promise<string>;
+  ListMCPServers(): Promise<MCPServerConfig[] | null>;
+  SaveMCPServers(list: MCPServerConfig[]): Promise<void>;
+  GetMCPStatus(): Promise<MCPServerStatus[] | null>;
+  ReconnectMCP(name: string): Promise<void>;
+  GetUIPrefs(): Promise<unknown>;
+  SaveUIPrefs(prefs: unknown): Promise<void>;
+  GetKeychain(): Promise<KeychainStatus>;
+  SetUseKeychain(on: boolean): Promise<KeychainStatus>;
 }
 
 interface WailsWindow {
@@ -88,6 +105,22 @@ export function createWailsBackend(): Backend {
     getDataInfo: () => app.GetDataInfo(),
     openDataDir: () => app.OpenDataDir(),
     clearSessions: () => app.ClearSessions(),
+    listTools: async () => (await app.ListTools()) ?? [],
+    setDisabledTools: (names) => app.SetDisabledTools(names),
+    getPermissionRules: async () => (await app.GetPermissionRules()) ?? [],
+    setPermissionRules: (rules) => app.SetPermissionRules(rules),
+    getStatusLineScript: () => app.GetStatusLineScript(),
+    setStatusLineScript: (cmd) => app.SetStatusLineScript(cmd),
+    runStatusLine: (extra) => app.RunStatusLine(extra),
+    testStatusLineScript: (cmd) => app.TestStatusLineScript(cmd),
+    listMCPServers: async () => (await app.ListMCPServers()) ?? [],
+    saveMCPServers: (list) => app.SaveMCPServers(list),
+    getMCPStatus: async () => (await app.GetMCPStatus()) ?? [],
+    reconnectMCP: (name) => app.ReconnectMCP(name),
+    getUIPrefs: () => app.GetUIPrefs(),
+    saveUIPrefs: (prefs) => app.SaveUIPrefs(prefs),
+    getKeychain: () => app.GetKeychain(),
+    setUseKeychain: (on) => app.SetUseKeychain(on),
     onEvent(cb: (ev: AgentEvent) => void) {
       return runtime.EventsOn(EVENT_NAME, (data) => {
         // 不认识的事件类型直接忽略（协议约定的向前兼容）。

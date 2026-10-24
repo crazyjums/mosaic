@@ -6,7 +6,7 @@
 //
 // 方法与 Go 端 internal/app/app.go 中 App 的公开方法一一对应。
 
-import type { AgentEvent, Decision, Usage } from "../protocol/events";
+import type { AgentEvent, Decision, Risk, Usage } from "../protocol/events";
 
 /** 对应 permission.Mode：权限档位，从保守到放开 */
 export type PermissionMode = "readonly" | "default" | "accept_edits" | "auto";
@@ -62,6 +62,8 @@ export interface General {
   max_tokens?: number;
   shell_timeout_seconds?: number;
   system_prompt?: string;
+  /** 会话标题：first_message（截取第一句，默认）/ model（由模型生成） */
+  title_mode?: "" | "first_message" | "model";
 }
 
 /** 对应 settings.GeneralView */
@@ -135,6 +137,55 @@ export interface TestResult {
   error?: string;
 }
 
+/** 对应 core.ToolInfo */
+export interface ToolInfo {
+  name: string;
+  description: string;
+  risk: Risk;
+  disabled: boolean;
+}
+
+/** 对应 permission.Rule：按工具名和命令 / 路径匹配，优先于权限档位 */
+export interface PermissionRule {
+  /** 工具名，支持 * 通配（例如 mcp__github__*） */
+  tool: string;
+  /** 匹配 command / path / url 字段，* 匹配任意字符；空 = 任意 */
+  pattern: string;
+  action: "allow" | "ask" | "deny";
+}
+
+/** 对应 mcp.ServerConfig */
+export interface MCPServerConfig {
+  name: string;
+  transport: "stdio" | "http";
+  command?: string;
+  args?: string[] | null;
+  env?: Record<string, string> | null;
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string> | null;
+  risk?: Risk;
+  disabled?: boolean;
+}
+
+/** 对应 mcp.ServerStatus */
+export interface MCPServerStatus {
+  name: string;
+  state: "connecting" | "connected" | "failed" | "disabled";
+  error?: string;
+  tools: string[];
+  server_name?: string;
+  server_version?: string;
+}
+
+/** 对应 settings.KeychainStatus */
+export interface KeychainStatus {
+  enabled: boolean;
+  available: boolean;
+  error?: string;
+  warning?: string;
+}
+
 export interface Backend {
   /** 用于在界面上标明当前是"桌面端"还是"浏览器演示" */
   readonly kind: "wails" | "demo";
@@ -171,6 +222,28 @@ export interface Backend {
   openDataDir(): Promise<void>;
   /** 删除所有历史会话，返回删除的数量 */
   clearSessions(): Promise<number>;
+  // ---- 设置：权限与工具 ----
+  listTools(): Promise<ToolInfo[]>;
+  setDisabledTools(names: string[]): Promise<void>;
+  getPermissionRules(): Promise<PermissionRule[]>;
+  setPermissionRules(rules: PermissionRule[]): Promise<void>;
+  // ---- 设置：状态栏脚本 ----
+  getStatusLineScript(): Promise<string>;
+  setStatusLineScript(cmd: string): Promise<void>;
+  /** 运行已保存的命令；extra 会和会话信息一起以 JSON 写到命令的标准输入 */
+  runStatusLine(extra: Record<string, unknown>): Promise<string>;
+  testStatusLineScript(cmd: string): Promise<string>;
+  // ---- 设置：MCP ----
+  listMCPServers(): Promise<MCPServerConfig[]>;
+  saveMCPServers(list: MCPServerConfig[]): Promise<void>;
+  getMCPStatus(): Promise<MCPServerStatus[]>;
+  reconnectMCP(name: string): Promise<void>;
+  // ---- 设置：外观与钥匙串 ----
+  /** 从未保存过时返回 null */
+  getUIPrefs(): Promise<unknown>;
+  saveUIPrefs(prefs: unknown): Promise<void>;
+  getKeychain(): Promise<KeychainStatus>;
+  setUseKeychain(on: boolean): Promise<KeychainStatus>;
   /** 订阅事件，返回取消订阅函数 */
   onEvent(cb: (ev: AgentEvent) => void): () => void;
 }

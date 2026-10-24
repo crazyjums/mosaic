@@ -82,6 +82,10 @@ export const useChat = create<Store>((set, get) => {
       // 所有事件都流经 reducer。一轮结束后刷新会话列表和状态栏数据。
       b.onEvent((ev) => {
         set((s) => applyEvent(s, ev));
+        if (ev.type === "session_updated" && ev.session_id === get().sessionId) {
+          set({ title: ev.data.title });
+          void refreshMeta(); // 会话列表里的标题也要更新
+        }
         if (ev.type === "turn_end" && !ev.data.replay) {
           void refreshMeta();
           void get().refreshWorkspace(); // agent 可能改了文件，git 状态要更新

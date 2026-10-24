@@ -12,7 +12,9 @@
 //      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
 import type { AgentEvent, Decision, Usage } from "../protocol/events";
-import type { Backend, General, GeneralView, PermissionMode, ProfileInfo, ProviderView, SessionSummary, Status } from "./types";
+import type {
+  Backend, General, GeneralView, MCPServerConfig, PermissionMode, PermissionRule, ProfileInfo, ProviderView, SessionSummary, Status, ToolInfo,
+} from "./types";
 import raw from "./demo-events.jsonl?raw";
 
 const recorded: AgentEvent[] = raw
@@ -43,6 +45,17 @@ export function createDemoBackend(): Backend {
   let provider = "fake";
   let permissionMode: PermissionMode = "default";
   let statusLineConfig: unknown = null;
+  let uiPrefs: unknown = null;
+  let statusLineScript = "";
+  let rules: PermissionRule[] = [];
+  let mcpServers: MCPServerConfig[] = [];
+  let disabledTools: string[] = [];
+  const demoTools: Omit<ToolInfo, "disabled">[] = [
+    { name: "read_file", description: "Read a text file in the workspace.", risk: "read" },
+    { name: "list_dir", description: "List a directory in the workspace.", risk: "read" },
+    { name: "write_file", description: "Create or overwrite a file in the workspace.", risk: "write" },
+    { name: "shell", description: "Run a shell command in the workspace.", risk: "exec" },
+  ];
   let general: General = {};
   const demoWorkspace = "/demo/workspace";
   const generalView = (): GeneralView => ({
@@ -314,6 +327,38 @@ export function createDemoBackend(): Backend {
     },
     respondPermission: async (id, decision) => {
       if (pending?.requestId === id) pending.resolve(decision);
+    },
+    // ---- 权限与工具、状态栏脚本、MCP、外观：演示模式下只保存在内存里 ----
+    listTools: async () => demoTools.map((t) => ({ ...t, disabled: disabledTools.includes(t.name) })),
+    setDisabledTools: async (names) => {
+      disabledTools = names;
+    },
+    getPermissionRules: async () => rules,
+    setPermissionRules: async (r) => {
+      rules = r;
+    },
+    getStatusLineScript: async () => statusLineScript,
+    setStatusLineScript: async (cmd) => {
+      statusLineScript = cmd;
+    },
+    runStatusLine: async () => (statusLineScript ? "（演示）脚本输出" : ""),
+    testStatusLineScript: async () => {
+      throw new Error(demoOnly);
+    },
+    listMCPServers: async () => mcpServers,
+    saveMCPServers: async (list) => {
+      mcpServers = list;
+    },
+    getMCPStatus: async () =>
+      mcpServers.map((c) => ({ name: c.name, state: c.disabled ? "disabled" : "failed", error: c.disabled ? undefined : demoOnly, tools: [] })),
+    reconnectMCP: async () => {},
+    getUIPrefs: async () => uiPrefs,
+    saveUIPrefs: async (p) => {
+      uiPrefs = p;
+    },
+    getKeychain: async () => ({ enabled: false, available: false, error: demoOnly }),
+    setUseKeychain: async () => {
+      throw new Error(demoOnly);
     },
     onEvent(cb) {
       listeners.add(cb);

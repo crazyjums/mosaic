@@ -246,6 +246,10 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
         timeline: [...s.timeline, { kind: "error", id: ev.id, code: ev.data.code, message: ev.data.message, fatal: ev.data.fatal }],
       };
 
+    // 标题不在 reducer 的状态里（它属于会话元数据，由 chatStore 处理）。
+    case "session_updated":
+      return s;
+
     case "context_compacted":
       return {
         ...s,

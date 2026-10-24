@@ -5,7 +5,8 @@ import type { Backend } from "./types";
 import { createWailsBackend, isWails } from "./wails";
 
 export type {
-  Backend, DataInfo, General, GeneralView, ModelMeta, PermissionMode, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult, WorkspaceInfo,
+  Backend, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
+  ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
 let instance: Backend | null = null;
