@@ -127,7 +127,11 @@ check_linux_deps() {
 # ---------- 构建前检查 ----------
 if [[ $SKIP_CHECKS -eq 0 ]]; then
   info "运行 Go 测试 ..."
-  go test ./... >/dev/null || die "go test 未通过（可以用 --skip-checks 跳过，但不建议）"
+  # 成功时只显示一行结果；失败时打印完整输出，方便定位是哪个测试没过。
+  if ! test_output="$(go test ./... 2>&1)"; then
+    echo "$test_output" | grep -vE '^(ok|\?) ' >&2
+    die "go test 未通过，失败详情见上方（可以用 --skip-checks 跳过，但不建议）"
+  fi
   ok "Go 测试通过"
 fi
 

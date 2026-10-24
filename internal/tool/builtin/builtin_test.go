@@ -47,9 +47,12 @@ func TestWriteReadList(t *testing.T) {
 func TestPathEscapeRejected(t *testing.T) {
 	ws := t.TempDir()
 	reg := newRegistry()
+	// 工作区之外的绝对路径。用 filepath 构造，而不是写死 /etc/passwd：
+	// 在 Windows 上 /etc/passwd 不是绝对路径（会被当成工作区内的相对路径），C:\... 才是。
+	outside, _ := json.Marshal(map[string]string{"path": filepath.Join(filepath.Dir(ws), "outside.txt")})
 	for _, in := range []string{
 		`{"path":"../x"}`,
-		`{"path":"/etc/passwd"}`,
+		string(outside),
 		`{"path":"a/../../x"}`,
 	} {
 		if r := run(t, reg, ws, "read_file", in); !r.IsError || !strings.Contains(r.Output, "outside the workspace") {

@@ -7,6 +7,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"path/filepath"
+	"runtime"
 )
 
 // DemoScript 是内置演示剧本，覆盖第一阶段所有可视化元素：
@@ -30,7 +32,7 @@ func DemoScript() Script {
 		{
 			Thinking: "文件写好了。用 shell 读回来验证一下内容，执行命令属于 exec 风险，同样需要确认。",
 			ToolCalls: []ToolSpec{
-				{Name: "shell", Input: json.RawMessage(`{"command":"cat agent-demo/hello.md"}`)},
+				{Name: "shell", Input: catCommand("agent-demo/hello.md")},
 			},
 		},
 		{
@@ -38,11 +40,21 @@ func DemoScript() Script {
 			Text: "完成了！这次演示经过了以下步骤：\n\n" +
 				"1. **list_dir**：列出工作区根目录（只读，自动放行）\n" +
 				"2. **write_file**：写入 `agent-demo/hello.md`（需要你确认）\n" +
-				"3. **shell**：执行 `cat` 验证文件内容（需要你确认）\n\n" +
+				"3. **shell**：执行命令读回文件，验证内容（需要你确认）\n\n" +
 				"下面是一张由 fake provider 生成的示意图：",
 			Image: &ImageSpec{Builtin: "demo"},
 		},
 	}}
+}
+
+// catCommand 生成"打印文件内容"的 shell 命令。shell 工具在 Windows 上用 cmd，没有 cat，要用 type。
+func catCommand(path string) json.RawMessage {
+	cmd := "cat " + path
+	if runtime.GOOS == "windows" {
+		cmd = "type " + filepath.FromSlash(path)
+	}
+	b, _ := json.Marshal(map[string]string{"command": cmd})
+	return b
 }
 
 // demoImage 是启动时用代码画出来的一张小渐变图（base64 PNG）。
