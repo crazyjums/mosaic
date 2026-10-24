@@ -63,6 +63,8 @@ type Provider struct {
 //   - scenario: "demo"（默认）或 "echo"
 //   - script:   JSON 剧本文件路径（优先于 scenario）
 //   - delay_ms: 每个片段的延迟毫秒数
+//
+// 另外，请求的模型名为 "echo" 时无论剧本是什么都复述用户输入。
 func New(cfg provider.ProfileConfig) (provider.Provider, error) {
 	p := &Provider{name: cfg.Name}
 	if v, ok := cfg.Options["delay_ms"]; ok {
@@ -117,12 +119,17 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 	// 步骤 1：确定进行到剧本的第几步——数一数最后一条用户发言之后有几条 assistant 消息。
 	userText, idx := progress(req.Messages)
 
+	// 模型名为 "echo" 时总是复述，方便在界面上切换模型来对比两种剧本。
+	script := p.script
+	if req.Model == "echo" {
+		script = Script{}
+	}
 	var step Step
-	if idx < len(p.script.Steps) {
-		step = p.script.Steps[idx]
+	if idx < len(script.Steps) {
+		step = script.Steps[idx]
 	} else {
 		step = Step{Text: fmt.Sprintf("（fake）你说的是：%s", userText)}
-		if len(p.script.Steps) > 0 {
+		if len(script.Steps) > 0 {
 			step = Step{Text: "（fake）剧本已经演完了。"}
 		}
 	}
