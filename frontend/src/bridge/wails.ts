@@ -1,0 +1,66 @@
+// 桌面端桥接：调用 Wails 注入的 window.go 和 window.runtime。
+//
+// 没有使用 `wails generate module` 生成的 wailsjs 绑定，而是手写这一小层：
+//   - 绑定方法只有十来个，手写的类型更精确（生成的代码会把 Go 结构体变成 class）；
+//   - 前端因此可以在没有 Wails 的环境里构建和类型检查（云端 CI、浏览器演示）。
+// 代价是 Go 端方法签名变化时要手动同步这里——方法很少，可以接受。
+
+import type { AgentEvent, Decision } from "../protocol/events";
+import { isKnownEvent } from "../protocol/events";
+import type { Backend, ProfileInfo, SessionSummary, Status } from "./types";
+
+/** Go 端 internal/app.EventName */
+const EVENT_NAME = "agent:event";
+
+interface GoApp {
+  ProtocolVersion(): Promise<number>;
+  GetStatus(): Promise<Status>;
+  GetProfiles(): Promise<ProfileInfo[] | null>;
+  ListSessions(): Promise<SessionSummary[] | null>;
+  NewSession(): Promise<Status>;
+  LoadSession(id: string): Promise<Status>;
+  DeleteSession(id: string): Promise<void>;
+  SetModel(profile: string, model: string): Promise<Status>;
+  Send(text: string): Promise<void>;
+  Cancel(): Promise<void>;
+  RespondPermission(requestId: string, decision: string): Promise<void>;
+}
+
+interface WailsWindow {
+  go?: { app?: { App?: GoApp } };
+  runtime?: {
+    EventsOn(name: string, cb: (...data: unknown[]) => void): () => void;
+  };
+}
+
+/** Wails 运行时会在页面加载前注入 window.go / window.runtime。 */
+export function isWails(): boolean {
+  const w = window as unknown as WailsWindow;
+  return !!w.go?.app?.App && !!w.runtime;
+}
+
+export function createWailsBackend(): Backend {
+  const w = window as unknown as WailsWindow;
+  const app = w.go!.app!.App!;
+  const runtime = w.runtime!;
+  return {
+    kind: "wails",
+    protocolVersion: () => app.ProtocolVersion(),
+    getStatus: () => app.GetStatus(),
+    getProfiles: async () => (await app.GetProfiles()) ?? [],
+    listSessions: async () => (await app.ListSessions()) ?? [],
+    newSession: () => app.NewSession(),
+    loadSession: (id) => app.LoadSession(id),
+    deleteSession: (id) => app.DeleteSession(id),
+    setModel: (p, m) => app.SetModel(p, m),
+    send: (t) => app.Send(t),
+    cancel: () => app.Cancel(),
+    respondPermission: (id, d: Decision) => app.RespondPermission(id, d),
+    onEvent(cb: (ev: AgentEvent) => void) {
+      return runtime.EventsOn(EVENT_NAME, (data) => {
+        // 不认识的事件类型直接忽略（协议约定的向前兼容）。
+        if (isKnownEvent(data)) cb(data);
+      });
+    },
+  };
+}
