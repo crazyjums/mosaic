@@ -1,8 +1,10 @@
 import { useChat } from "../store/chatStore";
+import { useSettings } from "../store/settingsStore";
 
 // 左侧会话栏：新建会话、历史会话列表（点击恢复）。
 export default function Sidebar() {
   const { sessions, sessionId, newSession, loadSession, deleteSession, running, backendKind } = useChat();
+  const openSettings = useSettings((s) => s.show);
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-panel">
@@ -47,6 +49,16 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
+      <div className="border-t border-line p-2">
+        <button
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50"
+          onClick={() => void openSettings()}
+          disabled={running}
+          title={running ? "运行中不能修改设置" : undefined}
+        >
+          ⚙ 设置 · 模型厂商
+        </button>
+      </div>
     </aside>
   );
 }

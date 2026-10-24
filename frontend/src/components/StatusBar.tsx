@@ -1,10 +1,13 @@
 import { useChat } from "../store/chatStore";
+import { useSettings } from "../store/settingsStore";
 
 const fmt = (n: number) => (n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 // 输入框下方的状态栏：厂商/模型选择、会话累计 token、工作区、运行状态。
 export default function StatusBar() {
   const { provider, model, profiles, sessionUsage, running, workspace, setModel } = useChat();
+  const openSettings = useSettings((s) => s.show);
+  const isDemo = profiles.find((p) => p.name === provider)?.type === "fake";
 
   // 选项值编码为 "profile\u0000model"，一个下拉框同时选择厂商和模型。
   const value = `${provider}\u0000${model}`;
@@ -33,6 +36,11 @@ export default function StatusBar() {
           </optgroup>
         ))}
       </select>
+      {isDemo && (
+        <button className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-warn hover:bg-warn/25" onClick={() => void openSettings()}>
+          演示模型 · 配置真实模型 →
+        </button>
+      )}
       <span title="会话累计 token（输入 / 输出）">
         tokens {fmt(sessionUsage.input_tokens)} / {fmt(sessionUsage.output_tokens)}
         {!!sessionUsage.cache_read_tokens && ` · 缓存 ${fmt(sessionUsage.cache_read_tokens)}`}

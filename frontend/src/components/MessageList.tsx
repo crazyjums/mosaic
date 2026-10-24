@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useChat } from "../store/chatStore";
+import { useSettings } from "../store/settingsStore";
 import AssistantMessage from "./AssistantMessage";
 
 const REASON: Record<string, string> = {
@@ -14,6 +15,7 @@ const REASON: Record<string, string> = {
 export default function MessageList() {
   const timeline = useChat((s) => s.timeline);
   const backendKind = useChat((s) => s.backendKind);
+  const isDemoModel = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "fake");
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -30,7 +32,7 @@ export default function MessageList() {
   return (
     <div ref={ref} onScroll={onScroll} className="min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-5 px-6 py-6">
-        {timeline.length === 0 && <Empty demo={backendKind === "demo"} />}
+        {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} />}
         {timeline.map((it) => {
           switch (it.kind) {
             case "user":
@@ -70,7 +72,8 @@ export default function MessageList() {
   );
 }
 
-function Empty({ demo }: { demo: boolean }) {
+function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
+  const openSettings = useSettings((s) => s.show);
   return (
     <div className="mt-24 text-center text-muted">
       <div className="text-2xl font-semibold text-fg">myllmapp</div>
@@ -80,6 +83,14 @@ function Empty({ demo }: { demo: boolean }) {
           当前是<strong className="text-fg">浏览器演示模式</strong>：没有连接 Go 后端，回放的是 fake provider 录制的事件流。
           随便输入一句话试试；在 Wails 桌面端中会连接真实内核。
         </p>
+      )}
+      {!demo && demoModel && (
+        <div className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
+          当前使用的是<strong className="text-fg">演示模型</strong>（按固定剧本回复，不调用真实模型）。
+          <button className="mt-2 block w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90" onClick={() => void openSettings()}>
+            配置真实模型（Base URL + API Key）
+          </button>
+        </div>
       )}
     </div>
   );

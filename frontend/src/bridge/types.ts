@@ -42,6 +42,47 @@ export interface SessionSummary {
   updated_at: string;
 }
 
+/** 对应 settings.ProviderView：设置页里的一个厂商配置档（不含密钥明文） */
+export interface ProviderView {
+  name: string;
+  type: string;
+  base_url: string;
+  models: string[];
+  default_model: string;
+  options: Record<string, unknown> | null;
+  has_api_key: boolean;
+  /** 掩码后的密钥，例如 "sk-…a1b2" */
+  api_key_hint: string;
+  /** config：来自 config.toml；settings：界面添加；override：界面覆盖了 config.toml */
+  source: "config" | "settings" | "override";
+  deletable: boolean;
+  available: boolean;
+  error?: string;
+}
+
+/** 对应 settings.ProviderInput：设置页提交的表单 */
+export interface ProviderInput {
+  /** 编辑前的名称；新建时为空 */
+  original_name: string;
+  name: string;
+  type: string;
+  base_url: string;
+  /** 留空表示沿用已保存的密钥 */
+  api_key: string;
+  models: string[];
+  default_model: string;
+  options: Record<string, unknown>;
+}
+
+/** 对应 settings.TestResult */
+export interface TestResult {
+  ok: boolean;
+  model: string;
+  latency_ms: number;
+  reply?: string;
+  error?: string;
+}
+
 export interface Backend {
   /** 用于在界面上标明当前是"桌面端"还是"浏览器演示" */
   readonly kind: "wails" | "demo";
@@ -57,6 +98,12 @@ export interface Backend {
   send(text: string): Promise<void>;
   cancel(): Promise<void>;
   respondPermission(requestId: string, decision: Decision): Promise<void>;
+  // ---- 设置：厂商配置 ----
+  listProviders(): Promise<ProviderView[]>;
+  saveProvider(input: ProviderInput): Promise<void>;
+  deleteProvider(name: string): Promise<void>;
+  testProvider(input: ProviderInput): Promise<TestResult>;
+  fetchModels(input: ProviderInput): Promise<string[]>;
   /** 订阅事件，返回取消订阅函数 */
   onEvent(cb: (ev: AgentEvent) => void): () => void;
 }

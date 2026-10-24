@@ -66,6 +66,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 表单控件的公共样式（设置页等） */
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-line bg-bg px-3 py-1.5 text-sm text-fg outline-none placeholder:text-muted focus:border-accent/60;
+  }
+  .btn {
+    @apply shrink-0 rounded-md border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50;
+  }
+}
+
 /* Markdown 正文的最小样式（不引入 typography 插件，保持依赖精简）。 */
 .md > * + * { margin-top: 0.6em; }
 .md h1, .md h2, .md h3 { font-weight: 600; margin-top: 1em; }

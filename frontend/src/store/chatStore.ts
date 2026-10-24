@@ -30,6 +30,8 @@ interface Store extends ChatState {
   loadSession(id: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   setModel(profile: string, model: string): Promise<void>;
+  /** 重新读取厂商列表、当前状态和会话列表（设置页修改厂商后调用） */
+  refreshMeta(): Promise<void>;
   dismissToast(): void;
 }
 
@@ -47,8 +49,8 @@ export const useChat = create<Store>((set, get) => {
 
   const refreshMeta = async () => {
     const b = backend();
-    const [st, sessions] = await Promise.all([b.getStatus(), b.listSessions()]);
-    set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, sessions });
+    const [st, sessions, profiles] = await Promise.all([b.getStatus(), b.listSessions(), b.getProfiles()]);
+    set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, sessions, profiles });
   };
 
   return {
@@ -120,6 +122,7 @@ export const useChat = create<Store>((set, get) => {
         set({ provider: st.provider, model: st.model });
       }),
 
+    refreshMeta: () => guard(refreshMeta),
     dismissToast: () => set({ toast: null }),
   };
 });

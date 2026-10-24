@@ -4,7 +4,7 @@ import { createDemoBackend } from "./demo";
 import type { Backend } from "./types";
 import { createWailsBackend, isWails } from "./wails";
 
-export type { Backend, ProfileInfo, SessionSummary, Status } from "./types";
+export type { Backend, ProfileInfo, ProviderInput, ProviderView, SessionSummary, Status, TestResult } from "./types";
 
 let instance: Backend | null = null;
 

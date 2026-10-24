@@ -6,6 +6,7 @@ import ActivityPanel from "./components/ActivityPanel";
 import Composer from "./components/Composer";
 import MessageList from "./components/MessageList";
 import PermissionDialog from "./components/PermissionDialog";
+import SettingsDialog from "./components/SettingsDialog";
 import Sidebar from "./components/Sidebar";
 import StatusBar from "./components/StatusBar";
 import { useChat } from "./store/chatStore";
@@ -43,6 +44,7 @@ export default function App() {
         <StatusBar />
       </main>
       <PermissionDialog />
+      <SettingsDialog />
     </div>
   );
 }

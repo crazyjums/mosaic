@@ -11,7 +11,7 @@
 //   3. 遇到 permission_request 时真的停下来等用户点击；用户拒绝时，把对应的 tool_result 改成失败。
 
 import type { AgentEvent, Decision, Usage } from "../protocol/events";
-import type { Backend, ProfileInfo, SessionSummary, Status } from "./types";
+import type { Backend, ProfileInfo, ProviderView, SessionSummary, Status } from "./types";
 import raw from "./demo-events.jsonl?raw";
 
 const recorded: AgentEvent[] = raw
@@ -39,6 +39,7 @@ export function createDemoBackend(): Backend {
   let running = false;
   let cancelled = false;
   let seq = 0;
+  let provider = "fake";
   let model = "demo";
   let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
 
@@ -61,7 +62,7 @@ export function createDemoBackend(): Backend {
     return {
       session_id: current.summary.id,
       title: current.summary.title,
-      provider: "fake",
+      provider,
       model,
       usage: current.usage,
       running,
@@ -159,16 +160,30 @@ export function createDemoBackend(): Backend {
     });
   }
 
-  const profiles: ProfileInfo[] = [
-    { name: "fake", type: "fake", models: ["demo", "echo"], default_model: "demo", has_api_key: false, available: true },
-    { name: "anthropic", type: "anthropic", models: ["claude-opus-5-5"], default_model: "claude-opus-5-5", has_api_key: false, available: false, error: "浏览器演示模式下不可用" },
+  // 设置页的数据也放在内存里：可以添加、编辑、删除，但无法真正连接厂商（浏览器里没有后端）。
+  let providers: ProviderView[] = [
+    {
+      name: "fake", type: "fake", base_url: "", models: ["demo", "echo"], default_model: "demo", options: null,
+      has_api_key: false, api_key_hint: "", source: "config", deletable: false, available: true,
+    },
+    {
+      name: "anthropic", type: "anthropic", base_url: "", models: ["claude-opus-5-5"], default_model: "claude-opus-5-5",
+      options: null, has_api_key: false, api_key_hint: "", source: "config", deletable: false, available: false,
+      error: "missing API key (set api_key_env, e.g. ANTHROPIC_API_KEY)",
+    },
   ];
+  const profiles = (): ProfileInfo[] =>
+    providers.map((p) => ({
+      name: p.name, type: p.type, models: p.models, default_model: p.default_model,
+      has_api_key: p.has_api_key, available: p.available, error: p.error,
+    }));
+  const demoOnly = "浏览器演示模式没有连接 Go 后端，无法访问真实厂商。请在桌面端（wails dev / 打包后的应用）中使用。";
 
   return {
     kind: "demo",
     protocolVersion: async () => 1,
     getStatus: async () => status(),
-    getProfiles: async () => profiles,
+    getProfiles: async () => profiles(),
     listSessions: async () =>
       [...sessions.values()].map((s) => s.summary).sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     newSession: async () => {
@@ -185,9 +200,33 @@ export function createDemoBackend(): Backend {
       return status();
     },
     deleteSession: async (id) => void sessions.delete(id),
-    setModel: async (_profile, m) => {
+    setModel: async (p, m) => {
+      provider = p || "fake";
       model = m || "demo";
       return status();
+    },
+    listProviders: async () => providers,
+    saveProvider: async (input) => {
+      if (!input.name.trim()) throw new Error("请填写名称");
+      if (input.models.length === 0) throw new Error("请至少填写一个模型");
+      const old = providers.find((p) => p.name === (input.original_name || input.name));
+      const key = input.api_key || "";
+      const view: ProviderView = {
+        name: input.name, type: input.type, base_url: input.base_url, models: input.models,
+        default_model: input.default_model || input.models[0], options: input.options,
+        has_api_key: !!key || !!old?.has_api_key,
+        api_key_hint: key ? `${key.slice(0, 3)}…${key.slice(-4)}` : (old?.api_key_hint ?? ""),
+        source: old?.source === "config" ? "override" : (old?.source ?? "settings"),
+        deletable: true, available: true,
+      };
+      providers = providers.filter((p) => p.name !== input.original_name && p.name !== input.name).concat(view);
+    },
+    deleteProvider: async (name) => {
+      providers = providers.filter((p) => p.name !== name);
+    },
+    testProvider: async (input) => ({ ok: false, model: input.default_model, latency_ms: 0, error: demoOnly }),
+    fetchModels: async () => {
+      throw new Error(demoOnly);
     },
     send: async (text) => {
       if (running) throw new Error("engine: a turn is already running");
