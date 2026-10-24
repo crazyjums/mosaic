@@ -512,3 +512,58 @@ func TestUpdateRuntimeAndDeleteAll(t *testing.T) {
 		t.Fatalf("应已清空: %+v", list)
 	}
 }
+
+func TestDisabledTools(t *testing.T) {
+	script := fake.Script{Steps: []fake.Step{
+		{ToolCalls: []fake.ToolSpec{{Name: "list_dir", Input: json.RawMessage(`{"path":"."}`)}}},
+		{Text: "好"},
+	}}
+	h := newHarness(t, script, 0, allow)
+	h.engine.SetDisabledTools([]string{"list_dir"})
+	var found bool
+	for _, ti := range h.engine.Tools() {
+		if ti.Name == "list_dir" {
+			found = ti.Disabled
+		}
+	}
+	if !found {
+		t.Fatal("Tools() 应标记 list_dir 已禁用")
+	}
+	h.engine.Send(context.Background(), "hi")
+	r := payloads[event.ToolResult](h.rec)
+	if len(r) != 1 || !r[0].IsError || !strings.Contains(r[0].Output, "disabled") {
+		t.Fatalf("禁用的工具应返回错误给模型: %+v", r)
+	}
+}
+
+func TestModelGeneratedTitle(t *testing.T) {
+	// fake 对标题请求同样按剧本第 1 步回答，所以标题就是"「Go 并发入门」"去掉括号后的结果。
+	h := newHarness(t, fake.Script{Steps: []fake.Step{{Text: "「Go 并发入门」\n多余的行"}}}, 0, allow)
+	if err := h.engine.UpdateRuntime(core.RuntimeConfig{Workspace: h.workspace, TitleMode: "model"}); err != nil {
+		t.Fatal(err)
+	}
+	h.engine.Send(context.Background(), "讲讲 goroutine")
+	ups := payloads[event.SessionUpdated](h.rec)
+	if len(ups) != 1 || ups[0].Title != "Go 并发入门" {
+		t.Fatalf("应生成标题: %+v", ups)
+	}
+	list, _ := h.engine.ListSessions(context.Background())
+	if len(list) != 1 || list[0].Title != "Go 并发入门" {
+		t.Fatalf("标题应保存: %+v", list)
+	}
+	// 第二轮不再生成。
+	h.engine.Send(context.Background(), "再说说 channel")
+	if n := len(payloads[event.SessionUpdated](h.rec)); n != 1 {
+		t.Fatalf("只在第一轮生成标题，got %d", n)
+	}
+}
+
+func TestEnginePermissionRules(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	if err := h.engine.SetPermissionRules([]permission.Rule{{Tool: "shell", Pattern: "*", Action: permission.Deny}}); err == nil {
+		t.Fatal("ModePolicy 不支持规则，应报错")
+	}
+	if h.engine.PermissionRules() != nil {
+		t.Fatal("应无规则")
+	}
+}

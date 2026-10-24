@@ -37,6 +37,8 @@ type AgentConfig struct {
 
 	// Workspace 是工具的工作区根目录（绝对路径）。
 	Workspace string
+	// Disabled 是被用户在设置里关掉的工具：不发给模型，模型硬要调用也会被拒绝。
+	Disabled map[string]bool
 }
 
 // Agent 执行 agent 循环。它是无状态的（状态都在 Session 里），可以重复使用。
@@ -266,6 +268,9 @@ func (a *Agent) toolSpecs() []provider.ToolSpec {
 	specs := a.cfg.Tools.Specs()
 	out := make([]provider.ToolSpec, 0, len(specs))
 	for _, s := range specs {
+		if a.cfg.Disabled[s.Name] {
+			continue
+		}
 		out = append(out, provider.ToolSpec{Name: s.Name, Description: s.Description, InputSchema: s.InputSchema})
 	}
 	return out

@@ -82,6 +82,12 @@ func (s *Session) addUsage(u provider.Usage) provider.Usage {
 	return s.Usage
 }
 
+func (s *Session) setTitle(t string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Title = t
+}
+
 func (s *Session) setModel(profile, model string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

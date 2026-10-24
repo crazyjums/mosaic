@@ -57,6 +57,10 @@ func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (resu
 	if !ok {
 		return tool.Errorf("unknown tool %q", c.ToolName)
 	}
+	// 被禁用的工具不会出现在发给模型的工具列表里，但历史消息里可能还有它的调用示例，模型偶尔会照着调用。
+	if a.cfg.Disabled[c.ToolName] {
+		return tool.Errorf("tool %q has been disabled by the user", c.ToolName)
+	}
 	spec := t.Spec()
 
 	// 步骤 2：权限裁决。

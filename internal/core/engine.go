@@ -30,6 +30,11 @@ type EngineConfig struct {
 
 	DefaultProfile string
 	DefaultModel   string
+
+	// DisabledTools 是被禁用的工具名。
+	DisabledTools []string
+	// TitleMode 决定会话标题怎么来：first_message（默认，截取第一句）或 model（第一轮结束后让模型生成）。
+	TitleMode string
 }
 
 // Engine 是内核对外的"命令接口"。
@@ -181,6 +186,8 @@ func (e *Engine) Profiles() []provider.ProfileInfo {
 // RuntimeConfig 是可以在运行时修改的参数（设置 → 常规 / 系统提示词）。
 type RuntimeConfig struct {
 	Workspace string `json:"workspace"`
+	// TitleMode：first_message / model，见 EngineConfig.TitleMode。
+	TitleMode string `json:"title_mode"`
 	// SystemPrompt 为空表示使用 DefaultSystemPrompt(Workspace)。
 	SystemPrompt string `json:"system_prompt"`
 	MaxSteps     int    `json:"max_steps"`
@@ -191,12 +198,12 @@ type RuntimeConfig struct {
 func (e *Engine) Runtime() RuntimeConfig {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens}
+	return RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens, TitleMode: e.cfg.TitleMode}
 }
 
 // runtimeLocked 返回本轮实际使用的参数：补上默认值、展开默认提示词。调用方需持有 e.mu。
 func (e *Engine) runtimeLocked() RuntimeConfig {
-	rt := RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens}
+	rt := RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens, TitleMode: e.cfg.TitleMode}
 	if rt.SystemPrompt == "" {
 		rt.SystemPrompt = DefaultSystemPrompt(rt.Workspace)
 	}
@@ -220,6 +227,7 @@ func (e *Engine) UpdateRuntime(rt RuntimeConfig) error {
 		e.cfg.Policy.Reset()
 	}
 	e.cfg.Workspace, e.cfg.SystemPrompt, e.cfg.MaxSteps, e.cfg.MaxTokens = rt.Workspace, rt.SystemPrompt, rt.MaxSteps, rt.MaxTokens
+	e.cfg.TitleMode = rt.TitleMode
 	return nil
 }
 
@@ -304,6 +312,7 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 	}
 	// 运行参数在持锁时取一份副本：UpdateRuntime 可能在本轮结束后修改它们。
 	rt := e.runtimeLocked()
+	disabled := e.disabledLocked()
 	ctx, cancel := context.WithCancel(ctx)
 	e.running, e.cancel = true, cancel
 	e.mu.Unlock()
@@ -330,8 +339,17 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		Publisher: e.bus,
 		Compactor: e.cfg.Compactor,
 		Workspace: rt.Workspace,
+		Disabled:  disabled,
 	})
 	res := agent.Run(ctx, sess, text)
+
+	// 第一轮正常结束后，按设置让模型生成标题（失败就保留截取的第一句，不打扰用户）。
+	if rt.TitleMode == "model" && res.Reason == event.TurnCompleted && isFirstTurn(sess) {
+		if title, err := generateTitle(context.Background(), p, snap.Model, sess); err == nil && title != "" {
+			sess.setTitle(title)
+			e.bus.Publish(event.New(sess.ID, event.RootAgentID, "", event.SessionUpdated{Title: title}))
+		}
+	}
 
 	// 步骤 3：持久化。即使本轮出错/取消也要保存——用户已经看到的内容不应该丢。
 	// 用 context.Background()：本轮被取消时保存仍需完成。
@@ -430,6 +448,59 @@ func (e *Engine) DeleteSession(ctx context.Context, id string) error {
 		e.cfg.Policy.Reset()
 	}
 	return e.cfg.Store.DeleteSession(ctx, id)
+}
+
+func (e *Engine) disabledLocked() map[string]bool {
+	m := make(map[string]bool, len(e.cfg.DisabledTools))
+	for _, n := range e.cfg.DisabledTools {
+		m[n] = true
+	}
+	return m
+}
+
+// ToolInfo 是工具的公开信息，供设置页的"工具开关"展示。
+type ToolInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Risk        string `json:"risk"`
+	Disabled    bool   `json:"disabled"`
+}
+
+// Tools 列出所有已注册的工具（包括 MCP 工具）及其开关状态。
+func (e *Engine) Tools() []ToolInfo {
+	e.mu.Lock()
+	disabled := e.disabledLocked()
+	e.mu.Unlock()
+	specs := e.cfg.Tools.Specs()
+	out := make([]ToolInfo, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, ToolInfo{Name: s.Name, Description: s.Description, Risk: string(s.Risk), Disabled: disabled[s.Name]})
+	}
+	return out
+}
+
+// SetDisabledTools 设置被禁用的工具，从下一轮开始生效。名字不存在也允许（例如暂时没连上的 MCP 工具）。
+func (e *Engine) SetDisabledTools(names []string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cfg.DisabledTools = append([]string(nil), names...)
+}
+
+// SetPermissionRules 设置细粒度权限规则，立即对之后的工具调用生效。
+func (e *Engine) SetPermissionRules(rules []permission.Rule) error {
+	rs, ok := e.cfg.Policy.(permission.RuleSetter)
+	if !ok {
+		return fmt.Errorf("engine: current permission policy does not support rules")
+	}
+	return rs.SetRules(rules)
+}
+
+// PermissionRules 返回当前的规则。
+func (e *Engine) PermissionRules() []permission.Rule {
+	if rs, ok := e.cfg.Policy.(permission.RuleSetter); ok {
+		return rs.Rules()
+	}
+	return nil
 }
 
 // compacter 是可选能力：存储实现了它，清空历史后会调用来回收磁盘空间（SQLite 的 VACUUM）。

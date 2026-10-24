@@ -186,6 +186,13 @@ type Error struct {
 	Fatal   bool   `json:"fatal"`
 }
 
+// SessionUpdated 表示会话的元数据变了，界面据此刷新标题和会话列表。
+type SessionUpdated struct {
+	Title string `json:"title"`
+}
+
+func (SessionUpdated) EventType() Type { return TypeSessionUpdated }
+
 func (TurnStart) EventType() Type          { return TypeTurnStart }
 func (TurnEnd) EventType() Type            { return TypeTurnEnd }
 func (UserMessage) EventType() Type        { return TypeUserMessage }
@@ -241,6 +248,7 @@ func init() {
 	register[TaskEnd]()
 	register[ContextCompacted]()
 	register[Error]()
+	register[SessionUpdated]()
 }
 
 // AllTypes 返回所有已登记的事件类型，测试用它检查"每种事件都能往返序列化"。

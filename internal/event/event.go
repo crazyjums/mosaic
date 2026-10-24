@@ -46,6 +46,9 @@ const (
 	TypeContextCompacted Type = "context_compacted"
 
 	TypeError Type = "error"
+
+	// 会话元数据变化（目前是标题：由模型生成标题时，在一轮结束之后才会得到）。
+	TypeSessionUpdated Type = "session_updated"
 )
 
 // RootAgentID 是主 agent 的 ID。子 agent 的事件会带上自己的 agent_id 和父 agent 的 parent_id，
