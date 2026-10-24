@@ -121,3 +121,29 @@ func TestDesktopWorkspace(t *testing.T) {
 		t.Fatalf("明确配置了工作区时应沿用配置: %q", ws)
 	}
 }
+
+// 工作区优先级：命令行 > 界面设置 > 配置文件 > 桌面端默认目录。
+func TestBuildWorkspacePriority(t *testing.T) {
+	dataDir, fallback, fromSettings, fromFlag := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	build := func(opts Options) string {
+		cfg := config.Default()
+		cfg.DataDir = dataDir
+		opts.NoStore = true
+		b, err := Build(cfg, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer b.Close()
+		return b.Engine.Status().Workspace
+	}
+	if ws := build(Options{FallbackWorkspace: fallback}); ws != fallback {
+		t.Fatalf("配置为默认的 . 时应使用桌面端默认目录: %s", ws)
+	}
+	_ = settings.Save(filepath.Join(dataDir, settings.FileName), settings.File{General: settings.General{Workspace: fromSettings, MaxSteps: 5}})
+	if ws := build(Options{FallbackWorkspace: fallback}); ws != fromSettings {
+		t.Fatalf("界面设置应优先于默认目录: %s", ws)
+	}
+	if ws := build(Options{FallbackWorkspace: fallback, Workspace: fromFlag}); ws != fromFlag {
+		t.Fatalf("命令行参数优先级最高: %s", ws)
+	}
+}

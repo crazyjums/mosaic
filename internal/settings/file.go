@@ -33,6 +33,9 @@ type File struct {
 	DefaultModel    string            `json:"default_model,omitempty"`
 	Providers       []ProviderSetting `json:"providers"`
 
+	// General 是"设置 → 常规 / 系统提示词"中的参数，零值字段表示沿用配置文件。
+	General General `json:"general"`
+
 	// PermissionMode 记住在状态栏上切换的权限模式；为空表示使用 config.toml 中的设置。
 	PermissionMode string `json:"permission_mode,omitempty"`
 

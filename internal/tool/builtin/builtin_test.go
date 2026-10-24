@@ -71,6 +71,10 @@ func TestSymlinkEscapeRejected(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(ws, "link")); err != nil {
 		t.Skipf("无法创建符号链接（Windows 需要开发者模式）: %v", err)
 	}
+	// 有的环境（例如 Wine）里 Symlink 返回成功却没有真正创建链接，此时测试没有意义。
+	if fi, err := os.Lstat(filepath.Join(ws, "link")); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Skip("当前环境不支持符号链接")
+	}
 	reg := newRegistry()
 	for name, in := range map[string]string{
 		"read_file":  `{"path":"link/secret.txt"}`,

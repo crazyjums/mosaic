@@ -32,7 +32,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: ws})
+	built, err := bootstrap.Build(cfg, bootstrap.Options{FallbackWorkspace: ws})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -130,6 +130,35 @@ func (a *App) GetStatusLineConfig() json.RawMessage { return a.settings.StatusLi
 // SaveStatusLineConfig 保存状态栏配置（字段含义由前端定义）。
 func (a *App) SaveStatusLineConfig(cfg json.RawMessage) error { return a.settings.SaveStatusLine(cfg) }
 
+// ---- 设置：常规 / 系统提示词 / 数据（逻辑在 internal/settings） ----
+
+func (a *App) GetGeneral() settings.GeneralView { return a.settings.General() }
+
+// SaveGeneral 保存常规设置，从下一轮开始生效。运行中会返回错误。
+func (a *App) SaveGeneral(g settings.General) (settings.GeneralView, error) {
+	if err := a.settings.SaveGeneral(g); err != nil {
+		return settings.GeneralView{}, err
+	}
+	return a.settings.General(), nil
+}
+
+// ChooseDirectory 弹出系统的"选择文件夹"对话框；用户取消时返回空字符串。
+func (a *App) ChooseDirectory(start string) (string, error) {
+	return runtime.OpenDirectoryDialog(a.context(), runtime.OpenDialogOptions{
+		Title:                "选择工作区",
+		DefaultDirectory:     start,
+		CanCreateDirectories: true,
+	})
+}
+
+func (a *App) GetDataInfo() settings.DataInfo { return a.settings.DataInfo(a.context()) }
+
+// OpenDataDir 用系统文件管理器打开数据目录。
+func (a *App) OpenDataDir() error { return openInFileManager(a.settings.DataInfo(a.context()).DataDir) }
+
+// ClearSessions 删除所有历史会话（包括当前会话），返回删除的数量。
+func (a *App) ClearSessions() (int, error) { return a.engine.DeleteAllSessions(a.context()) }
+
 // Send 发送一条消息并立即返回；对话过程全部通过事件推送。
 //
 // 为什么不阻塞到本轮结束：Wails 的方法调用对前端来说是一个 Promise，一轮对话可能持续几分钟，

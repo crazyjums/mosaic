@@ -102,3 +102,20 @@ func TestSQLite(t *testing.T) {
 		t.Fatalf("重新打开后应能读到数据: %v", err)
 	}
 }
+
+func TestSQLiteCompact(t *testing.T) {
+	st, err := OpenSQLite(filepath.Join(t.TempDir(), FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	_ = st.SaveSession(ctx, sampleSession("a"))
+	_ = st.DeleteSession(ctx, "a")
+	if err := st.Compact(ctx); err != nil {
+		t.Fatalf("compact: %v", err)
+	}
+	if list, _ := st.ListSessions(ctx); len(list) != 0 {
+		t.Fatal("应为空")
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/crazyjums/myllmapp/internal/config"
@@ -24,8 +23,10 @@ type Options struct {
 	NoStore bool
 	// PermissionMode 非空时覆盖配置文件中的权限模式。
 	PermissionMode string
-	// Workspace 非空时覆盖配置文件中的工作区。
+	// Workspace 非空时强制使用这个工作区（命令行 -workspace），界面上也不能修改。
 	Workspace string
+	// FallbackWorkspace 是配置文件和界面都没有指定工作区时使用的目录（桌面端的默认工作区）。
+	FallbackWorkspace string
 }
 
 // Built 是组装结果。调用方用完后必须调用 Close。
@@ -41,34 +42,48 @@ type Built struct {
 
 // Build 按配置组装 Engine。
 func Build(cfg *config.Config, opts Options) (*Built, error) {
-	// 步骤 1：路径。工作区必须已存在——自动创建可能把文件写到用户意想不到的地方。
-	wsPath := cfg.Workspace
-	if opts.Workspace != "" {
-		wsPath = opts.Workspace
-	}
-	workspace, err := filepath.Abs(wsPath)
-	if err != nil {
-		return nil, err
-	}
-	if fi, err := os.Stat(workspace); err != nil || !fi.IsDir() {
-		return nil, fmt.Errorf("bootstrap: workspace %q is not an existing directory", workspace)
-	}
+	// 步骤 1：数据目录与界面设置（settings.json）。界面设置会影响后面的工作区、步数等参数，所以先读。
 	dataDir, err := cfg.ResolveDataDir()
 	if err != nil {
 		return nil, err
 	}
-
-	// 步骤 2：工具。
-	tools := tool.NewRegistry()
-	shellTimeout := time.Duration(cfg.ShellTimeoutSeconds) * time.Second
-	builtin.Register(tools, builtin.Options{ShellTimeout: shellTimeout})
-
-	// 步骤 3：厂商。配置文件中的配置档 + 界面上配置的配置档（settings.json）合并。
-	// 单个配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
 	settingsMgr, err := settings.NewManager(filepath.Join(dataDir, settings.FileName), cfg.Profiles(), provider.DefaultRegistry)
 	if err != nil {
 		return nil, err
 	}
+
+	// 步骤 2：运行参数。优先级：命令行 > 界面设置 > 配置文件 > 内置默认（规则在 settings.ResolveGeneral）。
+	// 工作区必须已存在——自动创建可能把文件写到用户意想不到的地方。
+	baseWS := cfg.Workspace
+	if opts.FallbackWorkspace != "" && (baseWS == "" || baseWS == ".") {
+		baseWS = opts.FallbackWorkspace
+	}
+	if baseWS, err = filepath.Abs(baseWS); err != nil {
+		return nil, err
+	}
+	override := ""
+	if opts.Workspace != "" {
+		if override, err = filepath.Abs(opts.Workspace); err != nil {
+			return nil, err
+		}
+	}
+	defaults := settings.General{
+		Workspace:           baseWS,
+		MaxSteps:            cfg.MaxSteps,
+		MaxTokens:           cfg.MaxTokens,
+		ShellTimeoutSeconds: cfg.ShellTimeoutSeconds,
+		SystemPrompt:        cfg.SystemPrompt,
+	}
+	eff, _ := settings.ResolveGeneral(settingsMgr.SavedGeneral(), defaults, override)
+	workspace := eff.Workspace
+	if fi, err := os.Stat(workspace); err != nil || !fi.IsDir() {
+		return nil, fmt.Errorf("bootstrap: workspace %q is not an existing directory", workspace)
+	}
+
+	// 步骤 3：工具与厂商。单个厂商配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
+	tools := tool.NewRegistry()
+	builtin.Register(tools, builtin.Options{ShellTimeout: time.Duration(eff.ShellTimeoutSeconds) * time.Second})
+	shell, _ := tools.Get("shell")
 	catalog := settingsMgr.Catalog()
 	profile, model := pickDefault(catalog, cfg, settingsMgr)
 
@@ -78,7 +93,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	if opts.NoStore {
 		st = store.NewMemory()
 	} else {
-		sqlite, err := store.OpenSQLite(filepath.Join(dataDir, "sessions.db"))
+		sqlite, err := store.OpenSQLite(filepath.Join(dataDir, store.FileName))
 		if err != nil {
 			return nil, err
 		}
@@ -101,21 +116,15 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		return nil, err
 	}
 
-	// 步骤 6：系统提示词。
-	system := cfg.SystemPrompt
-	if system == "" {
-		system = DefaultSystemPrompt(workspace)
-	}
-
 	engine, err := core.NewEngine(core.EngineConfig{
 		Catalog:        catalog,
 		Tools:          tools,
 		Store:          st,
 		Policy:         permission.NewModePolicy(permission.Mode(mode)),
 		Workspace:      workspace,
-		SystemPrompt:   system,
-		MaxSteps:       cfg.MaxSteps,
-		MaxTokens:      cfg.MaxTokens,
+		SystemPrompt:   eff.SystemPrompt, // 为空时 Engine 每轮用 core.DefaultSystemPrompt(当前工作区)
+		MaxSteps:       eff.MaxSteps,
+		MaxTokens:      eff.MaxTokens,
 		DefaultProfile: profile,
 		DefaultModel:   model,
 	})
@@ -124,6 +133,8 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		return nil, err
 	}
 	settingsMgr.Attach(engine)
+	shellTool, _ := shell.(*builtin.Shell)
+	settingsMgr.SetRuntimeBase(settings.RuntimeBase{Defaults: defaults, WorkspaceOverride: override, Shell: shellTool})
 	return &Built{Engine: engine, Settings: settingsMgr, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeFn}, nil
 }
 
@@ -162,21 +173,4 @@ func pickDefault(c *provider.Catalog, cfg *config.Config, s *settings.Manager) (
 		return cfg.DefaultProvider, cfg.DefaultModel
 	}
 	return "", ""
-}
-
-// DefaultSystemPrompt 生成默认系统提示词。
-//
-// 刻意保持简短：只交代环境事实（工作区、系统）和工具使用约定。
-// 注意不放当前时间之类每次都变的内容，以免破坏厂商侧的提示缓存。
-func DefaultSystemPrompt(workspace string) string {
-	return fmt.Sprintf(`You are a helpful coding agent running inside a desktop client.
-
-Environment:
-- Workspace root: %s (all file paths are relative to it)
-- OS: %s/%s
-
-Guidelines:
-- Use the provided tools to inspect and change files instead of guessing their contents.
-- Writing files and running shell commands require the user's approval; if a call is denied, adapt instead of retrying the same call.
-- Keep answers concise. Reply in the same language the user writes in.`, workspace, runtime.GOOS, runtime.GOARCH)
 }

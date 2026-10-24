@@ -63,6 +63,8 @@ type Manager struct {
 	base     []provider.ProfileConfig // 来自 config.toml / 内置默认配置，密钥已解析
 	registry *provider.Registry
 	engine   *core.Engine
+	// rtBase 是常规设置（运行参数）的默认值与钩子，见 general.go。注意与上面的 base（厂商配置档）区分。
+	rtBase RuntimeBase
 }
 
 // NewManager 读取设置文件。path 为 settings.json 的路径；base 为配置文件中的配置档。

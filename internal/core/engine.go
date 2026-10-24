@@ -22,7 +22,8 @@ type EngineConfig struct {
 	Compactor Compactor
 	Subagents *SubagentRegistry
 
-	Workspace    string
+	Workspace string
+	// SystemPrompt 为空时使用 DefaultSystemPrompt(Workspace)。
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int
@@ -131,7 +132,7 @@ type Status struct {
 
 func (e *Engine) Status() Status {
 	e.mu.Lock()
-	sess, running := e.session, e.running
+	sess, running, workspace := e.session, e.running, e.cfg.Workspace
 	e.mu.Unlock()
 	snap := sess.Snapshot()
 	return Status{
@@ -141,7 +142,7 @@ func (e *Engine) Status() Status {
 		Model:              snap.Model,
 		Usage:              snap.Usage,
 		Running:            running,
-		Workspace:          e.cfg.Workspace,
+		Workspace:          workspace,
 		PendingPermissions: e.broker.PendingIDs(),
 		PermissionMode:     e.permissionMode(),
 	}
@@ -175,6 +176,51 @@ func (e *Engine) Profiles() []provider.ProfileInfo {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.cfg.Catalog.Profiles()
+}
+
+// RuntimeConfig 是可以在运行时修改的参数（设置 → 常规 / 系统提示词）。
+type RuntimeConfig struct {
+	Workspace string `json:"workspace"`
+	// SystemPrompt 为空表示使用 DefaultSystemPrompt(Workspace)。
+	SystemPrompt string `json:"system_prompt"`
+	MaxSteps     int    `json:"max_steps"`
+	MaxTokens    int    `json:"max_tokens"`
+}
+
+// Runtime 返回当前的运行参数（SystemPrompt 为空表示正在使用默认提示词）。
+func (e *Engine) Runtime() RuntimeConfig {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens}
+}
+
+// runtimeLocked 返回本轮实际使用的参数：补上默认值、展开默认提示词。调用方需持有 e.mu。
+func (e *Engine) runtimeLocked() RuntimeConfig {
+	rt := RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens}
+	if rt.SystemPrompt == "" {
+		rt.SystemPrompt = DefaultSystemPrompt(rt.Workspace)
+	}
+	return rt
+}
+
+// UpdateRuntime 修改运行参数，从下一轮开始生效。运行中返回 ErrBusy：
+// 一轮中途换工作区，前后两次工具调用会落在不同目录，结果难以理解。
+// 调用方负责校验（例如工作区目录存在），内核只做替换。
+func (e *Engine) UpdateRuntime(rt RuntimeConfig) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.running {
+		return ErrBusy
+	}
+	if rt.Workspace == "" {
+		return fmt.Errorf("engine: workspace is required")
+	}
+	// 换了工作区，之前"本会话总是允许"的授权是针对旧目录给的，不应该带到新目录。
+	if rt.Workspace != e.cfg.Workspace {
+		e.cfg.Policy.Reset()
+	}
+	e.cfg.Workspace, e.cfg.SystemPrompt, e.cfg.MaxSteps, e.cfg.MaxTokens = rt.Workspace, rt.SystemPrompt, rt.MaxSteps, rt.MaxTokens
+	return nil
 }
 
 // ReplaceCatalog 用新的厂商目录替换旧的，用于界面上修改厂商配置后立即生效，不需要重启。
@@ -256,6 +302,8 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		e.mu.Unlock()
 		return TurnResult{}, err
 	}
+	// 运行参数在持锁时取一份副本：UpdateRuntime 可能在本轮结束后修改它们。
+	rt := e.runtimeLocked()
 	ctx, cancel := context.WithCancel(ctx)
 	e.running, e.cancel = true, cancel
 	e.mu.Unlock()
@@ -273,15 +321,15 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		ID:        event.RootAgentID,
 		Provider:  p,
 		Model:     snap.Model,
-		System:    e.cfg.SystemPrompt,
-		MaxTokens: e.cfg.MaxTokens,
-		MaxSteps:  e.cfg.MaxSteps,
+		System:    rt.SystemPrompt,
+		MaxTokens: rt.MaxTokens,
+		MaxSteps:  rt.MaxSteps,
 		Tools:     e.cfg.Tools,
 		Policy:    e.cfg.Policy,
 		Broker:    e.broker,
 		Publisher: e.bus,
 		Compactor: e.cfg.Compactor,
-		Workspace: e.cfg.Workspace,
+		Workspace: rt.Workspace,
 	})
 	res := agent.Run(ctx, sess, text)
 
@@ -382,6 +430,44 @@ func (e *Engine) DeleteSession(ctx context.Context, id string) error {
 		e.cfg.Policy.Reset()
 	}
 	return e.cfg.Store.DeleteSession(ctx, id)
+}
+
+// compacter 是可选能力：存储实现了它，清空历史后会调用来回收磁盘空间（SQLite 的 VACUUM）。
+type compacter interface {
+	Compact(ctx context.Context) error
+}
+
+// DeleteAllSessions 删除所有已保存的会话（设置 → 数据 → 清空历史），并开启一个新的空会话。
+// 返回删除的数量。运行中返回 ErrBusy。
+func (e *Engine) DeleteAllSessions(ctx context.Context) (int, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.running {
+		return 0, ErrBusy
+	}
+	n := 0
+	if e.cfg.Store != nil {
+		list, err := e.cfg.Store.ListSessions(ctx)
+		if err != nil {
+			return 0, err
+		}
+		for _, s := range list {
+			if err := e.cfg.Store.DeleteSession(ctx, s.ID); err != nil {
+				return n, err
+			}
+			n++
+		}
+		if c, ok := e.cfg.Store.(compacter); ok {
+			if err := c.Compact(ctx); err != nil {
+				return n, fmt.Errorf("engine: sessions deleted but compacting the database failed: %w", err)
+			}
+		}
+	}
+	// 当前会话也在被清空之列：换成新的空会话，否则下一轮结束时它又会被保存回去。
+	old := e.session.Snapshot()
+	e.session = NewSession(event.NewID("sess"), old.Provider, old.Model)
+	e.cfg.Policy.Reset()
+	return n, nil
 }
 
 // Subagents 返回子 agent 定义注册表（预留扩展点）。

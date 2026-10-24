@@ -483,3 +483,32 @@ func TestSetPermissionModeMidTurn(t *testing.T) {
 		t.Fatal("未知档位应报错")
 	}
 }
+
+func TestUpdateRuntimeAndDeleteAll(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	h.engine.Send(context.Background(), "第一轮")
+	old := h.engine.Status().SessionID
+
+	// 默认提示词随工作区变化；切换工作区会清空"本会话总是允许"。
+	ws := t.TempDir()
+	if err := h.engine.UpdateRuntime(core.RuntimeConfig{Workspace: ws, MaxSteps: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if h.engine.Status().Workspace != ws {
+		t.Fatal("工作区应更新")
+	}
+	if err := h.engine.UpdateRuntime(core.RuntimeConfig{}); err == nil {
+		t.Fatal("工作区为空应报错")
+	}
+
+	n, err := h.engine.DeleteAllSessions(context.Background())
+	if err != nil || n != 1 {
+		t.Fatalf("应删除 1 个会话: %d %v", n, err)
+	}
+	if h.engine.Status().SessionID == old {
+		t.Fatal("清空后应换成新会话")
+	}
+	if list, _ := h.engine.ListSessions(context.Background()); len(list) != 0 {
+		t.Fatalf("应已清空: %+v", list)
+	}
+}

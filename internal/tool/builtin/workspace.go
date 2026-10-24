@@ -23,9 +23,12 @@ type Options struct {
 	MaxOutputBytes int
 }
 
+// DefaultShellTimeout 是 shell 工具的默认超时。
+const DefaultShellTimeout = 60 * time.Second
+
 func (o Options) withDefaults() Options {
 	if o.ShellTimeout <= 0 {
-		o.ShellTimeout = 60 * time.Second
+		o.ShellTimeout = DefaultShellTimeout
 	}
 	if o.MaxOutputBytes <= 0 {
 		o.MaxOutputBytes = 32 * 1024
@@ -39,7 +42,7 @@ func Register(reg *tool.Registry, opts Options) {
 	reg.MustRegister(&ReadFile{maxBytes: opts.MaxOutputBytes})
 	reg.MustRegister(&WriteFile{})
 	reg.MustRegister(&ListDir{})
-	reg.MustRegister(&Shell{timeout: opts.ShellTimeout, maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(NewShell(opts.ShellTimeout, opts.MaxOutputBytes))
 }
 
 // resolvePath 把模型给出的路径解析为工作区内的绝对路径。

@@ -16,6 +16,9 @@ import (
 	_ "modernc.org/sqlite" // 注册名为 "sqlite" 的 database/sql 驱动
 )
 
+// FileName 是会话数据库在数据目录下的文件名。
+const FileName = "sessions.db"
+
 // SQLite 是基于 SQLite 文件的会话存储。
 type SQLite struct {
 	db *sql.DB
@@ -207,5 +210,15 @@ func (s *SQLite) ListSessions(ctx context.Context) ([]core.SessionSummary, error
 
 func (s *SQLite) DeleteSession(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
+	return err
+}
+
+// Compact 回收已删除数据占用的磁盘空间（清空历史会话后调用）。
+// SQLite 删除数据后文件不会自动变小：先把 WAL 合并回主文件，再 VACUUM 重建数据库。
+func (s *SQLite) Compact(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `VACUUM`)
 	return err
 }
