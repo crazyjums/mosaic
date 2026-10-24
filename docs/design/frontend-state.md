@@ -97,3 +97,12 @@ stateDiagram-v2
 ## 测试
 
 `store/reducer.test.ts` 用同一份录制事件流测试：完整还原时间线、运行中的权限队列与拒绝、会话过滤、无思考降级、协议版本提示。
+
+## 状态栏
+
+- **配置归前端**：显示哪些项、顺序、显示方式由 [`store/statusline.ts`](../../frontend/src/store/statusline.ts) 定义；后端只把它当作不透明的 JSON 存进 settings.json。新增一项只需在 `ITEMS` 里加一条、在 `StatusBar.tsx` 里写渲染，不用改 Go 代码。读回旧配置时 `normalizeConfig` 保留用户的顺序和开关，丢弃未知项，补上新增项。
+- **派生数据是纯函数**：上下文占用、预估花费、当前步数在 [`store/metrics.ts`](../../frontend/src/store/metrics.ts)，依赖厂商配置（单价、窗口），所以不放进只认事件的 reducer；有单元测试。
+- **上下文** 取最近一次调用的 `input_tokens + output_tokens`（厂商返回的真实值），不是估算。
+- **花费** 逐条消息按"当时的厂商和模型"计价，中途换模型也算得对；恢复的历史会话没有逐条用量，退回到"会话累计 × 当前单价"的近似值并标 `+`。
+- **实时性**：reducer 在每个 `message_end` 把用量累加进 `sessionUsage`，`turn_end` 再用后端的权威值覆盖；耗时由 `turn_start` 的时间戳计算，组件运行中每秒刷新。
+- **每项可以为空**：组件返回 null 时外层 `.statusline-item:empty` 被隐藏，分隔线用 `:not(:empty) ~ :not(:empty)::before` 绘制，所以关掉的项和暂时没数据的项都不会留下多余的分隔线。

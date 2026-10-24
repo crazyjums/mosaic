@@ -59,6 +59,11 @@ sequenceDiagram
 - 发给前端的 `ProviderView` 只有 `has_api_key` 和掩码 `api_key_hint`，没有明文；编辑时前端不回传密钥，留空表示沿用；
 - 后续计划改存系统钥匙串，见 [roadmap](../roadmap.md)。
 
+## 其他保存在 settings.json 里的东西
+
+- `permission_mode`：状态栏上切换的权限模式（启动时优先级：命令行 `-mode` > 这里 > config.toml）；
+- `statusline`：状态栏配置。后端不解析，原样保存（大小上限 64KB，必须是 JSON 对象），字段由前端定义，见 [前端状态管理](frontend-state.md#状态栏)。
+
 ## 测试
 
 [`manager_test.go`](../../internal/settings/manager_test.go) 用 httptest 模拟 OpenAI 兼容服务：获取模型列表、测试连接不落盘、保存后自动从演示模型切换并持久化、重新加载后仍在、密钥掩码、文件权限、编辑时沿用密钥、改名时当前会话跟随、覆盖配置文件并恢复、校验、无密钥的本地服务。

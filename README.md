@@ -5,7 +5,7 @@
 - 🧠 **自研内核**：agent 循环、上下文、工具调用、权限确认全部自己写，不依赖任何 agent SDK
 - 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
   在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
-- 👀 **可视化**：思考过程、工具调用、权限确认、图片、token 用量；为子 agent 树和后台任务预留了事件与界面
+- 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、权限模式……）；为子 agent 树和后台任务预留了事件与界面
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
 
 ![第一阶段界面：思考卡片、工具调用卡片、权限确认（浏览器演示模式截图）](docs/images/screenshot.png)
@@ -113,7 +113,8 @@ wails build    # 打包到 build/bin/
 │   ├── core/                   内核：agent 循环、Delta 累加、工具执行、会话、重放、Engine 命令接口
 │   ├── store/                  会话持久化（SQLite 纯 Go 驱动 / 内存）
 │   ├── config/                 读取 TOML 配置与环境变量密钥
-│   ├── settings/               界面上配置的厂商：持久化到 settings.json、与配置文件合并、修改后热更新
+│   ├── settings/               界面上配置的厂商与状态栏：持久化到 settings.json、与配置文件合并、修改后热更新
+│   ├── workspace/              工作区信息（git 分支、未提交改动），供状态栏显示
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
 │   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑
 │   ├── mcp/                    预留：MCP 工具适配（ToolAdapter 已实现，Client 未实现）
