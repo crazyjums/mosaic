@@ -343,24 +343,36 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 	})
 	res := agent.Run(ctx, sess, text)
 
-	// 第一轮正常结束后，按设置让模型生成标题（失败就保留截取的第一句，不打扰用户）。
-	if rt.TitleMode == "model" && res.Reason == event.TurnCompleted && isFirstTurn(sess) {
-		if title, err := generateTitle(context.Background(), p, snap.Model, sess); err == nil && title != "" {
-			sess.setTitle(title)
-			e.bus.Publish(event.New(sess.ID, event.RootAgentID, "", event.SessionUpdated{Title: title}))
-		}
-	}
-
 	// 步骤 3：持久化。即使本轮出错/取消也要保存——用户已经看到的内容不应该丢。
 	// 用 context.Background()：本轮被取消时保存仍需完成。
-	if e.cfg.Store != nil {
-		if err := e.cfg.Store.SaveSession(context.Background(), sess.Snapshot()); err != nil {
-			e.bus.Publish(event.New(sess.ID, event.RootAgentID, "", event.Error{
-				Code: "store_error", Message: "保存会话失败: " + err.Error(),
-			}))
-		}
+	e.save(sess)
+
+	// 第一轮正常结束后，按设置让模型生成标题。放到后台做：它要再调一次模型（几秒），
+	// 不应该让界面一直显示"运行中"、挡住用户的下一条消息。失败就保留截取的第一句，不打扰用户。
+	if rt.TitleMode == "model" && res.Reason == event.TurnCompleted && isFirstTurn(sess) {
+		go func() {
+			title, err := generateTitle(context.Background(), p, snap.Model, sess)
+			if err != nil || title == "" {
+				return
+			}
+			sess.setTitle(title)
+			e.save(sess)
+			e.bus.Publish(event.New(sess.ID, event.RootAgentID, "", event.SessionUpdated{Title: title}))
+		}()
 	}
 	return res, nil
+}
+
+// save 保存会话；失败时发一个非致命的错误事件。
+func (e *Engine) save(sess *Session) {
+	if e.cfg.Store == nil {
+		return
+	}
+	if err := e.cfg.Store.SaveSession(context.Background(), sess.Snapshot()); err != nil {
+		e.bus.Publish(event.New(sess.ID, event.RootAgentID, "", event.Error{
+			Code: "store_error", Message: "保存会话失败: " + err.Error(),
+		}))
+	}
 }
 
 // Cancel 取消正在运行的一轮（如果有）。正在等待的权限确认会按拒绝处理。

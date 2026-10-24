@@ -543,6 +543,14 @@ func TestModelGeneratedTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.engine.Send(context.Background(), "讲讲 goroutine")
+	// 本轮结束时已经保存（标题先是截取的第一句），标题在后台生成。
+	if list, _ := h.engine.ListSessions(context.Background()); len(list) != 1 || list[0].Title != "讲讲 goroutine" {
+		t.Fatalf("应先保存会话: %+v", list)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(payloads[event.SessionUpdated](h.rec)) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	ups := payloads[event.SessionUpdated](h.rec)
 	if len(ups) != 1 || ups[0].Title != "Go 并发入门" {
 		t.Fatalf("应生成标题: %+v", ups)
