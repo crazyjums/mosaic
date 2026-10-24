@@ -1,0 +1,120 @@
+package app
+
+import (
+	"context"
+	"errors"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"github.com/crazyjums/myllmapp/internal/core"
+	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/provider"
+)
+
+// EventName 是前端订阅的 Wails 事件名。所有内核事件都走这一个通道，由前端按 type 分发。
+//
+// 为什么不为每种事件类型各开一个 Wails 事件：单通道保证了顺序（不同事件名之间 Wails 不保证顺序），
+// 前端只需注册一次监听，新增事件类型也不需要改绑定层。
+const EventName = "agent:event"
+
+// EmitFunc 把一个事件发给前端。生产环境是 runtime.EventsEmit，测试时替换成记录函数。
+type EmitFunc func(ctx context.Context, name string, data ...any)
+
+// App 是绑定到前端的对象。
+type App struct {
+	engine *core.Engine
+	emit   EmitFunc
+
+	ctx         context.Context
+	unsubscribe func()
+}
+
+// New 创建绑定对象。emit 为 nil 时使用 Wails 的 runtime.EventsEmit。
+func New(engine *core.Engine, emit EmitFunc) *App {
+	if emit == nil {
+		emit = runtime.EventsEmit
+	}
+	return &App{engine: engine, emit: emit}
+}
+
+// Startup 由 Wails 在窗口创建后调用（options.App.OnStartup）。
+func (a *App) Startup(ctx context.Context) {
+	a.ctx = ctx
+	a.unsubscribe = a.engine.Bus().Subscribe(func(ev event.Event) {
+		a.emit(a.ctx, EventName, ev)
+	})
+}
+
+// Shutdown 由 Wails 在退出前调用：取消正在运行的一轮，停止转发事件。
+func (a *App) Shutdown(context.Context) {
+	a.engine.Cancel()
+	if a.unsubscribe != nil {
+		a.unsubscribe()
+	}
+}
+
+// ---- 以下方法会被绑定到前端 ----
+
+// ProtocolVersion 让前端在启动时检查事件协议版本是否匹配。
+func (a *App) ProtocolVersion() int { return event.ProtocolVersion }
+
+func (a *App) GetStatus() core.Status { return a.engine.Status() }
+
+func (a *App) GetProfiles() []provider.ProfileInfo { return a.engine.Profiles() }
+
+func (a *App) ListSessions() ([]core.SessionSummary, error) {
+	return a.engine.ListSessions(a.context())
+}
+
+func (a *App) NewSession() (core.Status, error) { return a.engine.NewSession() }
+
+// LoadSession 加载历史会话；历史内容会以重放事件的形式通过 agent:event 推给前端。
+func (a *App) LoadSession(id string) (core.Status, error) {
+	return a.engine.LoadSession(a.context(), id)
+}
+
+func (a *App) DeleteSession(id string) error { return a.engine.DeleteSession(a.context(), id) }
+
+func (a *App) SetModel(profile, model string) (core.Status, error) {
+	if err := a.engine.SetModel(profile, model); err != nil {
+		return core.Status{}, err
+	}
+	return a.engine.Status(), nil
+}
+
+// Send 发送一条消息并立即返回；对话过程全部通过事件推送。
+//
+// 为什么不阻塞到本轮结束：Wails 的方法调用对前端来说是一个 Promise，一轮对话可能持续几分钟，
+// 期间还需要调用 RespondPermission；异步返回让前端的调用模型保持简单（"发出去，然后听事件"）。
+func (a *App) Send(text string) error {
+	if a.engine.Status().Running {
+		return core.ErrBusy
+	}
+	go func() {
+		// 极少数情况下两次 Send 几乎同时到达，第二次会在这里拿到 ErrBusy，通过错误事件告知前端。
+		if _, err := a.engine.Send(a.context(), text); err != nil {
+			code := "send_failed"
+			if errors.Is(err, core.ErrBusy) {
+				code = "busy"
+			}
+			// 发布到总线即可，Startup 中的订阅会把它转发给前端。
+			st := a.engine.Status()
+			a.engine.Bus().Publish(event.New(st.SessionID, event.RootAgentID, "",
+				event.Error{Code: code, Message: err.Error(), Fatal: true}))
+		}
+	}()
+	return nil
+}
+
+func (a *App) Cancel() { a.engine.Cancel() }
+
+func (a *App) RespondPermission(requestID, decision string) error {
+	return a.engine.RespondPermission(requestID, decision)
+}
+
+func (a *App) context() context.Context {
+	if a.ctx == nil {
+		return context.Background()
+	}
+	return a.ctx
+}
