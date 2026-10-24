@@ -9,6 +9,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/provider"
+	"github.com/crazyjums/myllmapp/internal/settings"
 )
 
 // EventName 是前端订阅的 Wails 事件名。所有内核事件都走这一个通道，由前端按 type 分发。
@@ -22,19 +23,20 @@ type EmitFunc func(ctx context.Context, name string, data ...any)
 
 // App 是绑定到前端的对象。
 type App struct {
-	engine *core.Engine
-	emit   EmitFunc
+	engine   *core.Engine
+	settings *settings.Manager
+	emit     EmitFunc
 
 	ctx         context.Context
 	unsubscribe func()
 }
 
 // New 创建绑定对象。emit 为 nil 时使用 Wails 的 runtime.EventsEmit。
-func New(engine *core.Engine, emit EmitFunc) *App {
+func New(engine *core.Engine, s *settings.Manager, emit EmitFunc) *App {
 	if emit == nil {
 		emit = runtime.EventsEmit
 	}
-	return &App{engine: engine, emit: emit}
+	return &App{engine: engine, settings: s, emit: emit}
 }
 
 // Startup 由 Wails 在窗口创建后调用（options.App.OnStartup）。
@@ -75,11 +77,33 @@ func (a *App) LoadSession(id string) (core.Status, error) {
 
 func (a *App) DeleteSession(id string) error { return a.engine.DeleteSession(a.context(), id) }
 
+// SetModel 切换厂商和模型，并记住选择（下次启动直接使用）。
 func (a *App) SetModel(profile, model string) (core.Status, error) {
-	if err := a.engine.SetModel(profile, model); err != nil {
+	if err := a.settings.Select(profile, model); err != nil {
 		return core.Status{}, err
 	}
 	return a.engine.Status(), nil
+}
+
+// ---- 设置：厂商配置（逻辑都在 internal/settings） ----
+
+// ListProviders 返回所有厂商配置档，供设置页展示。不含密钥明文。
+func (a *App) ListProviders() []settings.ProviderView { return a.settings.Providers() }
+
+// SaveProvider 新建或修改厂商配置档，立即生效。
+func (a *App) SaveProvider(in settings.ProviderInput) error { return a.settings.Save(in) }
+
+// DeleteProvider 删除界面上添加的厂商配置档。
+func (a *App) DeleteProvider(name string) error { return a.settings.Delete(name) }
+
+// TestProvider 用表单中的配置发一条极短的消息，验证能否连通。不保存。
+func (a *App) TestProvider(in settings.ProviderInput) settings.TestResult {
+	return a.settings.Test(a.context(), in)
+}
+
+// FetchModels 用表单中的 Base URL 和密钥从服务器获取模型列表。
+func (a *App) FetchModels(in settings.ProviderInput) ([]string, error) {
+	return a.settings.ListModels(a.context(), in)
 }
 
 // Send 发送一条消息并立即返回；对话过程全部通过事件推送。

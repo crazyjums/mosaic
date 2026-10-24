@@ -4,7 +4,7 @@
 //
 //   - 解析工作区和数据目录路径；
 //   - 创建工具注册表并注册内置工具；
-//   - 用 provider.DefaultRegistry（由 provider/all 填充）为每个配置档创建厂商实例；
+//   - 合并 config.toml 与界面设置（internal/settings 的 settings.json）中的厂商配置档，并选出启动时使用的厂商；
 //   - 打开 SQLite 会话存储；
 //   - 选择权限策略、生成默认系统提示词；
 //   - 最后创建 core.Engine。

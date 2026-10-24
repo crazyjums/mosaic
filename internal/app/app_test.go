@@ -25,7 +25,7 @@ func TestAppForwardsEventsAndCommands(t *testing.T) {
 	var mu sync.Mutex
 	var got []event.Event
 	var a *App
-	a = New(built.Engine, func(_ context.Context, name string, data ...any) {
+	a = New(built.Engine, built.Settings, func(_ context.Context, name string, data ...any) {
 		if name != EventName {
 			t.Errorf("unexpected event name %s", name)
 		}
@@ -71,5 +71,11 @@ func TestAppForwardsEventsAndCommands(t *testing.T) {
 	}
 	if st := a.GetStatus(); st.Model != "echo" {
 		t.Fatalf("status: %+v", st)
+	}
+	if p, m := built.Settings.DefaultSelection(); p != "fake" || m != "echo" {
+		t.Fatalf("SetModel 应记住选择: %s %s", p, m)
+	}
+	if len(a.ListProviders()) == 0 {
+		t.Fatal("ListProviders 不应为空")
 	}
 }

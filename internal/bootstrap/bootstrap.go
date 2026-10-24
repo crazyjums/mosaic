@@ -12,6 +12,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	_ "github.com/crazyjums/myllmapp/internal/provider/all" // 注册所有内置厂商适配器
+	"github.com/crazyjums/myllmapp/internal/settings"
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool"
 	"github.com/crazyjums/myllmapp/internal/tool/builtin"
@@ -29,7 +30,9 @@ type Options struct {
 
 // Built 是组装结果。调用方用完后必须调用 Close。
 type Built struct {
-	Engine    *core.Engine
+	Engine *core.Engine
+	// Settings 管理界面上配置的厂商；桌面端的设置页和 CLI 的 /model 都通过它修改并持久化。
+	Settings  *settings.Manager
 	Config    *config.Config
 	Workspace string
 	DataDir   string
@@ -60,8 +63,14 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	shellTimeout := time.Duration(cfg.ShellTimeoutSeconds) * time.Second
 	builtin.Register(tools, builtin.Options{ShellTimeout: shellTimeout})
 
-	// 步骤 3：厂商。单个配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
-	catalog := provider.NewCatalog(provider.DefaultRegistry, cfg.Profiles())
+	// 步骤 3：厂商。配置文件中的配置档 + 界面上配置的配置档（settings.json）合并。
+	// 单个配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
+	settingsMgr, err := settings.NewManager(filepath.Join(dataDir, settings.FileName), cfg.Profiles(), provider.DefaultRegistry)
+	if err != nil {
+		return nil, err
+	}
+	catalog := settingsMgr.Catalog()
+	profile, model := pickDefault(catalog, cfg, settingsMgr)
 
 	// 步骤 4：存储。
 	var st core.SessionStore
@@ -97,14 +106,32 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		SystemPrompt:   system,
 		MaxSteps:       cfg.MaxSteps,
 		MaxTokens:      cfg.MaxTokens,
-		DefaultProfile: cfg.DefaultProvider,
-		DefaultModel:   cfg.DefaultModel,
+		DefaultProfile: profile,
+		DefaultModel:   model,
 	})
 	if err != nil {
 		closeFn()
 		return nil, err
 	}
-	return &Built{Engine: engine, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeFn}, nil
+	settingsMgr.Attach(engine)
+	return &Built{Engine: engine, Settings: settingsMgr, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeFn}, nil
+}
+
+// pickDefault 决定启动时使用的厂商和模型：
+// 上次在界面上的选择 > 配置文件的 default_provider > 第一个可用的配置档。
+// 选中的配置档不可用（例如密钥被删了）时继续往后找，而不是让程序起不来。
+func pickDefault(c *provider.Catalog, cfg *config.Config, s *settings.Manager) (string, string) {
+	available := func(name string) bool {
+		_, _, err := c.Get(name)
+		return name != "" && err == nil
+	}
+	if p, m := s.DefaultSelection(); available(p) {
+		return p, m
+	}
+	if available(cfg.DefaultProvider) {
+		return cfg.DefaultProvider, cfg.DefaultModel
+	}
+	return "", ""
 }
 
 // DefaultSystemPrompt 生成默认系统提示词。

@@ -145,7 +145,36 @@ func (e *Engine) Status() Status {
 }
 
 // Profiles 返回所有厂商配置档（不含密钥），用于界面上的厂商/模型选择器。
-func (e *Engine) Profiles() []provider.ProfileInfo { return e.cfg.Catalog.Profiles() }
+func (e *Engine) Profiles() []provider.ProfileInfo {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cfg.Catalog.Profiles()
+}
+
+// ReplaceCatalog 用新的厂商目录替换旧的，用于界面上修改厂商配置后立即生效，不需要重启。
+//
+// 当前会话使用的配置档如果在新目录里不存在了（被删除、改名）或变得不可用，
+// 回落到第一个可用的配置档。运行中不允许替换：正在进行的请求还持有旧的 Provider。
+func (e *Engine) ReplaceCatalog(c *provider.Catalog) error {
+	if c == nil {
+		return fmt.Errorf("engine: catalog is nil")
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.running {
+		return ErrBusy
+	}
+	e.cfg.Catalog = c
+	snap := e.session.Snapshot()
+	if _, _, err := c.Get(snap.Provider); err != nil {
+		p, m, err := e.resolveModel("", "")
+		if err != nil {
+			return err
+		}
+		e.session.setModel(p, m)
+	}
+	return nil
+}
 
 // SetModel 切换当前会话使用的厂商和模型。下一次发送消息时生效。
 //

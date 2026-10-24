@@ -97,3 +97,14 @@ type Provider interface {
 	Name() string
 	Stream(ctx context.Context, req Request, onDelta func(Delta)) error
 }
+
+// ModelLister 是可选能力：能从厂商服务器获取可用模型列表的适配器实现它。
+//
+// 用"可选接口 + 类型断言"而不是把 ListModels 加进 Provider：
+// 不是每个厂商都提供模型列表接口（fake 没有，一些兼容实现也没有），
+// 强制所有适配器实现只会多出一堆返回"不支持"的空方法。调用方这样使用：
+//
+//	if l, ok := p.(provider.ModelLister); ok { models, err := l.ListModels(ctx) }
+type ModelLister interface {
+	ListModels(ctx context.Context) ([]string, error)
+}

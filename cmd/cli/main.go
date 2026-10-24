@@ -16,6 +16,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/settings"
 )
 
 type flags struct {
@@ -105,7 +106,7 @@ func run(f flags) error {
 	}
 
 	// 步骤 3：输入循环。stdin 由一个 goroutine 读取，主循环用 select 同时等待"输入、权限请求、Ctrl-C、本轮结束"。
-	c := &cli{eng: eng, lines: readLines(os.Stdin), perm: permCh, info: info, interactive: interactive}
+	c := &cli{eng: eng, settings: built.Settings, lines: readLines(os.Stdin), perm: permCh, info: info, interactive: interactive}
 	c.sig = make(chan os.Signal, 1)
 	signal.Notify(c.sig, os.Interrupt)
 
@@ -123,6 +124,7 @@ func run(f flags) error {
 
 type cli struct {
 	eng         *core.Engine
+	settings    *settings.Manager
 	lines       <-chan string
 	perm        <-chan event.PermissionRequest
 	sig         chan os.Signal
@@ -222,7 +224,7 @@ func (c *cli) command(line string) (quit bool) {
 /sessions                 列出已保存的会话
 /load <id>                恢复会话
 /models                   列出厂商配置档和模型
-/model <profile> [model]  切换厂商和模型
+/model <profile> [model]  切换厂商和模型（会记住，下次启动直接使用）
 /status                   当前状态
 /quit                     退出`)
 	case "/new":
@@ -260,7 +262,8 @@ func (c *cli) command(line string) (quit bool) {
 		if len(fields) > 2 {
 			model = fields[2]
 		}
-		if err := c.eng.SetModel(fields[1], model); err != nil {
+		// 通过 settings 切换：和桌面端一样会记住选择，下次启动直接使用。
+		if err := c.settings.Select(fields[1], model); err != nil {
 			fmt.Fprintln(c.info, "错误:", err)
 			return false
 		}

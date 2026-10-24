@@ -8,12 +8,13 @@
 //
 // # 不负责什么
 //
-//   - 不写业务逻辑：会话管理、模型切换、权限等待全部在 core.Engine 里。
+//   - 不写业务逻辑：会话管理、模型切换、权限等待全部在 core.Engine 里，
+//     厂商配置的增删改查、测试连接在 internal/settings 里。
 //     本包的每个方法基本都只有一两行转发——如果你发现这里的代码变多了，
 //     多半说明有逻辑应该下沉到 core。
 //
 // # 与其他包的关系
 //
-// 入口层。依赖 core（Engine）、event（事件类型）和 Wails runtime。
+// 入口层。依赖 core（Engine）、settings（厂商配置）、event（事件类型）和 Wails runtime。
 // Wails runtime 的调用被收敛到 emit 函数里，测试时可以替换，所以本包不需要真正的 Wails 环境也能测试。
 package app

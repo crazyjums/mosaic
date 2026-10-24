@@ -34,7 +34,7 @@ func main() {
 	}
 	defer built.Close()
 
-	a := app.New(built.Engine, nil)
+	a := app.New(built.Engine, built.Settings, nil)
 	err = wails.Run(&options.App{
 		Title:            "myllmapp",
 		Width:            1280,
