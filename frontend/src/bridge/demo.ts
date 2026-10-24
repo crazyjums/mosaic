@@ -19,6 +19,9 @@ const recorded: AgentEvent[] = raw
   .filter((l) => l.trim() !== "")
   .map((l) => JSON.parse(l) as AgentEvent);
 
+// 录制时使用的用户输入。回放时把它出现的所有地方（思考、工具参数）替换成用户实际输入的文字。
+const recordedPrompt = recorded.find((e) => e.type === "user_message")?.data.text ?? "";
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const rid = (prefix: string) => `${prefix}_${Math.random().toString(16).slice(2, 10)}`;
 const zeroUsage = (): Usage => ({ input_tokens: 0, output_tokens: 0 });
@@ -76,17 +79,16 @@ export function createDemoBackend(): Backend {
       return ids.get(id)!;
     };
     const denied = new Set<string>();
+    const escaped = JSON.stringify(text).slice(1, -1); // 作为 JSON 字符串内容插入，需要转义
 
     for (const original of recorded) {
       if (cancelled) return endTurn("cancelled");
-      const ev = structuredClone(original) as AgentEvent;
+      const json = JSON.stringify(original);
+      const ev = JSON.parse(recordedPrompt ? json.replaceAll(recordedPrompt, escaped) : json) as AgentEvent;
       if (ev.message_id) ev.message_id = remap(ev.message_id);
       if ("call_id" in ev.data) ev.data.call_id = remap(ev.data.call_id);
 
       switch (ev.type) {
-        case "user_message":
-          ev.data.text = text;
-          break;
         case "text_delta":
         case "thinking_delta":
           await stream(ev, ev.data.text);
