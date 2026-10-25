@@ -1,6 +1,7 @@
 import type { AssistantItem } from "../store/reducer";
 import { useChat } from "../store/chatStore";
 import ImageBlock from "./ImageBlock";
+import ScholarThinking from "./ScholarThinking";
 import Markdown from "./Markdown";
 import ThinkingCard from "./ThinkingCard";
 import ToolCallCard from "./ToolCallCard";
@@ -32,7 +33,8 @@ export default function AssistantMessage({ item }: { item: AssistantItem }) {
           }
         }
       })}
-      {item.streaming && item.blocks.length === 0 && <div className="caret text-sm text-muted">{t("等待模型响应")}</div>}
+      {/* 还没收到任何内容时显示思考动画；第一个内容到达后自动消失 */}
+      {item.streaming && item.blocks.length === 0 && <ScholarThinking since={item.startedAt} />}
       {item.stopReason === "max_tokens" && <div className="text-xs text-warn">{t("输出达到 max_tokens 上限，被截断。")}</div>}
       {item.stopReason === "refusal" && <div className="text-xs text-danger">{t("厂商拒绝了这次请求。")}</div>}
     </div>
