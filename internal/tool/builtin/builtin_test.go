@@ -184,7 +184,7 @@ func TestSummaries(t *testing.T) {
 	if s := w.Summarize(json.RawMessage(`{"path":"n.md","content":"abc"}`)); s != "写入 n.md（3 字节）" {
 		t.Fatalf("summary: %q", s)
 	}
-	if len(reg.Specs()) != 15 {
-		t.Fatal("应注册 15 个内置工具")
+	if len(reg.Specs()) != 16 {
+		t.Fatal("应注册 16 个内置工具")
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/secret"
 	"github.com/crazyjums/myllmapp/internal/settings"
 	"github.com/crazyjums/myllmapp/internal/siwc"
+	"github.com/crazyjums/myllmapp/internal/skill"
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool"
 	"github.com/crazyjums/myllmapp/internal/tool/builtin"
@@ -156,7 +157,11 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		DefaultProfile:  profile,
 		DefaultModel:    model,
 		DisabledTools:   settingsMgr.DisabledTools(),
-		TitleMode:       eff.TitleMode,
+		SkillsPrompt: func(ws string) string {
+			home, _ := os.UserHomeDir()
+			return skill.Prompt(ws, home)
+		},
+		TitleMode: eff.TitleMode,
 	})
 	if err != nil {
 		closeFn()

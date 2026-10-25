@@ -451,6 +451,10 @@ export function createDemoBackend(): Backend {
     setProxy: async (raw) => {
       demoProxy = raw.trim();
     },
+    listSkills: async () => [
+      { name: "pdf-report", description: "把数据整理成 PDF 报告。用户提到报告、导出 PDF 时使用。", source: "project" as const, origin: ".myllmapp/skills", dir: "/demo/workspace/.myllmapp/skills/pdf-report" },
+      { name: "code-review", description: "按团队规范审查当前分支的改动，输出按严重程度排序的问题清单。", source: "user" as const, origin: ".claude/skills", dir: "~/.claude/skills/code-review" },
+    ],
     getVersion: async () => "dev",
     checkUpdate: async () => ({ current: "dev", latest: "", available: false, manual: false, disabled: "浏览器演示模式不检查更新" }),
     getVersionHistory: async () => [

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/settings"
+	"github.com/crazyjums/myllmapp/internal/skill"
 	"github.com/crazyjums/myllmapp/internal/update"
 	"github.com/crazyjums/myllmapp/internal/workspace"
 )
@@ -81,6 +83,17 @@ func (a *App) ListSessions() ([]core.SessionSummary, error) {
 }
 
 func (a *App) NewSession() (core.Status, error) { return a.engine.NewSession() }
+
+// ListSkills 返回当前会话可用的技能（工作区里的和个人目录里的），输入框里键入 / 时用它做补全菜单。
+// 技能随工作区变化，所以每次都重新扫描——目录很小，扫描只读几个文件头。
+func (a *App) ListSkills() []skill.Info {
+	home, _ := os.UserHomeDir()
+	list := skill.Discover(a.engine.Status().Workspace, home)
+	if list == nil {
+		list = []skill.Info{} // 前端拿到 [] 而不是 null
+	}
+	return list
+}
 
 // LoadSession 加载历史会话，只返回最近若干轮（设置 → 常规 → 历史会话加载轮数）的重放事件。
 // 事件作为返回值一次性交给前端，不走 agent:event：一次调用代替成百上千次 IPC。

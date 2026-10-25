@@ -130,3 +130,43 @@ func TestOpenSessionWithoutAnyProviderIsUnset(t *testing.T) {
 		t.Fatalf("应返回 ErrNoProvider: %v", err)
 	}
 }
+
+// captureProvider 记录收到的系统提示词，然后立即结束。
+type captureProvider struct{ system *[]string }
+
+func (c captureProvider) Name() string { return "cap" }
+func (c captureProvider) Stream(_ context.Context, req provider.Request, onDelta func(provider.Delta)) error {
+	*c.system = append(*c.system, req.System)
+	onDelta(provider.Delta{Type: provider.DeltaText, Text: "ok"})
+	onDelta(provider.Delta{Type: provider.DeltaStop, StopReason: provider.StopEndTurn})
+	return nil
+}
+
+// 装配层提供的技能清单会追加到系统提示词后面，并且按会话的工作区生成。
+func TestSkillsPromptIsAppendedPerWorkspace(t *testing.T) {
+	var systems, workspaces []string
+	reg := provider.NewRegistry()
+	reg.Register("cap", func(provider.ProfileConfig) (provider.Provider, error) { return captureProvider{&systems}, nil })
+	ws := t.TempDir()
+	eng, err := core.NewEngine(core.EngineConfig{
+		Catalog:      provider.NewCatalog(reg, []provider.ProfileConfig{{Name: "cap", Type: "cap", Models: []string{"m"}}}),
+		Workspace:    ws,
+		SystemPrompt: "BASE",
+		SkillsPrompt: func(w string) string {
+			workspaces = append(workspaces, w)
+			return "\n\nSkills: demo"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Send(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if len(systems) != 1 || systems[0] != "BASE\n\nSkills: demo" {
+		t.Fatalf("系统提示词应追加技能清单: %q", systems)
+	}
+	if workspaces[0] != ws {
+		t.Fatalf("应按会话的工作区生成: %v", workspaces)
+	}
+}

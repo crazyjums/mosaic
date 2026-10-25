@@ -12,6 +12,9 @@
 
 ## [Unreleased]
 
+### 新增
+- 技能（Skills）：在输入框里键入 `/` 就能看到可用的技能并选用，例如 `/release-notes 写更新日志`。技能是放在 `.myllmapp/skills` 或 `.claude/skills`（工作区里或用户目录下）的文件夹，里面有一个 `SKILL.md`，与 Claude Code 的技能格式兼容。模型只在需要时才读取技能正文，不占用上下文。
+
 ## [1.2.3] - 2026-10-25
 
 全新的 Mosaic 外观。

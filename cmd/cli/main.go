@@ -18,6 +18,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/settings"
+	"github.com/crazyjums/myllmapp/internal/skill"
 )
 
 type flags struct {
@@ -233,6 +234,7 @@ func (c *cli) command(line string) (quit bool) {
 /mode [mode]              查看或切换权限模式：readonly / default / accept_edits / auto
 /status                   当前状态
 /cd [dir]                 查看或切换当前会话的工作区（/cd - 改回默认工作区）
+/skills                   列出可用的技能（输入 /技能名 开头的消息即可使用）
 /login [new]              用 ChatGPT 账号登录（使用套餐额度）；new 表示换一个账号
 /logout                   退出 ChatGPT 账号
 /quit                     退出`)
@@ -320,6 +322,15 @@ func (c *cli) command(line string) (quit bool) {
 			fmt.Fprintln(c.info, "提示:", err)
 		}
 		fmt.Fprintln(c.info, "已退出 ChatGPT 账号")
+	case "/skills":
+		home, _ := os.UserHomeDir()
+		list := skill.Discover(c.eng.Status().Workspace, home)
+		if len(list) == 0 {
+			fmt.Fprintln(c.info, "没有找到技能。把技能文件夹（里面有 SKILL.md）放到 <工作区>/.myllmapp/skills、<工作区>/.claude/skills、~/.myllmapp/skills 或 ~/.claude/skills 即可。")
+		}
+		for _, s := range list {
+			fmt.Fprintf(c.info, "/%s  %s  [%s · %s]\n", s.Name, s.Description, s.Source, s.Origin)
+		}
 	case "/status":
 		st := c.eng.Status()
 		fmt.Fprintf(c.info, "会话 %s「%s」\n厂商 %s · 模型 %s\ntokens 入 %d / 出 %d\n工作区 %s\n权限模式 %s\n",
