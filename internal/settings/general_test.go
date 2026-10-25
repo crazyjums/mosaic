@@ -39,6 +39,22 @@ func TestResolveGeneralPriority(t *testing.T) {
 	}
 }
 
+func TestHistoryTurnsResolution(t *testing.T) {
+	m, _, _, _ := newGeneralEnv(t, "")
+	if got := m.General().Effective.HistoryTurns; got != core.DefaultHistoryTurns {
+		t.Fatalf("未设置时应是默认值 %d: %d", core.DefaultHistoryTurns, got)
+	}
+	if err := m.SaveGeneral(General{HistoryTurns: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.General().Effective.HistoryTurns; got != 5 {
+		t.Fatalf("界面设置应生效: %d", got)
+	}
+	if eff, _ := ResolveGeneral(General{}, General{HistoryTurns: 8}, ""); eff.HistoryTurns != 8 {
+		t.Fatalf("配置文件的值应作为默认: %d", eff.HistoryTurns)
+	}
+}
+
 func TestSaveGeneralAppliesImmediately(t *testing.T) {
 	m, eng, shell, path := newGeneralEnv(t, "")
 	ws := t.TempDir()
@@ -88,6 +104,8 @@ func TestSaveGeneralValidation(t *testing.T) {
 		{MaxSteps: maxMaxSteps + 1},
 		{MaxTokens: maxMaxTokens + 1},
 		{ShellTimeoutSeconds: -5},
+		{HistoryTurns: -1},
+		{HistoryTurns: maxHistoryTurns + 1},
 		{SystemPrompt: strings.Repeat("字", maxSystemPromptLen+1)},
 	}
 	before := eng.Runtime()

@@ -36,6 +36,10 @@ max_tokens = 0
 # shell 工具单条命令超时（秒）。0 表示默认 60 秒。
 shell_timeout_seconds = 60
 
+# 打开历史会话时先加载最近多少轮对话（一轮 = 一次用户发言和模型的回复）。更早的内容在界面上点"加载更早的"再取。
+# 会话很长时调小可以打开得更快。只影响界面显示，不影响发给模型的上下文。0 表示默认 20。也可以在 设置 → 常规 里修改。
+history_turns = 20
+
 # 自定义系统提示词。留空使用内置的（见 internal/bootstrap/bootstrap.go 的 DefaultSystemPrompt）。
 system_prompt = ""
 

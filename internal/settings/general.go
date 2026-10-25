@@ -27,6 +27,9 @@ type General struct {
 	SystemPrompt        string `json:"system_prompt,omitempty"`
 	// TitleMode 决定会话标题怎么来：空或 first_message 截取第一句，model 由模型生成。
 	TitleMode string `json:"title_mode,omitempty"`
+	// HistoryTurns 是打开历史会话时先加载的最近轮数，也是"加载更早的"每次加载的轮数。
+	// 只影响界面显示，不影响发给模型的上下文。
+	HistoryTurns int `json:"history_turns,omitempty"`
 }
 
 // 会话标题的生成方式。
@@ -41,6 +44,7 @@ const (
 	maxMaxTokens        = 2_000_000
 	maxShellTimeoutSecs = 24 * 3600
 	maxSystemPromptLen  = 100_000 // 字符
+	maxHistoryTurns     = 10_000
 )
 
 // RuntimeBase 是"界面没有设置时"使用的值和需要的钩子，由 bootstrap 在启动时提供。
@@ -126,6 +130,9 @@ func ResolveGeneral(saved, defaults General, workspaceOverride string) (eff Gene
 	if saved.TitleMode != "" {
 		eff.TitleMode = saved.TitleMode
 	}
+	if saved.HistoryTurns > 0 {
+		eff.HistoryTurns = saved.HistoryTurns
+	}
 	return eff, warning
 }
 
@@ -136,6 +143,9 @@ func displayDefaults(g General) General {
 	}
 	if g.TitleMode == "" {
 		g.TitleMode = TitleFirstMessage
+	}
+	if g.HistoryTurns == 0 {
+		g.HistoryTurns = core.DefaultHistoryTurns
 	}
 	if g.ShellTimeoutSeconds == 0 {
 		g.ShellTimeoutSeconds = int(builtin.DefaultShellTimeout / time.Second)
@@ -184,6 +194,8 @@ func (m *Manager) SaveGeneral(g General) error {
 		return fmt.Errorf("输出上限应在 1～%d 之间", maxMaxTokens)
 	case g.ShellTimeoutSeconds < 0 || g.ShellTimeoutSeconds > maxShellTimeoutSecs:
 		return fmt.Errorf("命令超时应在 1～%d 秒之间", maxShellTimeoutSecs)
+	case g.HistoryTurns < 0 || g.HistoryTurns > maxHistoryTurns:
+		return fmt.Errorf("历史会话加载轮数应在 1～%d 之间", maxHistoryTurns)
 	case utf8.RuneCountInString(g.SystemPrompt) > maxSystemPromptLen:
 		return fmt.Errorf("系统提示词过长（上限 %d 字）", maxSystemPromptLen)
 	case g.TitleMode != "" && g.TitleMode != TitleFirstMessage && g.TitleMode != TitleModel:
