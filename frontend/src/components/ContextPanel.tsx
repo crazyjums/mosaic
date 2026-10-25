@@ -57,6 +57,7 @@ export default function ContextPanel() {
   const actual = useChat(contextTokens);
   const ctxWindow = useChat((s) => modelMeta(s.profiles, s.provider, s.model)?.context_window);
   const [data, setData] = useState<ContextBreakdown | null>(null);
+  const [allLargest, setAllLargest] = useState(false);
 
   useEffect(() => {
     if (!show) return;
@@ -75,24 +76,24 @@ export default function ContextPanel() {
   const largest = data?.largest ?? [];
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-line bg-panel/40 px-4 py-4 text-xs xl:flex">
+    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-line bg-side px-4 py-4 text-xs xl:flex">
       <div className="mb-3 flex items-center">
         <span className="text-sm font-semibold">{t("上下文明细")}</span>
         <div className="flex-1" />
-        <button className="text-muted hover:text-fg" title={t("隐藏（在标题栏可以重新打开）")} onClick={() => void useUIPrefs.getState().update({ contextPanel: false })}>
+        <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" aria-label={t("隐藏（在标题栏可以重新打开）")} title={t("隐藏（在标题栏可以重新打开）")} onClick={() => void useUIPrefs.getState().update({ contextPanel: false })}>
           ✕
         </button>
       </div>
 
       {/* 真实值：厂商返回的最近一次请求的上下文大小 */}
-      <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
+      <div className="card px-3.5 py-3">
         <div className="text-[11px] text-muted">{t("最近一次请求（厂商返回）")}</div>
-        <div className="mt-0.5 text-lg font-semibold tabular-nums">
+        <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
           {actual !== null ? fmtTokens(actual) : "—"}
           {ctxWindow ? <span className="text-xs font-normal text-muted"> / {fmtTokens(ctxWindow)}</span> : null}
         </div>
         {actual !== null && ctxWindow ? (
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-line">
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
             <div
               className={`h-full ${actual / ctxWindow >= 0.85 ? "bg-danger" : actual / ctxWindow >= 0.6 ? "bg-warn" : "bg-ok"}`}
               style={{ width: `${Math.max(2, Math.min(100, (actual / ctxWindow) * 100))}%` }}
@@ -103,7 +104,8 @@ export default function ContextPanel() {
       </div>
 
       {/* 估算的组成 */}
-      <div className="mt-4 flex items-baseline">
+      <div className="card mt-3 px-3.5 py-3">
+      <div className="flex items-baseline">
         <span className="font-medium">{t("组成（估算）")}</span>
         <div className="flex-1" />
         <span className="tabular-nums text-muted">≈ {fmtTokens(total)}</span>
@@ -133,14 +135,15 @@ export default function ContextPanel() {
           {t("{m} 条消息 · {n} 个工具", { m: data.messages, n: data.tool_count })}
         </div>
       )}
+      </div>
 
       {/* 占用最多的几项 */}
       {largest.length > 0 && (
         <>
           <div className="mt-4 font-medium">{t("占用最多")}</div>
           <ul className="mt-2 space-y-1.5">
-            {largest.map((it, i) => (
-              <li key={i} className="rounded-md border border-line bg-panel px-2 py-1.5" title={it.detail}>
+            {(allLargest ? largest : largest.slice(0, 3)).map((it, i) => (
+              <li key={i} className="card min-w-0 rounded-ctl px-2.5 py-1.5" title={it.detail}>
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: KINDS[it.kind]?.color }} />
                   <span className="min-w-0 flex-1 truncate">{itemLabel(it)}</span>
@@ -150,6 +153,11 @@ export default function ContextPanel() {
               </li>
             ))}
           </ul>
+          {largest.length > 3 && (
+            <button className="btn mt-2 w-full text-xs" onClick={() => setAllLargest(!allLargest)}>
+              {allLargest ? t("收起") : t("更多（{n}）", { n: largest.length - 3 })}
+            </button>
+          )}
         </>
       )}
 

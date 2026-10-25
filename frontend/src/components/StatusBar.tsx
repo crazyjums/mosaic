@@ -29,14 +29,14 @@ export default function StatusBar() {
     .map((it) => ({ id: it.id, node: <Item id={it.id} /> }));
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-y-1 px-6 py-2 text-xs text-muted">
+    <div className="mt-2 flex w-full shrink-0 flex-wrap items-center gap-y-1 border-t border-line bg-side px-6 py-1.5 text-xs text-muted">
       {rendered.map(({ id, node }) => (
         // statusline-item 的分隔线和"空项隐藏"写在 index.css 里
         <span key={id} className="statusline-item">
           {node}
         </span>
       ))}
-      <button className="ml-auto pl-3 text-muted/70 hover:text-fg" title={t("自定义状态栏")} onClick={() => void openSettings("statusline")}>
+      <button className="ml-auto pl-3 text-muted/70 hover:text-fg" aria-label={t("自定义状态栏")} title={t("自定义状态栏")} onClick={() => void openSettings("statusline")}>
         ⚙
       </button>
     </div>
@@ -90,7 +90,7 @@ function ModelItem() {
   return (
     <span className="flex items-center gap-2">
       <select
-        className="max-w-[16rem] truncate rounded border border-line bg-panel px-1.5 py-0.5 text-fg disabled:opacity-60"
+        className="max-w-[13rem] truncate rounded-ctl border border-line bg-panel px-1.5 py-0.5 text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
         value={value}
         onChange={(e) => {
           const [p, m] = e.target.value.split("\u0000");

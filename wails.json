@@ -8,5 +8,9 @@
   "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "crazyjums"
+  },
+  "info": {
+    "productName": "Mosaic",
+    "comments": "Mosaic — 桌面 AI 编码工作台"
   }
 }

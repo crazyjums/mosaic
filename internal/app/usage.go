@@ -26,7 +26,7 @@ func (a *App) SaveUsageCSV(req settings.UsageRequest) (string, error) {
 	}
 	path, err := runtime.SaveFileDialog(a.context(), runtime.SaveDialogOptions{
 		Title:           "导出用量记录",
-		DefaultFilename: fmt.Sprintf("myllmapp-usage-%s.csv", time.Now().Format("2006-01-02")),
+		DefaultFilename: fmt.Sprintf("mosaic-usage-%s.csv", time.Now().Format("2006-01-02")),
 		Filters:         []runtime.FileFilter{{DisplayName: "CSV (*.csv)", Pattern: "*.csv"}},
 	})
 	if err != nil || path == "" {

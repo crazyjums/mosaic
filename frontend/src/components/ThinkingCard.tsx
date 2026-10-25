@@ -21,7 +21,7 @@ export default function ThinkingCard({ text, redacted, streaming }: { text: stri
   }, [streaming]);
 
   return (
-    <div className="rounded-lg border border-think/30 bg-think/5">
+    <div className="rounded-ctl border border-think/30 bg-think/5">
       <button
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-think"
         onClick={() => setUserOpen(!open)}

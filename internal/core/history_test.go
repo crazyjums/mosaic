@@ -112,3 +112,21 @@ func TestLoadEarlierRejectsStaleWindow(t *testing.T) {
 		t.Fatalf("应返回 ErrHistoryChanged: %v", err)
 	}
 }
+
+// 会话记录的厂商已经不存在、而且一个厂商都没有时：打开会话后回到"未配置"状态（而不是停在一个不存在的厂商上），
+// 发送消息得到明确的 ErrNoProvider。
+func TestOpenSessionWithoutAnyProviderIsUnset(t *testing.T) {
+	h := newHarness(t, fake.Script{}, 0, allow)
+	id := saveLongSession(t, h, 2)
+	none := provider.NewCatalog(provider.NewRegistry(), nil)
+	if err := h.engine.ReplaceCatalog(none); err != nil {
+		t.Fatal(err)
+	}
+	got, err := h.engine.LoadSessionTail(context.Background(), id, 5)
+	if err != nil || got.Status.Provider != "" {
+		t.Fatalf("应回到未配置状态: %+v %v", got.Status, err)
+	}
+	if _, err := h.engine.Send(context.Background(), "hi"); !errors.Is(err, core.ErrNoProvider) {
+		t.Fatalf("应返回 ErrNoProvider: %v", err)
+	}
+}

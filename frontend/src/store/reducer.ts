@@ -54,6 +54,8 @@ export interface AssistantItem {
   firstTokenAt?: number;
   /** 使用模型组时：实际应答的成员，以及前面被转交的尝试。provider / model 已经更新为实际应答者 */
   route?: RouteView;
+  /** 这条消息所在的一轮的总耗时（毫秒），写在一轮里最后一条消息上，供执行摘要显示。重放的历史没有 */
+  turnMs?: number;
 }
 
 export interface RouteView {
@@ -256,16 +258,23 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
 
     case "turn_end": {
       const d = ev.data;
+      const turnMs = !d.replay && s.turnStartedAt !== null ? Date.parse(ev.ts) - s.turnStartedAt : null;
+      let lastAssistant = -1;
+      s.timeline.forEach((it, i) => it.kind === "assistant" && (lastAssistant = i));
       return {
         ...s,
         running: false,
         permissions: [],
         sessionUsage: d.session_usage,
         turnStartedAt: null,
-        lastTurnMs: !d.replay && s.turnStartedAt !== null ? Date.parse(ev.ts) - s.turnStartedAt : s.lastTurnMs,
-        // 本轮所有还在流式中的消息都结束了（例如被取消时可能没有 message_end）。
+        lastTurnMs: turnMs ?? s.lastTurnMs,
+        // 本轮所有还在流式中的消息都结束了（例如被取消时可能没有 message_end）；总耗时记在本轮最后一条消息上。
         timeline: [
-          ...s.timeline.map((it) => (it.kind === "assistant" && it.streaming ? { ...it, streaming: false } : it)),
+          ...s.timeline.map((it, i) => {
+            if (it.kind !== "assistant") return it;
+            const withMs = i === lastAssistant && turnMs !== null;
+            return it.streaming || withMs ? { ...it, streaming: false, ...(withMs ? { turnMs } : {}) } : it;
+          }),
           { kind: "turn_end", id: ev.id, reason: d.reason, steps: d.steps, usage: d.usage, replay: !!d.replay },
         ],
       };

@@ -10,14 +10,22 @@
  * 这里是"默认"皮肤。其他皮肤（设置 → 外观 → 皮肤）由 store/skins.ts 生成同样结构的规则，
  * 插入到 <head> 末尾的 <style id="skin"> 里，覆盖这里的变量。
  */
+/*
+ * 设计 Tokens 分三层：
+ *   1. 皮肤调色板（12 个颜色，可被皮肤替换，见 store/skins.ts）：--bg --panel --panel-2 --border --fg --muted --accent …
+ *   2. 派生 Tokens（--side、--accent-soft、--code-bg …）：由调色板用 color-mix 算出来，所以任何皮肤（包括用户导入的自定义皮肤）
+ *      都自动得到协调的侧栏底色、选中底色、代码块底色，不需要皮肤再多写几个颜色；
+ *   3. 品牌常量（--gold、--mos-*）：Mosaic 的 Logo 和"正在执行"的金色拼块，不随皮肤变化，保证品牌识别一致。
+ * 以后新增皮肤只需要提供第 1 层的 12 个颜色。
+ */
 :root {
   color-scheme: dark;
-  --bg: #0f1115;
-  --panel: #161920;
-  --panel-2: #1d212a;
-  --border: #2a2f3a;
-  --fg: #e6e8ec;
-  --muted: #8b93a3;
+  --bg: #0b1220;
+  --panel: #111b2e;
+  --panel-2: #18243a;
+  --border: #263552;
+  --fg: #e8eef9;
+  --muted: #93a3bf;
   --accent: #7c9cff;
   --think: #a78bfa;
   --ok: #4ade80;
@@ -27,40 +35,79 @@
   --on-accent: #0b1330;
   /* 消息区和输入框的最大宽度（设置 → 外观 → 消息区宽度） */
   --content-width: 48rem;
+
+  /* 品牌常量：金色 = 正在执行的任务；三档海军蓝用于 Logo 的拼块 */
+  --gold: #f0b42b;
+  --gold-ink: #f3cd74;
+  --mos-1: #1b3b70;
+  --mos-2: #2d5190;
+  --mos-3: #4a73b0;
+
+  /* 阴影（随明暗模式变化，所以放在这里而不是 @theme；组件用 .shadow-card / .shadow-pop） */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.18);
+  --shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.45);
+  /* 布局尺寸 */
+  --sidebar-width: 16rem;
+  --modal-width: 62rem;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #f7f8fa;
+    --bg: #f5f7fb;
     --panel: #ffffff;
-    --panel-2: #f1f3f6;
-    --border: #e1e4ea;
-    --fg: #1b1f27;
-    --muted: #697186;
-    --accent: #3b5bdb;
+    --panel-2: #f1f4f9;
+    --border: #e2e8f0;
+    --fg: #172b49;
+    --muted: #62718a;
+    --accent: #416bea;
     --think: #7c3aed;
     --ok: #16a34a;
     --warn: #b45309;
     --danger: #dc2626;
     --on-accent: #ffffff;
+    --gold: #e4ae38;
+    --gold-ink: #835a08;
+    --mos-1: #081e42;
+    --mos-2: #123e78;
+    --mos-3: #24558f;
+    --shadow-card: 0 1px 2px rgba(16, 43, 83, 0.05), 0 8px 24px rgba(16, 43, 83, 0.06);
+    --shadow-pop: 0 24px 60px rgba(16, 43, 83, 0.22);
   }
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f7f8fa;
+  --bg: #f5f7fb;
   --panel: #ffffff;
-  --panel-2: #f1f3f6;
-  --border: #e1e4ea;
-  --fg: #1b1f27;
-  --muted: #697186;
-  --accent: #3b5bdb;
+  --panel-2: #f1f4f9;
+  --border: #e2e8f0;
+  --fg: #172b49;
+  --muted: #62718a;
+  --accent: #416bea;
   --think: #7c3aed;
   --ok: #16a34a;
   --warn: #b45309;
   --danger: #dc2626;
   --on-accent: #ffffff;
+  --gold: #e4ae38;
+  --gold-ink: #835a08;
+  --mos-1: #081e42;
+  --mos-2: #123e78;
+  --mos-3: #24558f;
+  --shadow-card: 0 1px 2px rgba(16, 43, 83, 0.05), 0 8px 24px rgba(16, 43, 83, 0.06);
+  --shadow-pop: 0 24px 60px rgba(16, 43, 83, 0.22);
+}
+
+/* 第 2 层：派生 Tokens。写在 :root 上，引用同一元素上最终生效的调色板变量，所以换皮肤时自动跟着变。 */
+:root {
+  --side: color-mix(in srgb, var(--bg) 62%, var(--border));
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  --accent-hover: color-mix(in srgb, var(--accent) 84%, var(--fg));
+  --code-bg: color-mix(in srgb, var(--panel-2) 72%, var(--border));
+  --brand: color-mix(in srgb, var(--accent) 35%, #081a38);
+  --on-brand: #ffffff;
+  --focus-ring: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 @theme {
@@ -76,6 +123,18 @@
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-on-accent: var(--on-accent);
+  --color-side: var(--side);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-hover: var(--accent-hover);
+  --color-code: var(--code-bg);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  /* 圆角（rounded-ctl / rounded-card / rounded-modal）：控件 8、卡片 14、弹窗 18 */
+  --radius-ctl: 8px;
+  --radius-card: 14px;
+  --radius-modal: 18px;
   --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 }
@@ -97,16 +156,27 @@ body {
 /* 表单控件的公共样式（设置页等） */
 @layer components {
   .input {
-    @apply w-full rounded-lg border border-line bg-bg px-3 py-1.5 text-sm text-fg outline-none placeholder:text-muted focus:border-accent/60;
+    @apply w-full rounded-ctl border border-line bg-panel px-3 py-1.5 text-sm text-fg outline-none placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-[var(--focus-ring)] disabled:bg-panel-2 disabled:opacity-70;
   }
   .btn {
-    @apply shrink-0 rounded-md border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50;
+    @apply shrink-0 rounded-ctl border border-line bg-panel px-3 py-1.5 text-sm hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50;
+  }
+  /* 主操作按钮：强调色实底 */
+  .btn-primary {
+    @apply shrink-0 rounded-ctl bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50;
   }
   /* 收起后的会话栏里的图标按钮 */
   .rail-btn {
-    @apply flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50;
+    @apply flex h-8 w-8 items-center justify-center rounded-ctl text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50;
+  }
+  /* 卡片：白（面板）底、细边框、轻阴影 */
+  .card {
+    @apply rounded-card border border-line bg-panel;
+    box-shadow: var(--shadow-card);
   }
 }
+.shadow-card { box-shadow: var(--shadow-card); }
+.shadow-pop { box-shadow: var(--shadow-pop); }
 
 /* 状态栏：某一项此刻没有内容（组件返回 null）时整项隐藏；相邻两个有内容的项之间画一条竖线。
    用 CSS 而不是在 JS 里判断，是因为每一项是否为空只有它自己的组件知道。 */
@@ -116,24 +186,48 @@ body {
   content: "";
   width: 1px;
   height: 0.75rem;
-  margin: 0 0.625rem;
+  margin: 0 0.5rem;
   background: var(--border);
 }
 
-/* Markdown 正文的最小样式（不引入 typography 插件，保持依赖精简）。 */
-.md > * + * { margin-top: 0.6em; }
-.md h1, .md h2, .md h3 { font-weight: 600; margin-top: 1em; }
-.md h1 { font-size: 1.25rem; }
-.md h2 { font-size: 1.1rem; }
-.md ul { list-style: disc; padding-left: 1.4em; }
-.md ol { list-style: decimal; padding-left: 1.4em; }
-.md code { font-family: var(--font-mono); font-size: 0.85em; background: var(--panel-2); padding: 0.1em 0.35em; border-radius: 4px; }
-.md pre { background: var(--panel-2); border: 1px solid var(--border); padding: 0.75em 1em; border-radius: 8px; overflow-x: auto; }
-.md pre code { background: none; padding: 0; }
-.md a { color: var(--accent); text-decoration: underline; }
-.md table { border-collapse: collapse; }
-.md th, .md td { border: 1px solid var(--border); padding: 0.25em 0.6em; }
-.md blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--muted); }
+/* Markdown 正文：舒适的行高和段落间距，长路径 / 长链接在容器内换行，不撑破布局。
+   不引入 typography 插件，保持依赖精简。 */
+.md { line-height: 1.75; overflow-wrap: anywhere; }
+.md > * + * { margin-top: 0.75em; }
+.md > :first-child { margin-top: 0; }
+.md h1, .md h2, .md h3, .md h4 { font-weight: 650; line-height: 1.4; letter-spacing: -0.01em; }
+.md h1 { font-size: 1.3rem; margin-top: 1.4em; }
+.md h2 { font-size: 1.15rem; margin-top: 1.3em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+.md h3 { font-size: 1.05rem; margin-top: 1.2em; }
+.md h4 { font-size: 1rem; margin-top: 1.1em; }
+.md ul { list-style: disc; padding-left: 1.5em; }
+.md ol { list-style: decimal; padding-left: 1.5em; }
+.md li + li { margin-top: 0.3em; }
+.md li > ul, .md li > ol { margin-top: 0.3em; }
+.md li::marker { color: var(--muted); }
+.md strong { font-weight: 650; }
+.md code { font-family: var(--font-mono); font-size: 0.86em; background: var(--code-bg); border: 1px solid var(--border); padding: 0.08em 0.38em; border-radius: 6px; overflow-wrap: anywhere; }
+.md pre { background: var(--code-bg); border: 1px solid var(--border); padding: 0.85em 1em; border-radius: var(--radius-ctl); overflow-x: auto; line-height: 1.6; font-size: 0.88em; overflow-wrap: normal; }
+.md pre code { background: none; border: 0; padding: 0; font-size: inherit; overflow-wrap: normal; white-space: pre; }
+.md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.md a:hover { color: var(--accent-hover); }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+/* 表格：圆角外框、表头底色、隔行底色；窄窗口里横向滚动，不撑破版面 */
+.md .md-table { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-ctl); }
+.md table { width: 100%; border-collapse: collapse; font-size: 0.93em; }
+.md th, .md td { border-bottom: 1px solid var(--border); padding: 0.45em 0.8em; text-align: left; vertical-align: top; }
+.md th { background: var(--panel-2); font-weight: 600; white-space: nowrap; }
+.md tr:last-child td { border-bottom: 0; }
+.md tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--panel-2) 45%, transparent); }
+.md blockquote { border-left: 3px solid var(--gold); background: color-mix(in srgb, var(--panel-2) 60%, transparent); padding: 0.4em 0.9em; border-radius: 0 var(--radius-ctl) var(--radius-ctl) 0; color: var(--muted); }
+.md blockquote > * + * { margin-top: 0.4em; }
+/* 代码块外壳（语言标签 + 复制按钮），见 Markdown.tsx 的 CodeBlock */
+.code-block { position: relative; }
+.code-block > .code-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.3rem 0.5rem 0.3rem 1rem; border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius-ctl) var(--radius-ctl) 0 0; background: var(--panel-2); color: var(--muted); font-size: 11px; font-family: var(--font-mono); }
+.code-block > pre { margin-top: 0; border-radius: 0 0 var(--radius-ctl) var(--radius-ctl); }
+.code-block .code-copy { font-family: var(--font-sans); border-radius: 6px; padding: 0.1rem 0.5rem; color: var(--muted); }
+.code-block .code-copy:hover { background: var(--border); color: var(--fg); }
+.code-block .code-copy:focus-visible { outline: 2px solid var(--accent); }
 
 /* 状态栏脚本输出中的 ANSI 颜色（见 store/ansi.ts） */
 .ansi-bold { font-weight: 600; }
@@ -196,3 +290,64 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .update-blink { animation: none; }
 }
+
+/* ---------- Mosaic Logo 与状态动画 ----------
+ * 所有尺寸都由 --unit（拼块边长）和 --gap（间距）决定；金块用 transform 在九宫格里移动，--pitch = 边长 + 间距。
+ * 纯色填充、没有渐变和阴影，小尺寸下也清晰。 */
+.mos-grid {
+  --unit: 14px;
+  --gap: 3px;
+  --pitch: calc(var(--unit) + var(--gap));
+  display: grid;
+  grid-template-columns: repeat(3, var(--unit));
+  grid-template-rows: repeat(3, var(--unit));
+  gap: var(--gap);
+  width: calc(var(--unit) * 3 + var(--gap) * 2);
+  height: calc(var(--unit) * 3 + var(--gap) * 2);
+  position: relative;
+  flex: none;
+  isolation: isolate;
+}
+.mos-grid.mos-xs { --unit: 5px; --gap: 1.5px; }
+.mos-grid.mos-sm { --unit: 9px; --gap: 2px; }
+.mos-grid.mos-md { --unit: 14px; --gap: 3px; }
+.mos-grid.mos-lg { --unit: 22px; --gap: 5px; }
+.mos-tile { display: block; width: var(--unit); height: var(--unit); border-radius: calc(var(--unit) * 0.2); background: var(--mos-1); }
+.mos-tile:nth-child(3n + 2) { background: var(--mos-2); }
+.mos-tile:nth-child(3n) { background: var(--mos-3); }
+.gold-tile {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  width: var(--unit); height: var(--unit); border-radius: calc(var(--unit) * 0.2);
+  background: var(--gold);
+  transform: translate(var(--pitch), var(--pitch));
+}
+.mos-grid[data-state="start"] .mos-tile { animation: mos-build 1.8s ease-in-out infinite; animation-delay: calc(var(--tile-order) * 0.07s); }
+.mos-grid[data-state="thinking"] .gold-tile { animation: mos-journey 5.8s cubic-bezier(0.48, 0.04, 0.48, 0.96) infinite; }
+.mos-grid[data-state="thinking"] .mos-tile:nth-child(odd) { animation: mos-breathe 4s ease-in-out infinite; }
+.mos-grid[data-state="problem"] .gold-tile { transform: translate(calc(2 * var(--pitch)), var(--pitch)); animation: mos-problem 2.7s ease-in-out infinite; }
+.mos-grid[data-state="done"] .gold-tile { animation: mos-done 2.8s ease-in-out 1; }
+@keyframes mos-build { 0%, 100% { opacity: 1; transform: none; } 26% { opacity: 0.35; transform: translateY(3px); } 55% { opacity: 1; transform: none; } }
+@keyframes mos-journey {
+  0%, 9% { transform: translate(0, 0); }
+  11%, 20% { transform: translate(var(--pitch), 0); }
+  22%, 31% { transform: translate(calc(2 * var(--pitch)), 0); }
+  33%, 42% { transform: translate(calc(2 * var(--pitch)), var(--pitch)); }
+  44%, 53% { transform: translate(var(--pitch), var(--pitch)); }
+  55%, 64% { transform: translate(0, var(--pitch)); }
+  66%, 75% { transform: translate(0, calc(2 * var(--pitch))); }
+  77%, 86% { transform: translate(var(--pitch), calc(2 * var(--pitch))); }
+  88%, 97% { transform: translate(calc(2 * var(--pitch)), calc(2 * var(--pitch))); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes mos-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+@keyframes mos-problem { 0%, 100% { opacity: 1; transform: translate(calc(2 * var(--pitch)), var(--pitch)) scale(1); } 50% { opacity: 0.48; transform: translate(calc(2 * var(--pitch)), var(--pitch)) scale(0.83); } }
+@keyframes mos-done { 0%, 100% { transform: translate(var(--pitch), var(--pitch)) scale(1); } 35% { transform: translate(var(--pitch), var(--pitch)) scale(1.12); } 56% { transform: translate(var(--pitch), var(--pitch)) scale(0.97); } }
+@media (prefers-reduced-motion: reduce) {
+  .mos-grid *, .mos-grid .gold-tile { animation: none !important; }
+  .mos-grid .gold-tile { transform: translate(var(--pitch), var(--pitch)); }
+}
+
+/* 用量图：悬停一天时，其他天变淡，当天的条更突出（原生 <title> 提供数值提示） */
+.usage-chart g:has(rect) { transition: opacity 0.15s; }
+.usage-chart:hover g:has(rect) { opacity: 0.55; }
+.usage-chart:hover g:has(rect):hover { opacity: 1; }

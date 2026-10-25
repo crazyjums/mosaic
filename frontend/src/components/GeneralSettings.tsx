@@ -66,10 +66,11 @@ export default function GeneralSettings() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+      <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
         {running && <Notice tone="warn">agent 正在运行，本轮结束后才能修改这些设置。</Notice>}
         {general.workspace_warning && <Notice tone="warn">{general.workspace_warning}</Notice>}
 
+        <Group title={t("工作区")}>
         <Row
           label={t("默认工作区")}
           hint={t("agent 读写文件、执行命令的根目录，工具不能访问它之外的文件。每个会话可以在状态栏上单独选择工作区（新会话沿用当前会话的）；没有单独选过的会话使用这里的默认工作区。")}
@@ -95,6 +96,9 @@ export default function GeneralSettings() {
           </div>
         </Row>
 
+        </Group>
+
+        <Group title={t("运行参数")}>
         <Row label="最大步数" hint="一轮对话中最多调用模型的次数，防止 agent 陷入死循环反复调用工具。达到上限后可以发送“继续”。">
           <NumberInput value={form.maxSteps} onChange={(v) => patch({ maxSteps: v })} placeholder={`默认 ${d.max_steps}`} unit="步" disabled={running} />
         </Row>
@@ -113,6 +117,9 @@ export default function GeneralSettings() {
           <NumberInput value={form.shellTimeout} onChange={(v) => patch({ shellTimeout: v })} placeholder={`默认 ${d.shell_timeout_seconds}`} unit="秒" disabled={running} />
         </Row>
 
+        </Group>
+
+        <Group title={t("会话")}>
         <Row
           label={t("历史会话加载轮数")}
           hint={t("打开历史会话时先加载最近这么多轮对话（一轮 = 一次你的发言和模型的回复），滚到顶部或点“加载更早的对话”时每次再加载这么多轮。会话很长时调小可以打开得更快；只影响显示，不影响发给模型的上下文。")}
@@ -132,7 +139,7 @@ export default function GeneralSettings() {
               return (
                 <button
                   key={v}
-                  className={`rounded-md px-3 py-1 text-sm ${active ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
+                  className={`rounded-ctl px-3 py-1 text-sm ${active ? "bg-accent font-medium text-on-accent" : "hover:bg-panel-2"}`}
                   onClick={() => patch({ titleMode: v })}
                   disabled={running}
                 >
@@ -143,18 +150,22 @@ export default function GeneralSettings() {
           </div>
         </Row>
 
+        </Group>
+
+        <Group title={t("网络与安全")}>
         <ProxyRow />
 
         <KeychainRow />
+        </Group>
       </div>
 
-      <footer className="flex shrink-0 items-center gap-3 border-t border-line px-6 py-3">
+      <footer className="flex shrink-0 items-center gap-3 border-t border-line bg-side px-6 py-3">
         {localError ? <span className="text-xs text-danger">{localError}</span> : saved && <span className="text-xs text-ok">✓ 已保存，从下一轮对话开始生效</span>}
         <div className="flex-1" />
         <button className="btn" onClick={() => patch(toForm({}))} disabled={running} title="清空所有输入框，保存后全部使用默认值">
           全部恢复默认
         </button>
-        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={save} disabled={running}>
+        <button className="btn-primary px-5" onClick={save} disabled={running}>
           保存
         </button>
       </footer>
@@ -162,13 +173,26 @@ export default function GeneralSettings() {
   );
 }
 
+// 一项设置：左边是名称和说明，右边是控件（窄窗口里上下排列）。名称和说明分开，扫一眼就能找到想改的项。
 function Row({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
   return (
-    <div>
-      <div className="text-sm font-medium">{label}</div>
-      <div className="mb-2 mt-0.5 text-[11px] text-muted">{hint}</div>
-      {children}
+    <div className="grid gap-x-8 gap-y-2 py-4 md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
+      <div>
+        <div className="text-sm font-medium">{label}</div>
+        <div className="mt-1 text-[11px] leading-relaxed text-muted">{hint}</div>
+      </div>
+      <div className="min-w-0 self-start">{children}</div>
     </div>
+  );
+}
+
+// 一组相关的设置：小标题 + 一张卡片，卡片里的各项之间用细线隔开。
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 px-1 text-xs font-semibold tracking-wide text-muted">{title}</h3>
+      <div className="card divide-y divide-line px-5">{children}</div>
+    </section>
   );
 }
 

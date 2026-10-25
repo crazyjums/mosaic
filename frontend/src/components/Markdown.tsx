@@ -1,7 +1,8 @@
-import { Children, isValidElement, type ReactNode } from "react";
+import { Children, isValidElement, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { backend } from "../bridge";
+import { t } from "../i18n";
 import { IMAGE_EXT, isLocalPath, MermaidDiagram, normalizeLocalPath, SvgBlock, WorkspaceImage, ZoomableImage } from "./MediaView";
 
 // 模型输出的正文按 Markdown 渲染（支持表格、任务列表等 GFM 语法）。
@@ -48,6 +49,12 @@ function makeComponents(streaming: boolean): Components {
         </>
       );
     },
+    // 表格放进一个可横向滚动的圆角外框：窄窗口里不撑破版面，宽度仍然撑满正文
+    table: ({ children }) => (
+      <div className="md-table">
+        <table>{children}</table>
+      </div>
+    ),
     pre: ({ children }) => {
       // 代码块是 <pre><code class="language-x">…</code></pre>；图类代码块整个替换掉 <pre>。
       const child = Children.toArray(children)[0];
@@ -57,7 +64,10 @@ function makeComponents(streaming: boolean): Components {
         if (lang === "mermaid") return <MermaidDiagram code={code} />;
         if (lang === "svg" || ((lang === "xml" || lang === "html") && /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(code))) return <SvgBlock code={code} />;
       }
-      return <pre>{children}</pre>;
+      // 普通代码块：顶部一条语言标签 + 复制按钮。流式输出期间也显示，用户可以复制已经出来的部分。
+      const lang = isValidElement<{ className?: string }>(child) ? /language-([\w-]+)/.exec(child.props.className ?? "")?.[1] : undefined;
+      const text = isValidElement<{ children?: ReactNode }>(child) ? codeText(child.props.children).replace(/\n$/, "") : "";
+      return <CodeBlock lang={lang} text={text}>{children}</CodeBlock>;
     },
   };
 }
@@ -65,6 +75,50 @@ function makeComponents(streaming: boolean): Components {
 // 默认的 URL 过滤会去掉 C:\... 这样的 Windows 绝对路径（看起来像一个未知协议），这里放行它们；
 // 其余仍按默认规则（javascript: 之类会被清掉）。
 const urlTransform = (url: string) => (/^[a-zA-Z]:[\\/]/.test(url) ? url : defaultUrlTransform(url));
+
+// 复制到剪贴板：优先用异步剪贴板接口；某些 WebView 里不可用时退回到选中文本再 execCommand。
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      return document.execCommand("copy");
+    } finally {
+      ta.remove();
+    }
+  }
+}
+
+function CodeBlock({ lang, text, children }: { lang?: string; text: string; children: ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="code-block">
+      <div className="code-bar">
+        <span>{lang ?? "text"}</span>
+        <button
+          className="code-copy"
+          onClick={async () => {
+            if (await copyText(text)) {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }
+          }}
+          aria-label={t("复制代码")}
+        >
+          {copied ? t("已复制") : t("复制")}
+        </button>
+      </div>
+      <pre>{children}</pre>
+    </div>
+  );
+}
 
 const COMPONENTS = { live: makeComponents(true), done: makeComponents(false) };
 

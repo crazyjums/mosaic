@@ -47,7 +47,7 @@ func main() {
 	a := app.New(built.Engine, built.Settings, nil)
 	a.SetChangelog(changelog)
 	err = wails.Run(&options.App{
-		Title:            "myllmapp",
+		Title:            "Mosaic",
 		Width:            1280,
 		Height:           840,
 		MinWidth:         900,

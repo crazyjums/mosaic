@@ -31,10 +31,11 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
   const [open, setOpen] = useState(false);
   const st = STATUS[tool.status];
   const busy = tool.status === "running" || tool.status === "queued";
+  const failed = tool.status === "error" || tool.status === "denied";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-line bg-panel">
-      <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-panel-2" onClick={() => setOpen(!open)}>
+    <div className={`overflow-hidden rounded-ctl border bg-panel ${failed ? "border-danger/40" : "border-line"}`}>
+      <button className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-panel-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className={`text-xs transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
         <span className="font-mono text-[13px] font-semibold">{tool.name}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">{headline(tool.input)}</span>
@@ -49,6 +50,12 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
         </span>
       </button>
       <ImagePreview tool={tool} />
+      {/* 失败的调用不用展开就能看到原因（只取第一行，避免撑开版面） */}
+      {failed && !open && tool.output && (
+        <div className="truncate border-t border-danger/20 bg-danger/5 px-3 py-1.5 font-mono text-xs text-danger" title={tool.output}>
+          {tool.output.split("\n").find((l) => l.trim()) ?? ""}
+        </div>
+      )}
       {open && (
         <div className="space-y-2 border-t border-line px-3 py-2 text-xs">
           {tool.permission && (
@@ -86,7 +93,7 @@ function Section({ title, body, error }: { title: string; body: string; error?: 
   return (
     <div>
       <div className="mb-1 text-muted">{title}</div>
-      <pre className={`max-h-64 overflow-auto whitespace-pre-wrap rounded bg-panel-2 p-2 font-mono ${error ? "text-danger" : ""}`}>{body}</pre>
+      <pre className={`max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-ctl bg-code p-2.5 font-mono leading-relaxed ${error ? "text-danger" : ""}`}>{body}</pre>
     </div>
   );
 }

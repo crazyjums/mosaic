@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useChat } from "../store/chatStore";
 import type { AssistantItem } from "../store/reducer";
 import { useUIPrefs } from "../store/uiPrefs";
+import { fmtDuration } from "../store/metrics";
 import { t } from "../i18n";
 import AssistantMessage, { HandoffMark } from "./AssistantMessage";
 import ImageBlock from "./ImageBlock";
+import MosaicMark from "./MosaicMark";
 import Markdown from "./Markdown";
 import ScholarThinking from "./ScholarThinking";
 import ToolCallCard from "./ToolCallCard";
@@ -39,17 +41,19 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
 
   const handoffs = items.reduce((n, it) => n + (it.route?.handedOn.length ?? 0), 0);
   let summary: string;
-  if (allTools.length > 0) summary = t("思考与工具调用 · {n} 步 · {m} 次工具调用", { n: items.length, m: allTools.length });
+  if (allTools.length > 0) summary = t("思考与执行 · {n} 步 · {m} 次工具调用", { n: items.length, m: allTools.length });
   else summary = t("思考过程 · {n} 步", { n: items.length });
   if (handoffs > 0) summary += ` · ${t("转交 {n} 次", { n: handoffs })}`;
+  if (last.turnMs) summary += ` · ${fmtDuration(last.turnMs)}`;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {hasProcess &&
         (open ? (
           <div className="space-y-4">
-            <button className="text-xs text-muted hover:text-fg" onClick={() => setUserOpen(false)}>
-              ▼ {summary} · {t("收起")}
+            <button className="flex items-center gap-1.5 text-xs text-muted hover:text-fg" onClick={() => setUserOpen(false)}>
+              <span>{summary}</span>
+              <span className="text-gold-ink">{t("收起")} ▴</span>
             </button>
             {items.map((it, i) => (
               <AssistantMessage key={it.id} item={it} omitAnswer={i === items.length - 1 && answer.length > 0} />
@@ -57,13 +61,14 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
           </div>
         ) : (
           <button
-            className="flex w-full items-center gap-2 rounded-lg border border-line bg-panel/60 px-3 py-1.5 text-left text-xs text-muted hover:bg-panel-2 hover:text-fg"
+            className="flex w-full items-center gap-2.5 rounded-ctl border border-line bg-panel px-3 py-2 text-left text-xs text-muted shadow-card hover:border-accent/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             onClick={() => setUserOpen(true)}
             title={t("展开查看每一步的思考和工具调用")}
           >
-            <span>▶</span>
+            <MosaicMark size="xs" />
             <span className="min-w-0 flex-1 truncate">{summary}</span>
-            {failed > 0 && <span className="text-danger">{t("{n} 次失败", { n: failed })}</span>}
+            {failed > 0 && <span className="rounded-full bg-danger/10 px-2 py-0.5 font-medium text-danger">{t("{n} 次失败", { n: failed })}</span>}
+            <span className="shrink-0 text-gold-ink">{t("展开")} ▾</span>
           </button>
         ))}
       {/* 只有最终回答、没有过程可折叠时，转交的标记也要让人看得到 */}

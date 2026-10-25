@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import { useUIPrefs } from "../store/uiPrefs";
 import { useUpdate } from "../store/updateStore";
 import { Notice } from "./GeneralSettings";
+import MosaicMark from "./MosaicMark";
 import ChangeLog, { ChangeSummary, LevelBadge, Release } from "./ChangeLog";
 
 // 设置 → 关于：版本号、检查更新、自动检查开关。
@@ -19,9 +20,12 @@ export default function AboutSettings() {
 
   return (
     <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
-      <section>
-        <div className="text-lg font-semibold">myllmapp</div>
-        <div className="mt-1 text-sm text-muted">{t("版本 {v}", { v: version || "—" })}</div>
+      <section className="flex items-center gap-4">
+        <MosaicMark size="lg" state="static" decorative={false} />
+        <div>
+          <div className="text-xl font-semibold tracking-tight">Mosaic</div>
+          <div className="mt-0.5 text-sm text-muted">{t("版本 {v}", { v: version || "—" })}</div>
+        </div>
       </section>
 
       <section>
