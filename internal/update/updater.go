@@ -146,6 +146,11 @@ func (u *Updater) Check(ctx context.Context) (*Info, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 已经发布的清单里的文本也再清理一遍：早先的版本可能把提交的署名行（含会话链接）带进了日志。
+	m.Notes = Clean(m.Notes)
+	for i := range m.Releases {
+		m.Releases[i] = cleanRelease(m.Releases[i])
+	}
 	info := &Info{Current: u.Current, Latest: strings.TrimPrefix(m.Version, "v"), Notes: m.Notes, PubDate: m.PubDate, Page: m.Page}
 	newer, err := Newer(m.Version, u.Current)
 	if err != nil {
