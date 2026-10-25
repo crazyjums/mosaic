@@ -11,6 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
+  GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -38,6 +39,11 @@ interface GoApp {
   TestProvider(input: ProviderInput): Promise<TestResult>;
   FetchModels(input: ProviderInput): Promise<string[] | null>;
   GetWorkspaceInfo(): Promise<WorkspaceInfo>;
+  GitOverview(): Promise<GitOverview>;
+  GitLog(skip: number, limit: number): Promise<GitCommit[] | null>;
+  GitCommit(hash: string): Promise<GitCommitDetail>;
+  GitCommitDiff(hash: string, path: string): Promise<GitDiff>;
+  GitWorkingDiff(path: string, staged: boolean): Promise<GitDiff>;
   SetPermissionMode(mode: PermissionMode): Promise<Status>;
   GetStatusLineConfig(): Promise<unknown>;
   SaveStatusLineConfig(cfg: unknown): Promise<void>;
@@ -139,6 +145,17 @@ export function createWailsBackend(): Backend {
     testProvider: (input) => app.TestProvider(input),
     fetchModels: async (input) => (await app.FetchModels(input)) ?? [],
     getWorkspaceInfo: () => app.GetWorkspaceInfo(),
+    gitOverview: async () => {
+      const o = await app.GitOverview();
+      return { status: { ...o.status, files: o.status.files ?? [] }, branches: o.branches ?? [] };
+    },
+    gitLog: async (skip, limit) => (await app.GitLog(skip, limit)) ?? [],
+    gitCommit: async (hash) => {
+      const d = await app.GitCommit(hash);
+      return { ...d, files: d.files ?? [] };
+    },
+    gitCommitDiff: (hash, path) => app.GitCommitDiff(hash, path),
+    gitWorkingDiff: (path, staged) => app.GitWorkingDiff(path, staged),
     setPermissionMode: (mode) => app.SetPermissionMode(mode),
     getStatusLineConfig: () => app.GetStatusLineConfig(),
     saveStatusLineConfig: (cfg) => app.SaveStatusLineConfig(cfg),

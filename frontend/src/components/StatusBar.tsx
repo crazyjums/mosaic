@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { backend } from "../bridge";
 import { t } from "../i18n";
+import { useGit } from "../store/gitStore";
 import { parseAnsi } from "../store/ansi";
 import { remaining, remainingTone, windowShort } from "../store/quota";
 import { useChat } from "../store/chatStore";
@@ -212,16 +213,19 @@ function GitItem() {
   const info = useChat((s) => s.workspaceInfo);
   if (!info?.is_repo) return null;
   return (
-    <Tip
-      tip={
+    <button
+      type="button"
+      className="whitespace-nowrap rounded-ctl px-1 hover:bg-accent-soft hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+      title={`${
         info.dirty
           ? t("分支 {branch}，{n} 个文件有未提交的改动", { branch: info.branch ?? "", n: info.changed_files })
           : t("分支 {branch}，没有未提交的改动", { branch: info.branch ?? "" })
-      }
+      }\n${t("点击打开 Git 窗口（分支图、提交历史、变更）")}`}
+      onClick={() => useGit.getState().show()}
     >
       ⎇ {info.branch}
       {info.dirty && <span className="text-warn"> ●{info.changed_files}</span>}
-    </Tip>
+    </button>
   );
 }
 

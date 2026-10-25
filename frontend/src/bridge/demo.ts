@@ -11,6 +11,7 @@
 //   3. 遇到 permission_request 时按当前权限档位处理（与 Go 端 permission.ModePolicy 一致）：
 //      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
+import { demoCommitDetail, demoCommits, demoDiff, demoGitOverview } from "./demoGit";
 import type { AgentEvent, AttachmentInfo, Decision, Usage } from "../protocol/events";
 import type {
   Attachment, Backend, General, GeneralView, GroupView, MemberState, UsageNode, UsageReport, UsageRequest, UsageTotals, MCPServerConfig, PermissionMode, PermissionRule, ProfileInfo, ProviderView, SessionSummary, Status, ToolInfo,
@@ -383,6 +384,11 @@ export function createDemoBackend(): Backend {
       current = newSession(current.workspace);
       return n;
     },
+    gitOverview: async () => demoGitOverview(),
+    gitLog: async (skip, limit) => demoCommits.slice(skip, skip + limit),
+    gitCommit: async (hash) => demoCommitDetail(hash),
+    gitCommitDiff: async (_hash, path) => demoDiff(path),
+    gitWorkingDiff: async (path) => demoDiff(path),
     getWorkspaceInfo: async () => ({
       path: "/demo/workspace", name: "workspace", is_repo: true, branch: "main", dirty: true, changed_files: 2,
     }),
