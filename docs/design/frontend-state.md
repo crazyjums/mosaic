@@ -105,6 +105,10 @@ stateDiagram-v2
 - **偏好归前端**：[`store/uiPrefs.ts`](../../frontend/src/store/uiPrefs.ts) 定义结构，后端原样保存在 settings.json 的 `ui` 字段（与状态栏配置同一个模式）。
 - **主题和尺寸靠根元素**：主题写在 `<html data-theme>` 上，`index.css` 据此切换颜色变量（"跟随系统"时不设属性，由 `prefers-color-scheme` 决定）；
   字号设在根元素的 `font-size` 上，Tailwind 的尺寸都是 rem，整个界面等比缩放；消息区宽度是 CSS 变量 `--content-width`。组件里不需要读这些偏好。
+- **皮肤**：[`store/skins.ts`](../../frontend/src/store/skins.ts)。所有颜色都是 CSS 变量，组件里没有写死的颜色（强调色背景上的文字也是变量 `--on-accent`），
+  所以换皮肤只是换一组变量：`applySkin` 生成与 `index.css` 结构相同的三条规则（默认深色 / 系统浅色 / 固定浅色），放进 `<head>` 末尾的 `<style id="skin">`；
+  选"默认"时移除它，直接用 `index.css`。颜色会被拼进 CSS 文本，所以导入时只接受 `#rrggbb`，生成 CSS 时再校验一次（编辑器的实时预览会应用还没校验的草稿）。
+  测试会核对"默认"皮肤与 `index.css` 一致，并检查每个内置皮肤的对比度（正文 ≥ 7:1、次要文字 ≥ 4.5:1、强调色按钮文字和状态色 ≥ 3:1）；
 - **多语言**：[`i18n.ts`](../../frontend/src/i18n.ts) 以中文原文为 key 查英文表，`t()` 是普通函数。切换语言时 `App` 用 `key={lang}` 重新挂载界面，
   所有 `t()` 重新求值；状态都在 store 里，不会丢（只有输入框里没发出去的草稿会清空）。
   模块级常量（例如工具状态的标签）只存中文原文，渲染时再 `t()`——模块加载时语言还没确定。
