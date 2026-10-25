@@ -14,6 +14,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/secret"
+	"github.com/crazyjums/myllmapp/internal/siwc"
 )
 
 // ProviderView 是发给前端的配置档视图。注意：不含 API Key 明文。
@@ -72,6 +73,10 @@ type Manager struct {
 	inKeychain map[string]bool // 当前保存在钥匙串里的配置档名
 	unresolved map[string]bool // 启动时没能从钥匙串读出密钥的配置档名
 	keyWarning string
+
+	// ChatGPT 账号登录，见 chatgpt.go。
+	chatgpt          *siwc.Manager
+	chatgptModelsErr string
 }
 
 // NewManager 读取设置文件。path 为 settings.json 的路径；base 为配置文件中的配置档。不使用钥匙串。
@@ -101,7 +106,7 @@ func (m *Manager) Attach(e *core.Engine) {
 func (m *Manager) Profiles() []provider.ProfileConfig {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	ps, _ := merge(m.base, m.file)
+	ps, _ := m.merged(m.file)
 	return ps
 }
 
@@ -120,7 +125,7 @@ func (m *Manager) DefaultSelection() (profile, model string) {
 // Providers 返回所有配置档的界面视图。
 func (m *Manager) Providers() []ProviderView {
 	m.mu.Lock()
-	ps, sources := merge(m.base, m.file)
+	ps, sources := m.merged(m.file)
 	m.mu.Unlock()
 
 	infos := map[string]provider.ProfileInfo{}
@@ -140,7 +145,7 @@ func (m *Manager) Providers() []ProviderView {
 			HasAPIKey:    p.APIKey != "",
 			APIKeyHint:   maskKey(p.APIKey),
 			Source:       sources[p.Name],
-			Deletable:    sources[p.Name] != SourceConfig,
+			Deletable:    sources[p.Name] != SourceConfig && sources[p.Name] != SourceAccount,
 			Available:    info.Available,
 			Error:        info.Error,
 		})
@@ -173,7 +178,7 @@ func (m *Manager) Save(in ProviderInput) error {
 		Options:      in.Options,
 	}
 	// 能不能真正创建出实例？例如 Anthropic 缺密钥会在这里报错，比保存后再在下拉框里置灰更直观。
-	if _, err := m.registry.New(toProfile(setting)); err != nil {
+	if _, err := m.registry.New(m.withAuth(toProfile(setting))); err != nil {
 		return err
 	}
 	setting.APIKey = m.keyToPersist(typedKey, in)
@@ -350,9 +355,12 @@ func (m *Manager) Test(ctx context.Context, in ProviderInput) TestResult {
 	if model == "" {
 		return TestResult{Error: "请先填写至少一个模型"}
 	}
-	p, err := m.registry.New(toProfile(ProviderSetting{
+	m.mu.Lock()
+	cfg := m.withAuth(toProfile(ProviderSetting{
 		Name: in.Name, Type: in.Type, BaseURL: in.BaseURL, APIKey: in.APIKey, Options: in.Options,
 	}))
+	m.mu.Unlock()
+	p, err := m.registry.New(cfg)
 	if err != nil {
 		return TestResult{Model: model, Error: err.Error()}
 	}
@@ -387,9 +395,12 @@ func (m *Manager) ListModels(ctx context.Context, in ProviderInput) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	p, err := m.registry.New(toProfile(ProviderSetting{
+	m.mu.Lock()
+	cfg := m.withAuth(toProfile(ProviderSetting{
 		Name: in.Name, Type: in.Type, BaseURL: in.BaseURL, APIKey: in.APIKey, Options: in.Options,
 	}))
+	m.mu.Unlock()
+	p, err := m.registry.New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -441,6 +452,9 @@ func (m *Manager) normalize(in ProviderInput) (ProviderInput, error) {
 	if in.Name == "" {
 		return in, errors.New("请填写名称")
 	}
+	if in.Name == ChatGPTProfile && in.Type != "chatgpt" {
+		return in, fmt.Errorf("名称 %q 保留给 ChatGPT 账号登录，请换一个名称", ChatGPTProfile)
+	}
 	var models []string
 	for _, x := range in.Models {
 		if x = strings.TrimSpace(x); x != "" && !slices.Contains(models, x) {
@@ -457,7 +471,7 @@ func (m *Manager) normalize(in ProviderInput) (ProviderInput, error) {
 	}
 	// 改名或新建时，名字不能与其他配置档冲突。
 	if in.Name != in.OriginalName {
-		ps, _ := merge(m.base, m.file)
+		ps, _ := m.merged(m.file)
 		if slices.ContainsFunc(ps, func(p provider.ProfileConfig) bool { return p.Name == in.Name }) {
 			return in, fmt.Errorf("名称 %q 已存在", in.Name)
 		}
@@ -467,7 +481,7 @@ func (m *Manager) normalize(in ProviderInput) (ProviderInput, error) {
 
 // existingKey 查找已保存的密钥（先按原名称，再按新名称）。
 func (m *Manager) existingKey(names ...string) string {
-	ps, _ := merge(m.base, m.file)
+	ps, _ := m.merged(m.file)
 	for _, n := range names {
 		if n == "" {
 			continue
@@ -509,7 +523,7 @@ func (m *Manager) apply(next File) error {
 	if m.engine == nil {
 		return nil
 	}
-	ps, _ := merge(m.base, next)
+	ps, _ := m.merged(next)
 	return m.engine.ReplaceCatalog(provider.NewCatalog(m.registry, ps))
 }
 

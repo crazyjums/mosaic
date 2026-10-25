@@ -14,6 +14,7 @@ import (
 	_ "github.com/crazyjums/myllmapp/internal/provider/all" // 注册所有内置厂商适配器
 	"github.com/crazyjums/myllmapp/internal/secret"
 	"github.com/crazyjums/myllmapp/internal/settings"
+	"github.com/crazyjums/myllmapp/internal/siwc"
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool"
 	"github.com/crazyjums/myllmapp/internal/tool/builtin"
@@ -59,6 +60,9 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	if err != nil {
 		return nil, err
 	}
+	// ChatGPT 账号登录：必须在创建厂商目录之前关联，已登录时启动就能选中 chatgpt。
+	chatgpt := siwc.NewManager(filepath.Join(dataDir, "chatgpt"), siwc.Options{})
+	settingsMgr.AttachChatGPT(chatgpt)
 
 	// 步骤 2：运行参数。优先级：命令行 > 界面设置 > 配置文件 > 内置默认（规则在 settings.ResolveGeneral）。
 	// 工作区必须已存在——自动创建可能把文件写到用户意想不到的地方。

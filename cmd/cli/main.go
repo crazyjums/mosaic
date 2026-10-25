@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/crazyjums/myllmapp/internal/bootstrap"
 	"github.com/crazyjums/myllmapp/internal/config"
@@ -227,6 +228,8 @@ func (c *cli) command(line string) (quit bool) {
 /model <profile> [model]  切换厂商和模型（会记住，下次启动直接使用）
 /mode [mode]              查看或切换权限模式：readonly / default / accept_edits / auto
 /status                   当前状态
+/login [new]              用 ChatGPT 账号登录（使用套餐额度）；new 表示换一个账号
+/logout                   退出 ChatGPT 账号
 /quit                     退出`)
 	case "/new":
 		if st, err := c.eng.NewSession(); err != nil {
@@ -285,6 +288,13 @@ func (c *cli) command(line string) (quit bool) {
 		} else {
 			fmt.Fprintln(c.info, "已切换到权限模式", fields[1])
 		}
+	case "/login":
+		c.loginChatGPT(len(fields) > 1 && fields[1] == "new")
+	case "/logout":
+		if err := c.settings.LogoutChatGPT(ctx); err != nil {
+			fmt.Fprintln(c.info, "提示:", err)
+		}
+		fmt.Fprintln(c.info, "已退出 ChatGPT 账号")
 	case "/status":
 		st := c.eng.Status()
 		fmt.Fprintf(c.info, "会话 %s「%s」\n厂商 %s · 模型 %s\ntokens 入 %d / 出 %d\n工作区 %s\n权限模式 %s\n",
@@ -293,6 +303,41 @@ func (c *cli) command(line string) (quit bool) {
 		fmt.Fprintln(c.info, "未知命令，/help 查看帮助")
 	}
 	return false
+}
+
+// loginChatGPT 打印授权地址，等待用户在浏览器里完成登录（Ctrl+C 取消）。
+// 回调服务器开在本机 127.0.0.1 上，所以浏览器必须和 CLI 在同一台电脑上。
+func (c *cli) loginChatGPT(newAccount bool) {
+	u, err := c.settings.LoginChatGPT(newAccount)
+	if err != nil {
+		fmt.Fprintln(c.info, "错误:", err)
+		return
+	}
+	fmt.Fprintf(c.info, "请在浏览器中打开下面的地址完成登录（Ctrl+C 取消）：\n\n  %s\n\n", u)
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-c.sig:
+			c.settings.CancelChatGPTLogin()
+			fmt.Fprintln(c.info, "已取消登录")
+			return
+		case <-tick.C:
+		}
+		st := c.settings.ChatGPT()
+		switch st.State {
+		case "pending":
+			continue
+		case "logged_in":
+			fmt.Fprintf(c.info, "已登录 %s。用 /models 查看可用模型，/model chatgpt <模型> 切换。\n", st.Email)
+			if st.ModelsError != "" {
+				fmt.Fprintln(c.info, "提示:", st.ModelsError)
+			}
+		default:
+			fmt.Fprintln(c.info, "登录没有完成:", st.Error)
+		}
+		return
+	}
 }
 
 func listSessions(eng *core.Engine, w io.Writer) error {

@@ -161,6 +161,29 @@ func (a *App) OpenDataDir() error { return openInFileManager(a.settings.DataInfo
 // ClearSessions 删除所有历史会话（包括当前会话），返回删除的数量。
 func (a *App) ClearSessions() (int, error) { return a.engine.DeleteAllSessions(a.context()) }
 
+// ---- 设置：ChatGPT 账号登录（逻辑在 internal/settings/chatgpt.go 和 internal/siwc） ----
+
+// GetChatGPT 返回 ChatGPT 账号的登录状态。登录进行中时前端轮询它。不含任何令牌。
+func (a *App) GetChatGPT() settings.ChatGPTStatus { return a.settings.ChatGPT() }
+
+// LoginChatGPT 开始用 ChatGPT 账号登录：在系统浏览器中打开授权页面，并返回授权地址
+// （浏览器没有自动打开时，用户可以复制它）。登录在后台完成。
+func (a *App) LoginChatGPT(newAccount bool) (string, error) {
+	u, err := a.settings.LoginChatGPT(newAccount)
+	if err != nil {
+		return "", err
+	}
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, u)
+	}
+	return u, nil
+}
+
+func (a *App) CancelChatGPTLogin() { a.settings.CancelChatGPTLogin() }
+
+// LogoutChatGPT 退出登录：吊销令牌并删除本地保存的令牌。
+func (a *App) LogoutChatGPT() error { return a.settings.LogoutChatGPT(a.context()) }
+
 // ---- 设置：权限与工具 ----
 
 // ListTools 列出所有工具（含已连接的 MCP 工具）及开关状态。
