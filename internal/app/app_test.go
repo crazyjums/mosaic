@@ -79,3 +79,68 @@ func TestAppForwardsEventsAndCommands(t *testing.T) {
 		t.Fatal("ListProviders 不应为空")
 	}
 }
+
+// 历史会话分页：打开会话只返回最近几轮，更早的按需再取；事件作为返回值给出，不走 agent:event。
+func TestLoadSessionPagesHistory(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.Providers[0].Options = map[string]any{}
+	cfg.HistoryTurns = 2
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+
+	var mu sync.Mutex
+	turns := 0
+	var a *App
+	a = New(built.Engine, built.Settings, func(_ context.Context, _ string, data ...any) {
+		ev := data[0].(event.Event)
+		if p, ok := ev.Data.(event.PermissionRequest); ok {
+			go a.RespondPermission(p.RequestID, "allow")
+		}
+		if ev.Type == event.TypeTurnEnd {
+			mu.Lock()
+			turns++
+			mu.Unlock()
+		}
+	})
+	a.Startup(context.Background())
+	defer a.Shutdown(context.Background())
+	if err := built.Engine.SetPermissionMode("auto"); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 1; i <= 3; i++ {
+		if err := a.Send("第几轮"); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			mu.Lock()
+			n := turns
+			mu.Unlock()
+			if n == i {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("第 %d 轮没有结束", i)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	id := built.Engine.Status().SessionID
+	if _, err := a.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := a.LoadSession(id)
+	if err != nil || got.Earlier != 1 {
+		t.Fatalf("配置 2 轮，会话 3 轮，应还剩 1 轮: %+v %v", got.Earlier, err)
+	}
+	page, err := a.LoadEarlierHistory(id)
+	if err != nil || page.Earlier != 0 || len(page.Events) == 0 {
+		t.Fatalf("更早一页: %+v %v", page, err)
+	}
+}
