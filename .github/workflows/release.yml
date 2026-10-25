@@ -121,6 +121,11 @@ jobs:
             -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" -out dist \
             -asset windows-amd64=dist/myllmapp-windows-amd64.exe \
             -asset linux-amd64=dist/myllmapp-linux-amd64
+          # 更新日志会公开发布：不能带 Claude 会话链接（可能泄露隐私）。mkmanifest 已经清理过，这里再兜底检查一次。
+          if grep -qiE 'claude\.(ai|com)/code|Claude-Session|Co-Authored-By' notes.md dist/manifest.json; then
+            echo "::error::更新日志里出现了 Claude 会话链接或署名行，请检查 CHANGELOG.md 和提交信息"
+            exit 1
+          fi
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ github.token }}
