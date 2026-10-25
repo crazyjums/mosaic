@@ -92,6 +92,7 @@ flowchart TB
 | | `permission` | 风险等级、权限策略、"等待用户确认"的会合点 |
 | 内核 | `core` | agent 循环、Delta 累加、工具执行、会话、重放、`Engine` 命令接口；预留压缩/子 agent/后台任务接口 |
 | 适配 | `provider/openai`、`provider/anthropic`、`provider/fake` | 各协议 ↔ 中立 Delta |
+| | `update` | 自更新：验签清单、下载校验、替换、重启（cmd/mkmanifest 是发布侧工具） |
 | | `tool/builtin` | 内置工具（文件、搜索、shell、git、todo） |
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
 | | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |

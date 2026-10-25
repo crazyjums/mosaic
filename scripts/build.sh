@@ -19,6 +19,7 @@
 #   ./scripts/build.sh --debug         调试构建（可以打开开发者工具）
 #   ./scripts/build.sh --skip-checks   跳过 go test / 前端检查
 #   ./scripts/build.sh -h              显示帮助
+#   VERSION=1.2.3 ./scripts/build.sh   发布构建：把版本号写进程序（用于自动更新）
 #
 # 说明：macOS 应用只能在 macOS 上编译，Linux 应用只能在 Linux 上编译（都依赖本机的 CGO 和系统 WebView）。
 
@@ -38,7 +39,7 @@ ok()   { echo "${C_OK}✔${C_END} $*"; }
 warn() { echo "${C_WARN}!${C_END} $*"; }
 die()  { echo "${C_ERR}✘ $*${C_END}" >&2; exit 1; }
 
-usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
+usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0; }
 
 # ---------- 参数 ----------
 BUILD_NATIVE=1
@@ -150,6 +151,9 @@ wails_build() {
   local args=(build -platform "$platform" -clean -trimpath)
   if [[ -n "$tags" ]]; then args+=(-tags "$tags"); fi
   if [[ $DEBUG -eq 1 ]]; then args+=(-debug); fi
+  # 发布构建：VERSION=1.2.3 ./scripts/build.sh 会把版本号写进程序（自更新靠它判断有没有新版本）。
+  # 不设置时版本是 "dev"，开发版不检查更新。
+  if [[ -n "${VERSION:-}" ]]; then args+=(-ldflags "-X github.com/crazyjums/myllmapp/internal/update.Version=${VERSION#v}"); fi
   if [[ $NSIS -eq 1 && "$platform" == windows/* ]]; then args+=(-nsis); fi
 
   info "wails ${args[*]}"
