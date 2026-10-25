@@ -54,7 +54,9 @@ func RedactProxy(raw string) string {
 	}
 	if u.User != nil {
 		if _, has := u.User.Password(); has {
-			u.User = url.UserPassword(u.User.Username(), "***")
+			// 先放一个占位词再换成 ***：url 包会把 * 编码成 %2A，界面上不好看。
+			u.User = url.UserPassword(u.User.Username(), "REDACTEDPASSWORD")
+			return strings.Replace(u.String(), "REDACTEDPASSWORD", "***", 1)
 		}
 	}
 	return u.String()

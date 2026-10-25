@@ -19,7 +19,7 @@ func TestValidateAndRedactProxy(t *testing.T) {
 			t.Errorf("%q 应不合法", bad)
 		}
 	}
-	if got := RedactProxy("http://alice:s3cret@proxy.local:8080"); got != "http://alice:%2A%2A%2A@proxy.local:8080" && got != "http://alice:***@proxy.local:8080" {
+	if got := RedactProxy("http://alice:s3cret@proxy.local:8080"); got != "http://alice:***@proxy.local:8080" {
 		t.Fatalf("密码必须脱敏: %q", got)
 	}
 	if strings.Contains(RedactProxy("http://alice:s3cret@proxy.local:8080"), "s3cret") || strings.Contains(RedactProxy("::bad::s3cret"), "s3cret") {
