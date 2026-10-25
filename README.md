@@ -8,6 +8,7 @@
 - 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐（Go / Plus / Pro）的额度调用 GPT 模型，不需要 API Key
 - 📁 **每个会话一个工作区**：一个会话对应一个代码仓库，在状态栏上切换，新会话沿用当前的；agent 只能读写这个目录
 - 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关
+- 📊 **用量统计**：按天展开的 token 和花费预估（含缓存口径）、CSV 导出；🌐 **按厂商的网络代理**；🔀 **模型组故障转移**：成员失败时自动换下一个，冷却后试探恢复（见 [docs/design/usage-and-failover.html](docs/design/usage-and-failover.html)）
 - ⬆️ **自动更新**：应用内检查、下载、校验签名、替换并重启（见 [docs/design/auto-update.md](docs/design/auto-update.md)）
 - 🧩 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
 - 👀 **可视化**：思考过程、工具调用、权限确认、图片（模型生成的 SVG / PNG、Mermaid 流程图）；上下文明细面板（各部分占多少、哪几条最大）；

@@ -87,14 +87,15 @@ flowchart TB
 | 层 | 包 | 职责 |
 | --- | --- | --- |
 | 契约 | `event` | 统一事件协议与进程内事件总线 |
-| | `provider` | 厂商中立的消息模型、`Provider` 接口、适配器注册表、配置档目录 |
+| | `provider` | 厂商中立的消息模型、`Provider` 接口、适配器注册表、配置档目录；错误分类、按厂商代理、用量计量、模型组故障转移 |
 | | `tool` | `Tool` 接口与注册表 |
 | | `permission` | 风险等级、权限策略、"等待用户确认"的会合点 |
 | 内核 | `core` | agent 循环、Delta 累加、工具执行、会话、重放、`Engine` 命令接口；预留压缩/子 agent/后台任务接口 |
 | 适配 | `provider/openai`、`provider/anthropic`、`provider/fake` | 各协议 ↔ 中立 Delta |
 | | `update` | 自更新：验签清单、下载校验、替换、重启（cmd/mkmanifest 是发布侧工具） |
 | | `tool/builtin` | 内置工具（文件、搜索、shell、git、todo） |
-| | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
+| | `store` | `core.SessionStore` 的 SQLite / 内存实现；用量账本（`usage_events` 表） |
+| | `usage` | 用量报表：聚合、计价、CSV 导出、异步写入（只存数字，不存内容） |
 | | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |
 | | `secret` | 系统钥匙串（保存 API Key，可选） |
 | | `codexquota` | 可选：读取本机 Codex CLI 的登录，只读查询 ChatGPT 套餐的剩余额度（未公开接口） |
