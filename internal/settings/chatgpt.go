@@ -33,6 +33,27 @@ type ChatGPTStatus struct {
 	ModelsError string `json:"models_error,omitempty"`
 }
 
+// ChatGPTUsageURL 是 ChatGPT 的用量页面。OpenAI 目前没有提供查询剩余额度的接口，只能让用户在这里查看。
+const ChatGPTUsageURL = "https://chatgpt.com/settings/usage"
+
+// ChatGPTUsage 是状态栏"ChatGPT 额度"显示的数据：本应用用掉的套餐额度（不是剩余额度，见 siwc/usage.go）。
+type ChatGPTUsage struct {
+	LoggedIn bool `json:"logged_in"`
+	siwc.UsageSummary
+	UsageURL string `json:"usage_url"`
+}
+
+// ChatGPTUsage 返回本应用最近 5 小时 / 7 天用掉的套餐额度。
+func (m *Manager) ChatGPTUsage() ChatGPTUsage {
+	m.mu.Lock()
+	c := m.chatgpt
+	m.mu.Unlock()
+	if c == nil {
+		return ChatGPTUsage{UsageURL: ChatGPTUsageURL}
+	}
+	return ChatGPTUsage{LoggedIn: c.LoggedIn(), UsageSummary: c.Usage(), UsageURL: ChatGPTUsageURL}
+}
+
 // AttachChatGPT 关联登录管理器。必须在创建厂商目录（Catalog）之前调用，这样启动时就能选中已登录的 chatgpt。
 func (m *Manager) AttachChatGPT(c *siwc.Manager) {
 	m.mu.Lock()

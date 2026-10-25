@@ -182,6 +182,20 @@ func (a *App) LoginChatGPT(newAccount bool) (string, error) {
 
 func (a *App) CancelChatGPTLogin() { a.settings.CancelChatGPTLogin() }
 
+// GetChatGPTUsage 返回本应用最近 5 小时 / 7 天用掉的 ChatGPT 套餐额度，以及是否遇到过额度用完。
+// OpenAI 目前没有提供查询剩余额度的接口，所以这里是本应用自己记的账。
+func (a *App) GetChatGPTUsage() settings.ChatGPTUsage { return a.settings.ChatGPTUsage() }
+
+// OpenChatGPTUsage 在浏览器中打开 ChatGPT 的用量页面。地址是固定的，前端不能借此打开任意网址。
+func (a *App) OpenChatGPTUsage() {
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, settings.ChatGPTUsageURL)
+	}
+}
+
+// GetContextBreakdown 返回当前会话上下文的组成（按字符估算的 token 数），供右侧的上下文面板显示。
+func (a *App) GetContextBreakdown() core.ContextBreakdown { return a.engine.ContextBreakdown() }
+
 // LogoutChatGPT 退出登录：吊销令牌并删除本地保存的令牌。
 func (a *App) LogoutChatGPT() error { return a.settings.LogoutChatGPT(a.context()) }
 
