@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 func sampleSession(id string) *core.Session {
 	s := core.NewSession(id, "fake", "demo")
 	s.Title = "测试会话"
+	s.Workspace = "/repos/demo"
 	s.Usage = provider.Usage{InputTokens: 10, OutputTokens: 5}
 	s.Messages = []provider.Message{
 		provider.UserText("你好"),
@@ -46,7 +48,7 @@ func testStore(t *testing.T, st core.SessionStore) {
 	if !reflect.DeepEqual(got.Messages, s.Messages) {
 		t.Fatalf("消息不一致\n got  %+v\n want %+v", got.Messages, s.Messages)
 	}
-	if got.Title != s.Title || got.Usage != s.Usage || got.Provider != "fake" {
+	if got.Title != s.Title || got.Usage != s.Usage || got.Provider != "fake" || got.Workspace != "/repos/demo" {
 		t.Fatalf("元数据不一致: %+v", got)
 	}
 
@@ -68,7 +70,7 @@ func testStore(t *testing.T, st core.SessionStore) {
 		t.Fatalf("应有 2 个会话: %+v", list)
 	}
 	for _, x := range list {
-		if x.ID == "sess_1" && x.MessageCount != 4 {
+		if x.ID == "sess_1" && (x.MessageCount != 4 || x.Workspace != "/repos/demo") {
 			t.Fatalf("sess_1 应有 4 条消息: %+v", x)
 		}
 	}
@@ -117,5 +119,31 @@ func TestSQLiteCompact(t *testing.T) {
 	}
 	if list, _ := st.ListSessions(ctx); len(list) != 0 {
 		t.Fatal("应为空")
+	}
+}
+
+// 旧版本（只有第 1 条迁移）的数据库升级后，已有会话的工作区为空（跟随默认工作区）。
+func TestSQLiteUpgradeFromV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{migrations[0], `PRAGMA user_version = 1`,
+		`INSERT INTO sessions (id, title, created_at, updated_at) VALUES ('old', '旧会话', 1, 1)`} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+
+	st, err := OpenSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	got, err := st.LoadSession(context.Background(), "old")
+	if err != nil || got.Title != "旧会话" || got.Workspace != "" {
+		t.Fatalf("升级后应能读出旧会话，工作区为空: %+v %v", got, err)
 	}
 }

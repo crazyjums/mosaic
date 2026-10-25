@@ -47,6 +47,8 @@ var migrations = []string{
 		PRIMARY KEY (session_id, seq)
 	);
 	CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);`,
+	// 2：每个会话可以有自己的工作区（为空表示跟随默认工作区）。
+	`ALTER TABLE sessions ADD COLUMN workspace TEXT NOT NULL DEFAULT '';`,
 }
 
 // OpenSQLite 打开（必要时创建）数据库文件并执行迁移。
@@ -115,12 +117,12 @@ func (s *SQLite) SaveSession(ctx context.Context, sess *core.Session) error {
 	defer tx.Rollback() // Commit 之后再 Rollback 是无害的空操作
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO sessions (id, title, provider, model, usage_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (id, title, provider, model, workspace, usage_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, provider = excluded.provider, model = excluded.model,
-			usage_json = excluded.usage_json, updated_at = excluded.updated_at`,
-		sess.ID, sess.Title, sess.Provider, sess.Model, string(usage),
+			workspace = excluded.workspace, usage_json = excluded.usage_json, updated_at = excluded.updated_at`,
+		sess.ID, sess.Title, sess.Provider, sess.Model, sess.Workspace, string(usage),
 		sess.CreatedAt.UnixMilli(), sess.UpdatedAt.UnixMilli())
 	if err != nil {
 		return fmt.Errorf("store: upsert session: %w", err)
@@ -152,8 +154,8 @@ func (s *SQLite) LoadSession(ctx context.Context, id string) (*core.Session, err
 		created, updated int64
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, title, provider, model, usage_json, created_at, updated_at FROM sessions WHERE id = ?`, id).
-		Scan(&sess.ID, &sess.Title, &sess.Provider, &sess.Model, &usage, &created, &updated)
+		`SELECT id, title, provider, model, workspace, usage_json, created_at, updated_at FROM sessions WHERE id = ?`, id).
+		Scan(&sess.ID, &sess.Title, &sess.Provider, &sess.Model, &sess.Workspace, &usage, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: %s", core.ErrSessionNotFound, id)
 	}
@@ -186,7 +188,7 @@ func (s *SQLite) LoadSession(ctx context.Context, id string) (*core.Session, err
 
 func (s *SQLite) ListSessions(ctx context.Context) ([]core.SessionSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT s.id, s.title, s.provider, s.model, s.created_at, s.updated_at,
+		SELECT s.id, s.title, s.provider, s.model, s.workspace, s.created_at, s.updated_at,
 		       (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id)
 		FROM sessions s ORDER BY s.updated_at DESC`)
 	if err != nil {
@@ -199,7 +201,7 @@ func (s *SQLite) ListSessions(ctx context.Context) ([]core.SessionSummary, error
 			x                core.SessionSummary
 			created, updated int64
 		)
-		if err := rows.Scan(&x.ID, &x.Title, &x.Provider, &x.Model, &created, &updated, &x.MessageCount); err != nil {
+		if err := rows.Scan(&x.ID, &x.Title, &x.Provider, &x.Model, &x.Workspace, &created, &updated, &x.MessageCount); err != nil {
 			return nil, err
 		}
 		x.CreatedAt, x.UpdatedAt = time.UnixMilli(created), time.UnixMilli(updated)

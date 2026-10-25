@@ -44,7 +44,7 @@ func (m *Memory) ListSessions(_ context.Context) ([]core.SessionSummary, error) 
 	out := make([]core.SessionSummary, 0, len(m.sessions))
 	for _, s := range m.sessions {
 		out = append(out, core.SessionSummary{
-			ID: s.ID, Title: s.Title, Provider: s.Provider, Model: s.Model,
+			ID: s.ID, Title: s.Title, Provider: s.Provider, Model: s.Model, Workspace: s.Workspace,
 			MessageCount: len(s.Messages), CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 		})
 	}
