@@ -2,11 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/crazyjums/myllmapp/internal/config"
+	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/settings"
 )
@@ -14,6 +16,7 @@ import (
 // 用内置默认配置组装一次，确保"开箱即用"：fake 可用、缺密钥的厂商显示为不可用而不是导致启动失败。
 func TestBuildWithDefaults(t *testing.T) {
 	cfg := config.Default()
+	cfg.EnableDemo()
 	cfg.DataDir = t.TempDir()
 	cfg.Providers[0].Options = map[string]any{"scenario": "echo"}
 	t.Setenv("ANTHROPIC_API_KEY", "")
@@ -89,6 +92,7 @@ func TestBuildFallsBackWhenRememberedUnavailable(t *testing.T) {
 	_ = settings.Save(filepath.Join(dataDir, settings.FileName), settings.File{DefaultProvider: "anthropic"})
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	cfg := config.Default()
+	cfg.EnableDemo() // 要有另一个可用的厂商，才谈得上"回落"
 	cfg.DataDir = dataDir
 	cfg.DefaultProvider = "anthropic"
 	b, err := Build(cfg, Options{Workspace: t.TempDir(), NoStore: true})
@@ -145,5 +149,32 @@ func TestBuildWorkspacePriority(t *testing.T) {
 	}
 	if ws := build(Options{FallbackWorkspace: fallback, Workspace: fromFlag}); ws != fromFlag {
 		t.Fatalf("命令行参数优先级最高: %s", ws)
+	}
+}
+
+// 全新安装、没有任何密钥：不能启动失败。会话先不绑定厂商，发送时给出明确的提示；
+// 之后配置好第一个厂商会自动切过去。
+func TestBuildWithoutAnyProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	for _, k := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	b, err := Build(cfg, Options{Workspace: t.TempDir(), NoStore: true})
+	if err != nil {
+		t.Fatalf("没有可用厂商不应让启动失败: %v", err)
+	}
+	defer b.Close()
+	if st := b.Engine.Status(); st.Provider != "" || st.Model != "" {
+		t.Fatalf("应处于未配置状态: %+v", st)
+	}
+	if _, err := b.Engine.Send(context.Background(), "ping"); !errors.Is(err, core.ErrNoProvider) {
+		t.Fatalf("应返回 ErrNoProvider: %v", err)
+	}
+	if err := b.Settings.Save(settings.ProviderInput{Name: "local", Type: "fake", Models: []string{"m1"}, DefaultModel: "m1"}); err != nil {
+		t.Fatal(err)
+	}
+	if st := b.Engine.Status(); st.Provider != "local" || st.Model != "m1" {
+		t.Fatalf("配置第一个厂商后应自动切换过去: %+v", st)
 	}
 }

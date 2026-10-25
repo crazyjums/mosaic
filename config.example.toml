@@ -8,7 +8,7 @@
 
 # 启动时默认使用的厂商配置档（下面 [[providers]] 的 name）和模型。
 # 留空模型则使用该配置档的 default_model。
-default_provider = "fake"
+default_provider = ""
 default_model = ""
 
 # 工具的工作区根目录。读写文件、执行命令都限定在这个目录里。相对路径相对于启动时的当前目录。
@@ -44,16 +44,17 @@ system_prompt = ""
 # 同一个 type 可以有多个配置档，只是 base_url、密钥、模型不同。
 # ---------------------------------------------------------------------------
 
-# 离线演示 / 测试用的假厂商，不需要密钥。
-[[providers]]
-name = "fake"
-type = "fake"
-models = ["demo", "echo"]   # 模型名为 echo 时复述输入，其他名字按 scenario 剧本回复
-default_model = "demo"
-[providers.options]
-scenario = "demo"           # demo / echo
-delay_ms = 25               # 每个流式片段的延迟，让"流式"看得见
-# script = "path/to/script.json"   # 自定义剧本，格式见 internal/provider/fake/fake.go 的 Script
+# 离线演示 / 测试用的假厂商，不需要密钥，按固定剧本回复、不调用真实模型。内置默认配置不再带它；
+# 想体验界面或写测试时，去掉下面每行开头的 # 即可。
+# [[providers]]
+# name = "fake"
+# type = "fake"
+# models = ["demo", "echo"]   # 模型名为 echo 时复述输入，其他名字按 scenario 剧本回复
+# default_model = "demo"
+# [providers.options]
+# scenario = "demo"           # demo / echo
+# delay_ms = 25               # 每个流式片段的延迟，让"流式"看得见
+# # script = "path/to/script.json"   # 自定义剧本，格式见 internal/provider/fake/fake.go 的 Script
 
 # Anthropic 原生协议：保留思考块和签名。
 [[providers]]
