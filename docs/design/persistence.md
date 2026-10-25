@@ -36,6 +36,7 @@ CREATE TABLE sessions (
     title      TEXT NOT NULL DEFAULT '',
     provider   TEXT NOT NULL DEFAULT '',   -- 配置档名称
     model      TEXT NOT NULL DEFAULT '',
+    workspace  TEXT NOT NULL DEFAULT '',   -- 会话的工作区；空表示跟随默认工作区（迁移 2 新增）
     usage_json TEXT NOT NULL DEFAULT '{}', -- 累计用量
     created_at INTEGER NOT NULL,           -- Unix 毫秒
     updated_at INTEGER NOT NULL
@@ -56,6 +57,11 @@ CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
 ### 迁移
 
 `migrations` 是一个字符串切片，`PRAGMA user_version` 记录执行到第几条。规则：**只追加，不修改已有条目**。这是最简单可靠的迁移方式，不需要迁移框架。
+
+| 版本 | 内容 |
+| --- | --- |
+| 1 | 建表 `sessions`、`messages` |
+| 2 | `sessions` 增加 `workspace` 列（每个会话的工作区）。旧会话为空字符串，跟随默认工作区；`TestSQLiteUpgradeFromV1` 覆盖了从旧库升级 |
 
 ### 写入策略：整体重写
 

@@ -6,6 +6,7 @@
 - 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
   在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
 - 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐（Go / Plus / Pro）的额度调用 GPT 模型，不需要 API Key
+- 📁 **每个会话一个工作区**：一个会话对应一个代码仓库，在状态栏上切换，新会话沿用当前的；agent 只能读写这个目录
 - 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关
 - 🧩 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
 - 👀 **可视化**：思考过程、工具调用、权限确认、图片；上下文明细面板（各部分占多少、哪几条最大）；
