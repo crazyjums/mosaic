@@ -12,7 +12,8 @@ import (
 
 // DefaultMaxSteps 是一轮中最多调用模型的次数。
 // 步数限制是 agent 循环的"保险丝"：模型可能陷入反复调用工具的死循环，每一步都在花钱。
-const DefaultMaxSteps = 20
+// 默认 50：真实的编码任务（查代码 → 改 → 跑测试 → 再改）20 步经常不够。可在 设置 → 常规 里修改。
+const DefaultMaxSteps = 50
 
 // AgentConfig 是一个 agent 运行所需的全部依赖。
 //
@@ -136,7 +137,7 @@ func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult
 		if step > a.cfg.MaxSteps {
 			em.emit("", event.Error{
 				Code:    "max_steps",
-				Message: fmt.Sprintf("已达到最大步数 %d，agent 循环被停止。可以发送“继续”让它接着做。", a.cfg.MaxSteps),
+				Message: fmt.Sprintf("已达到最大步数 %d，agent 循环被停止。可以发送“继续”让它接着做，或在 设置 → 常规 → 最大步数 中调大（最多 500）。", a.cfg.MaxSteps),
 				Fatal:   true,
 			})
 			return end(event.TurnMaxSteps, nil)
