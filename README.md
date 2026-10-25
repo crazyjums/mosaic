@@ -5,13 +5,29 @@
 - 🧠 **自研内核**：agent 循环、上下文、工具调用、权限确认全部自己写，不依赖任何 agent SDK
 - 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
   在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
-- ⚙️ **设置界面**：常规（工作区、步数、超时、会话标题、钥匙串）、模型厂商、系统提示词、权限规则与工具开关、MCP 服务器、外观（主题 / 字号 / 宽度 / 快捷键 / 中英文）、状态栏（含自定义脚本）、数据管理，修改即时生效，不用改配置文件
-- 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐的额度调用 GPT 模型，不需要 API Key
-- 🔌 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
-- 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、权限模式……）；为子 agent 树和后台任务预留了事件与界面
+- 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐（Go / Plus / Pro）的额度调用 GPT 模型，不需要 API Key
+- 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关
+- 🧩 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
+- 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、自定义脚本……）
+- ⚙️ **设置都在界面上**：工作区、系统提示词、外观（深浅色 / 字号 / 宽度 / 发送键）、中英文界面、API Key 存系统钥匙串……修改即时生效
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
 
-![第一阶段界面：思考卡片、工具调用卡片、权限确认（浏览器演示模式截图）](docs/images/screenshot.png)
+![对话：思考过程、工具调用卡片、自定义状态栏](docs/images/chat-done-dark.png)
+
+## 界面一览
+
+> 以下截图来自真实的桌面端（`wails dev`，连接 Go 后端），对话使用内置的 fake 演示厂商；ChatGPT 账号为演示数据。
+
+| | |
+| --- | --- |
+| ![权限确认弹窗](docs/images/chat-permission.png) | ![浅色主题](docs/images/chat-done-light.png) |
+| **权限确认**：写文件、执行命令前停下来等你确认；本会话总是允许、拒绝后模型会换个办法继续 | **浅色主题**：思考过程默认在输出结束后折叠 |
+| ![ChatGPT 账号登录](docs/images/settings-chatgpt.png) | ![MCP 服务器](docs/images/settings-mcp.png) |
+| **用 ChatGPT 账号登录**：登录后自动出现 chatgpt 厂商，模型列表可编辑 | **MCP**：显示连接状态和服务器提供的工具，进程退出时自动移除工具 |
+| ![权限规则与工具开关](docs/images/settings-permissions.png) | ![状态栏](docs/images/settings-statusline.png) |
+| **权限规则与工具开关**：规则优先于权限档位，MCP 工具也在这里 | **状态栏**：选择显示的项和顺序，支持自定义脚本（ANSI 颜色） |
+| ![外观设置（英文界面）](docs/images/settings-appearance-en.png) | |
+| **外观与语言**：主题、字号、消息宽度、思考卡片、发送键、中英文 | |
 
 ## 架构概览
 
@@ -27,9 +43,9 @@ flowchart LR
         AG["Agent 循环"]
     end
     BUS(("事件总线<br/>internal/event"))
-    P["Provider 接口"] --> OAI["openai"] & ANT["anthropic"] & FAKE["fake"]
-    T["Tool 接口"] --> BI["read/write/list/shell"]
-    PERM["权限<br/>Policy + Broker"]
+    P["Provider 接口"] --> OAI["openai"] & ANT["anthropic"] & CG["chatgpt<br/>(ChatGPT 账号)"] & FAKE["fake"]
+    T["Tool 接口"] --> BI["read/write/list/shell"] & MCP["MCP 工具"]
+    PERM["权限<br/>档位 + 规则 + Broker"]
     ST["SQLite<br/>internal/store"]
 
     FE -- "命令" --> APP --> ENG
@@ -70,15 +86,19 @@ cd frontend && npm install && npm run dev
 
 ### 接入真实模型
 
-最简单：打开桌面端，点左下角 **⚙ 设置 → 模型厂商**，填 Base URL 和 API Key，获取模型列表，测试连接，保存。详见 [docs/usage.md](docs/usage.md#2-配置厂商)。
+三种方式任选（详见 [docs/usage.md](docs/usage.md#2-配置厂商)）：
 
-也可以用配置文件 / 环境变量（CLI 同样适用）：
+1. **界面配置**：打开桌面端，点左下角 **⚙ 设置 → 模型厂商**，选一个预设或自定义，填 Base URL 和 API Key，获取模型列表，测试连接，保存；
+2. **用 ChatGPT 账号登录**：**⚙ 设置 → 模型厂商 → 用 ChatGPT 账号登录**，在浏览器中登录授权，使用套餐额度（CLI 里是 `/login`）；
+3. **配置文件 / 环境变量**（CLI 同样适用）：
 
 ```bash
 cp config.example.toml config.toml   # 已在 .gitignore 中
 export ANTHROPIC_API_KEY=...          # 或 DEEPSEEK_API_KEY / OPENAI_API_KEY ...
 go run ./cmd/cli -provider anthropic
 ```
+
+CLI 里输入 `/help` 查看命令：`/model` 切换模型、`/mode` 切换权限模式、`/login` / `/logout` 登录 ChatGPT 账号等。
 
 ### 桌面端
 
@@ -131,8 +151,9 @@ wails build    # 打包到 build/bin/
 │       ├── protocol/           事件协议的 TypeScript 镜像
 │       ├── bridge/             后端命令接口：Wails 实现 + 浏览器演示实现（回放录制事件）
 │       ├── store/              reducer（事件 → 状态的纯函数）+ Zustand store
-│       └── components/         消息流、思考卡片、工具卡片、权限弹窗、状态栏、会话栏
-└── docs/                       设计与使用文档
+│       ├── components/         消息流、思考卡片、工具卡片、权限弹窗、状态栏、会话栏、设置页
+│       └── i18n.ts             中英文界面（以中文原文为 key 的查表）
+└── docs/                       设计与使用文档；docs/images/ 是 README 的截图
 ```
 
 ## 推荐阅读顺序
