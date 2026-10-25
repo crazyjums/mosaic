@@ -120,7 +120,7 @@ export default function GeneralSettings() {
               return (
                 <button
                   key={v}
-                  className={`rounded-md px-3 py-1 text-sm ${active ? "bg-accent text-white" : "hover:bg-panel-2"}`}
+                  className={`rounded-md px-3 py-1 text-sm ${active ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
                   onClick={() => patch({ titleMode: v })}
                   disabled={running}
                 >
@@ -140,7 +140,7 @@ export default function GeneralSettings() {
         <button className="btn" onClick={() => patch(toForm({}))} disabled={running} title="清空所有输入框，保存后全部使用默认值">
           全部恢复默认
         </button>
-        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" onClick={save} disabled={running}>
+        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={save} disabled={running}>
           保存
         </button>
       </footer>

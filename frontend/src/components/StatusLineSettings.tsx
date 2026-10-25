@@ -163,7 +163,7 @@ function ScriptEditor() {
               ))}
             {savedMsg && <span className="text-ok">{t("✓ 已保存，立即生效")}</span>}
           </div>
-          <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" onClick={() => void save()} disabled={draft.trim() === script}>
+          <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={() => void save()} disabled={draft.trim() === script}>
             {t("保存")}
           </button>
         </div>

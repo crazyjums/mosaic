@@ -201,7 +201,7 @@ function ServerForm(props: {
               ).map(([v, label]) => (
                 <button
                   key={v}
-                  className={`flex-1 rounded-md px-2 py-1 text-sm ${form.transport === v ? "bg-accent text-white" : "hover:bg-panel-2"}`}
+                  className={`flex-1 rounded-md px-2 py-1 text-sm ${form.transport === v ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
                   onClick={() => patch({ transport: v })}
                 >
                   {label}
@@ -271,7 +271,7 @@ function ServerForm(props: {
           props.saved && <span className="text-xs text-ok">{t("✓ 已保存，正在后台连接")}</span>
         )}
         <button
-          className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90"
           onClick={() => {
             props.onSave(fromForm(form));
             setDirty(false);

@@ -329,7 +329,7 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
               {(["openai", "anthropic"] as const).map((t) => (
                 <button
                   key={t}
-                  className={`flex-1 rounded-md px-2 py-1 text-sm ${form.type === t ? "bg-accent text-white" : "hover:bg-panel-2"}`}
+                  className={`flex-1 rounded-md px-2 py-1 text-sm ${form.type === t ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
                   onClick={() => patch({ type: t })}
                 >
                   {TYPE_LABEL[t]}
@@ -542,7 +542,7 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
         <button className="btn" onClick={doTest} disabled={busy !== "" || form.models.length === 0} title="用默认模型发一条极短的消息，会产生极少量费用">
           {busy === "test" ? "测试中…" : "测试连接"}
         </button>
-        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" onClick={doSave} disabled={busy !== ""}>
+        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={doSave} disabled={busy !== ""}>
           {busy === "save" ? "保存中…" : "保存"}
         </button>
       </footer>

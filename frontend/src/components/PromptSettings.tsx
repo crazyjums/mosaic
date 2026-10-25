@@ -42,7 +42,7 @@ export default function PromptSettings() {
           ].map(([v, label]) => (
             <button
               key={String(v)}
-              className={`rounded-md px-3 py-1 ${custom === v ? "bg-accent text-white" : "hover:bg-panel-2"}`}
+              className={`rounded-md px-3 py-1 ${custom === v ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
               onClick={() => {
                 setCustom(v as boolean);
                 setSaved(false);
@@ -82,7 +82,7 @@ export default function PromptSettings() {
             用默认内容重新开始
           </button>
         )}
-        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" onClick={save} disabled={running || (custom && !text.trim())}>
+        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={save} disabled={running || (custom && !text.trim())}>
           保存
         </button>
       </footer>

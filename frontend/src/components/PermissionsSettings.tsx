@@ -119,7 +119,7 @@ function RulesEditor() {
         </button>
         <div className="flex-1" />
         {state.error ? <span className="text-xs text-danger">{state.error}</span> : state.saved && <span className="text-xs text-ok">{t("✓ 已保存，立即生效")}</span>}
-        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:opacity-90" onClick={() => void save()}>
+        <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90" onClick={() => void save()}>
           {t("保存规则")}
         </button>
       </div>

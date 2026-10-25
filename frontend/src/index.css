@@ -6,6 +6,9 @@
  *   - 默认深色；系统为浅色时用浅色变量（"跟随系统"）；
  *   - 设置 → 外观 选了固定主题时，根元素上有 data-theme="light|dark"，优先于系统设置。
  * 浅色变量写了两遍（媒体查询里和 data-theme 里），因为 CSS 不能把两者合进一条规则。
+ *
+ * 这里是"默认"皮肤。其他皮肤（设置 → 外观 → 皮肤）由 store/skins.ts 生成同样结构的规则，
+ * 插入到 <head> 末尾的 <style id="skin"> 里，覆盖这里的变量。
  */
 :root {
   color-scheme: dark;
@@ -20,6 +23,8 @@
   --ok: #4ade80;
   --warn: #fbbf24;
   --danger: #f87171;
+  /* 强调色背景上的文字（主按钮、选中的分段按钮）。深色主题的强调色偏浅，白字对比度不够（2.6:1），所以用深色字 */
+  --on-accent: #0b1330;
   /* 消息区和输入框的最大宽度（设置 → 外观 → 消息区宽度） */
   --content-width: 48rem;
 }
@@ -38,6 +43,7 @@
     --ok: #16a34a;
     --warn: #b45309;
     --danger: #dc2626;
+    --on-accent: #ffffff;
   }
 }
 
@@ -54,6 +60,7 @@
   --ok: #16a34a;
   --warn: #b45309;
   --danger: #dc2626;
+  --on-accent: #ffffff;
 }
 
 @theme {
@@ -68,6 +75,7 @@
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
+  --color-on-accent: var(--on-accent);
   --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 }

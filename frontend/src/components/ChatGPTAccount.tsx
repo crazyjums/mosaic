@@ -101,7 +101,7 @@ export default function ChatGPTAccount({ onLoggedIn }: { onLoggedIn: () => void 
                 {t("使用其他账号")}
               </button>
             )}
-            <button className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50" onClick={() => void login(false)} disabled={busy}>
+            <button className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={() => void login(false)} disabled={busy}>
               {t("用 ChatGPT 账号登录")}
             </button>
           </>

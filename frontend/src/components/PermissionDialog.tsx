@@ -54,7 +54,7 @@ export default function PermissionDialog() {
           <button className="rounded-md border border-line px-3 py-1.5 hover:bg-panel-2" onClick={() => answer("allow_session")}>
             {t("本会话总是允许")}
           </button>
-          <button className="rounded-md bg-accent px-3 py-1.5 font-medium text-white hover:opacity-90" onClick={() => answer("allow")}>
+          <button className="rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent hover:opacity-90" onClick={() => answer("allow")}>
             {t("允许")} <kbd className="ml-1 text-[10px] opacity-70">Enter</kbd>
           </button>
         </div>
