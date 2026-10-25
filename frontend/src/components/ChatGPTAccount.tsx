@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { backend, type ChatGPTStatus } from "../bridge";
+import { backend, type ChatGPTStatus, type ChatGPTUsage } from "../bridge";
+import { fmtTokens } from "../store/metrics";
 import { t } from "../i18n";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
@@ -140,8 +141,31 @@ export default function ChatGPTAccount({ onLoggedIn }: { onLoggedIn: () => void 
           {t("令牌只保存在本机的数据目录中，不会发给界面或其他程序。下面的模型列表可以编辑；额度用完时会提示错误，不会自动改用付费 API。")}
         </p>
       )}
+      {st.state === "logged_in" && <UsageSummary />}
       {st.state === "logged_in" && st.models_error && <div className="text-xs text-warn">{st.models_error}</div>}
       {(error || st.error) && <div className="text-xs text-danger">{error || st.error}</div>}
+    </div>
+  );
+}
+
+// 本应用用掉的套餐额度。OpenAI 没有提供查询剩余额度的接口，剩余额度只能在 ChatGPT 网页上看。
+function UsageSummary() {
+  const [u, setU] = useState<ChatGPTUsage | null>(null);
+  useEffect(() => {
+    void backend().getChatGPTUsage().then(setU).catch(() => {});
+  }, []);
+  if (!u) return null;
+  const total = (w: ChatGPTUsage["last_5h"]) => fmtTokens(w.input_tokens + w.output_tokens);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-2 text-xs">
+      <span className="text-muted">{t("本应用用量")}</span>
+      <span>{t("最近 5 小时 {t}（{n} 次）", { t: total(u.last_5h), n: u.last_5h.requests })}</span>
+      <span>{t("最近 7 天 {t}（{n} 次）", { t: total(u.last_7d), n: u.last_7d.requests })}</span>
+      {u.limit_hit_at && <span className="text-danger">{t("⚠ GPT 额度已用完")}</span>}
+      <div className="flex-1" />
+      <button className="text-accent hover:underline" onClick={() => void backend().openChatGPTUsage()}>
+        {t("查看剩余额度 ↗")}
+      </button>
     </div>
   );
 }

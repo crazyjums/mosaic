@@ -4,7 +4,8 @@ import { backend } from "../bridge";
 import { t } from "../i18n";
 import { parseAnsi } from "../store/ansi";
 import { useChat } from "../store/chatStore";
-import { contextTokens, currentStep, fmtDuration, fmtTokens, fmtUSD, modelMeta, sessionCost } from "../store/metrics";
+import type { ChatGPTUsage } from "../bridge";
+import { contextTokens, currentStep, fmtDuration, fmtLatency, fmtTokens, fmtUSD, modelMeta, sessionCost, ttft } from "../store/metrics";
 import { useSettings } from "../store/settingsStore";
 import { useStatusLine, type ItemId } from "../store/statusline";
 import PermissionModeSelect from "./PermissionModeSelect";
@@ -49,8 +50,12 @@ function Item({ id }: { id: ItemId }) {
       return <ContextItem />;
     case "cost":
       return <CostItem />;
+    case "chatgpt":
+      return <ChatGPTQuotaItem />;
     case "turn":
       return <TurnItem />;
+    case "ttft":
+      return <TTFTItem />;
     case "workspace":
       return <WorkspaceItem />;
     case "git":
@@ -301,5 +306,73 @@ function ScriptItem() {
         </span>
       ))}
     </span>
+  );
+}
+
+// 首字延迟：最近一次调用从发出请求到收到第一个内容的时间。等待中实时计时（超过 1 秒才显示，避免闪烁）。
+function TTFTItem() {
+  const info = useChat(useShallow((s) => ttft(s)));
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (info.waitingSince === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(timer);
+  }, [info.waitingSince]);
+
+  const tip = info.avgMs !== null ? t("首字延迟：最近一次 {last}，本会话平均 {avg}（{n} 次调用）", { last: fmtLatency(info.lastMs ?? 0), avg: fmtLatency(info.avgMs), n: info.count }) : t("首字延迟：从发出请求到收到第一个字（含思考）的时间");
+  if (info.waitingSince !== null && now - info.waitingSince > 1000) {
+    return (
+      <Tip tip={tip} className="text-accent">
+        {t("首字 等待 {d}…", { d: fmtLatency(now - info.waitingSince) })}
+      </Tip>
+    );
+  }
+  if (info.lastMs === null) return null;
+  const color = info.lastMs >= 10000 ? "text-danger" : info.lastMs >= 3000 ? "text-warn" : "";
+  return (
+    <Tip tip={tip} className={color}>
+      {t("首字 {d}", { d: fmtLatency(info.lastMs) })}
+    </Tip>
+  );
+}
+
+// ChatGPT 额度：只在当前使用 ChatGPT 账号（chatgpt 类型的厂商）时显示。
+//
+// OpenAI 目前没有提供查询剩余额度的接口，所以这里显示的是本应用自己记的账：最近 5 小时 / 7 天用掉的 token
+// （套餐限额就是按这两个窗口计算的），以及最近一次请求是否遇到"额度已用完"。剩余额度要点击后在 ChatGPT 网页上看。
+function ChatGPTQuotaItem() {
+  const isChatGPT = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "chatgpt");
+  const refreshKey = useChat((s) => `${s.lastTurnMs}|${s.running}|${s.sessionId}`);
+  const [u, setU] = useState<ChatGPTUsage | null>(null);
+
+  useEffect(() => {
+    if (!isChatGPT) return;
+    const load = () => void backend().getChatGPTUsage().then(setU).catch(() => {});
+    load();
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
+  }, [isChatGPT, refreshKey]);
+
+  if (!isChatGPT || !u?.logged_in) return null;
+  const total = (w: ChatGPTUsage["last_5h"]) => w.input_tokens + w.output_tokens;
+  const open = () => void backend().openChatGPTUsage();
+  const tip = [
+    t("本应用通过 ChatGPT 账号用掉的套餐额度："),
+    t("最近 5 小时：{n} 次请求，输入 {i} / 输出 {o} tokens", { n: u.last_5h.requests, i: u.last_5h.input_tokens, o: u.last_5h.output_tokens }),
+    t("最近 7 天：{n} 次请求，输入 {i} / 输出 {o} tokens", { n: u.last_7d.requests, i: u.last_7d.input_tokens, o: u.last_7d.output_tokens }),
+    t("OpenAI 目前没有提供查询剩余额度的接口；点击在浏览器中打开 ChatGPT 的用量页面查看。"),
+  ].join("\n");
+
+  if (u.limit_hit_at) {
+    return (
+      <button className="whitespace-nowrap text-danger hover:underline" title={`${u.limit_message ?? ""}\n\n${tip}`} onClick={open}>
+        {t("⚠ GPT 额度已用完")}
+      </button>
+    );
+  }
+  return (
+    <button className="whitespace-nowrap hover:text-fg hover:underline" title={tip} onClick={open}>
+      {t("GPT 5h {h} · 7d {d}", { h: fmtTokens(total(u.last_5h)), d: fmtTokens(total(u.last_7d)) })}
+    </button>
   );
 }

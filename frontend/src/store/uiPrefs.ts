@@ -23,6 +23,8 @@ export interface UIPrefs {
   skin: string;
   /** 用户自定义的皮肤 */
   customSkins: Skin[];
+  /** 是否显示右侧的上下文明细面板（窗口足够宽时） */
+  contextPanel: boolean;
 }
 
 export const DEFAULT_PREFS: UIPrefs = {
@@ -35,6 +37,7 @@ export const DEFAULT_PREFS: UIPrefs = {
   language: "auto",
   skin: DEFAULT_SKIN_ID,
   customSkins: [],
+  contextPanel: true,
 };
 
 /** 字号作用在根元素上：Tailwind 的尺寸都是 rem，整个界面会等比缩放。 */
@@ -64,6 +67,7 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     language: pick(r.language, ["auto", "zh", "en"], d.language),
     skin: pick(r.skin, ids, d.skin),
     customSkins,
+    contextPanel: typeof r.contextPanel === "boolean" ? r.contextPanel : d.contextPanel,
   };
 }
 

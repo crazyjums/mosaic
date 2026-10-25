@@ -199,6 +199,52 @@ export interface ChatGPTStatus {
   models_error?: string;
 }
 
+/** 对应 siwc.UsageWindow */
+export interface UsageWindow {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+}
+
+/** 对应 settings.ChatGPTUsage：本应用用掉的 ChatGPT 套餐额度（OpenAI 没有提供查询剩余额度的接口） */
+export interface ChatGPTUsage {
+  logged_in: boolean;
+  last_5h: UsageWindow;
+  last_7d: UsageWindow;
+  /** 最近一次遇到"额度已用完"的时间；之后成功调用过则为空 */
+  limit_hit_at?: string;
+  limit_message?: string;
+  usage_url: string;
+}
+
+/** 对应 core.ContextPart */
+export interface ContextPart {
+  kind: "system" | "tools" | "user" | "assistant" | "thinking" | "tool_call" | "tool_result" | "image";
+  count: number;
+  tokens: number;
+}
+
+/** 对应 core.ContextItem */
+export interface ContextItem {
+  kind: ContextPart["kind"];
+  /** user：第几条用户消息；assistant / thinking：第几次回答 */
+  index?: number;
+  /** tool_call / tool_result 的工具名 */
+  tool?: string;
+  detail: string;
+  tokens: number;
+}
+
+/** 对应 core.ContextBreakdown：按字符估算的上下文组成 */
+export interface ContextBreakdown {
+  parts: ContextPart[] | null;
+  largest: ContextItem[] | null;
+  total: number;
+  messages: number;
+  tool_count: number;
+}
+
 export interface Backend {
   /** 用于在界面上标明当前是"桌面端"还是"浏览器演示" */
   readonly kind: "wails" | "demo";
@@ -241,6 +287,11 @@ export interface Backend {
   loginChatGPT(newAccount: boolean): Promise<string>;
   cancelChatGPTLogin(): Promise<void>;
   logoutChatGPT(): Promise<void>;
+  getChatGPTUsage(): Promise<ChatGPTUsage>;
+  /** 在浏览器中打开 ChatGPT 的用量页面（地址由后端固定） */
+  openChatGPTUsage(): Promise<void>;
+  // ---- 上下文明细 ----
+  getContextBreakdown(): Promise<ContextBreakdown>;
   // ---- 设置：权限与工具 ----
   listTools(): Promise<ToolInfo[]>;
   setDisabledTools(names: string[]): Promise<void>;

@@ -49,6 +49,9 @@ export interface AssistantItem {
   streaming: boolean;
   stopReason?: string;
   usage?: Usage;
+  /** 发出请求（message_start）和收到第一个内容（思考 / 文本 / 工具调用 / 图片）的时间，用于计算首字延迟。重放的历史没有 */
+  startedAt?: number;
+  firstTokenAt?: number;
 }
 
 export type TimelineItem =
@@ -154,22 +157,23 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
         model: ev.data.model,
         blocks: [],
         streaming: true,
+        startedAt: s.running ? Date.parse(ev.ts) : undefined,
       };
       return { ...s, provider: ev.data.provider, model: ev.data.model, timeline: [...s.timeline, item] };
     }
 
     case "thinking_delta":
       return updateMessage(s, ev.message_id, (m) => ({
-        ...m,
+        ...firstToken(m, ev.ts),
         blocks: appendText(m.blocks, "thinking", ev.data.text, !!ev.data.redacted),
       }));
 
     case "text_delta":
-      return updateMessage(s, ev.message_id, (m) => ({ ...m, blocks: appendText(m.blocks, "text", ev.data.text, false) }));
+      return updateMessage(s, ev.message_id, (m) => ({ ...firstToken(m, ev.ts), blocks: appendText(m.blocks, "text", ev.data.text, false) }));
 
     case "image":
       return updateMessage(s, ev.message_id, (m) => ({
-        ...m,
+        ...firstToken(m, ev.ts),
         blocks: [...m.blocks, { type: "image", mediaType: ev.data.media_type, data: ev.data.data, url: ev.data.url }],
       }));
 
@@ -177,7 +181,7 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
       const d = ev.data;
       const tool: ToolView = { callId: d.call_id, name: d.name, input: d.input, risk: d.risk, status: "queued" };
       const next = { ...s, tools: { ...s.tools, [d.call_id]: tool } };
-      return updateMessage(next, ev.message_id, (m) => ({ ...m, blocks: [...m.blocks, { type: "tool", callId: d.call_id }] }));
+      return updateMessage(next, ev.message_id, (m) => ({ ...firstToken(m, ev.ts), blocks: [...m.blocks, { type: "tool", callId: d.call_id }] }));
     }
 
     case "message_end": {
@@ -301,6 +305,12 @@ function appendText(blocks: AssistantBlock[], type: "text" | "thinking", text: s
     return [...blocks.slice(0, -1), { ...last, text: last.text + text }];
   }
   return [...blocks, type === "thinking" ? { type, text, redacted } : { type, text }];
+}
+
+/** 记录第一个内容到达的时间（只在实时的调用上记录，重放的历史没有 startedAt）。时间取事件信封的 ts（后端时间）。 */
+function firstToken(m: AssistantItem, ts: string): AssistantItem {
+  if (m.startedAt === undefined || m.firstTokenAt !== undefined) return m;
+  return { ...m, firstTokenAt: Date.parse(ts) };
 }
 
 function updateMessage(s: ChatState, messageId: string | undefined, fn: (m: AssistantItem) => AssistantItem): ChatState {

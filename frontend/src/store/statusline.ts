@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { backend } from "../bridge";
 
-export type ItemId = "model" | "tokens" | "context" | "cost" | "turn" | "workspace" | "git" | "permission" | "running" | "script";
+export type ItemId = "model" | "tokens" | "context" | "cost" | "chatgpt" | "turn" | "ttft" | "workspace" | "git" | "permission" | "running" | "script";
 
 export interface ItemMeta {
   label: string;
@@ -21,7 +21,13 @@ export const ITEMS: Record<ItemId, ItemMeta> = {
   tokens: { label: "Token 用量", description: "本会话累计的输入 / 输出 token", defaultEnabled: true },
   context: { label: "上下文占用", description: "最近一次请求的上下文大小；配置了模型的上下文窗口时显示占比和进度条", defaultEnabled: true },
   cost: { label: "预估花费", description: "按模型单价估算的本会话花费；没配置单价的模型不显示", defaultEnabled: true },
+  chatgpt: {
+    label: "ChatGPT 额度",
+    description: "使用 ChatGPT 账号时显示：本应用最近 5 小时 / 7 天用掉的 token、额度是否已用完；点击打开 ChatGPT 的用量页面查看剩余额度",
+    defaultEnabled: true,
+  },
   turn: { label: "本轮耗时 / 步数", description: "运行中实时显示已用时间和第几步；空闲时显示上一轮耗时", defaultEnabled: true },
+  ttft: { label: "首字延迟", description: "最近一次模型调用从发出请求到收到第一个字（含思考）的时间；悬停查看本会话平均值", defaultEnabled: true },
   workspace: { label: "工作区", description: "工具读写文件的根目录", defaultEnabled: true },
   git: { label: "Git 分支", description: "工作区是 git 仓库时显示分支，以及未提交改动的文件数", defaultEnabled: true },
   permission: { label: "权限模式", description: "只读 / 默认 / 自动接受编辑 / 全部放行，可直接切换", defaultEnabled: true },

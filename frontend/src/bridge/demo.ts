@@ -334,6 +334,36 @@ export function createDemoBackend(): Backend {
     },
     cancelChatGPTLogin: async () => {},
     logoutChatGPT: async () => {},
+    getChatGPTUsage: async () => {
+      const w = { requests: 0, input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
+      return { logged_in: false, last_5h: w, last_7d: w, usage_url: "https://chatgpt.com/settings/usage" };
+    },
+    openChatGPTUsage: async () => {
+      window.open("https://chatgpt.com/settings/usage", "_blank", "noopener");
+    },
+    // 演示模式没有真实的会话历史，按回放过的事件粗略统计。
+    getContextBreakdown: async () => {
+      const text = (t: string) => Math.ceil(t.length / 2);
+      let user = 0, assistant = 0, thinking = 0, calls = 0, results = 0, nUser = 0, nAssistant = 0, nThink = 0, nCalls = 0, nResults = 0;
+      for (const ev of current.events) {
+        if (ev.type === "user_message") (user += text(ev.data.text)), nUser++;
+        else if (ev.type === "text_delta") assistant += text(ev.data.text);
+        else if (ev.type === "thinking_delta") thinking += text(ev.data.text);
+        else if (ev.type === "message_start") nAssistant++, nThink++;
+        else if (ev.type === "tool_call") (calls += text(JSON.stringify(ev.data.input))), nCalls++;
+        else if (ev.type === "tool_result") (results += text(ev.data.output)), nResults++;
+      }
+      const parts = [
+        { kind: "system" as const, count: 1, tokens: 180 },
+        { kind: "tools" as const, count: demoTools.length, tokens: 420 },
+        { kind: "user" as const, count: nUser, tokens: user },
+        { kind: "assistant" as const, count: nAssistant, tokens: assistant },
+        { kind: "thinking" as const, count: nThink, tokens: thinking },
+        { kind: "tool_call" as const, count: nCalls, tokens: calls },
+        { kind: "tool_result" as const, count: nResults, tokens: results },
+      ].filter((p) => p.count > 0);
+      return { parts, largest: [], total: parts.reduce((a, p) => a + p.tokens, 0), messages: nUser + nAssistant, tool_count: demoTools.length };
+    },
     // ---- 权限与工具、状态栏脚本、MCP、外观：演示模式下只保存在内存里 ----
     listTools: async () => demoTools.map((t) => ({ ...t, disabled: disabledTools.includes(t.name) })),
     setDisabledTools: async (names) => {

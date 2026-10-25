@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, ChatGPTStatus, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -47,6 +47,9 @@ interface GoApp {
   LoginChatGPT(newAccount: boolean): Promise<string>;
   CancelChatGPTLogin(): Promise<void>;
   LogoutChatGPT(): Promise<void>;
+  GetChatGPTUsage(): Promise<ChatGPTUsage>;
+  OpenChatGPTUsage(): Promise<void>;
+  GetContextBreakdown(): Promise<ContextBreakdown>;
   ListTools(): Promise<ToolInfo[] | null>;
   SetDisabledTools(names: string[]): Promise<void>;
   GetPermissionRules(): Promise<PermissionRule[] | null>;
@@ -114,6 +117,9 @@ export function createWailsBackend(): Backend {
     loginChatGPT: (newAccount) => app.LoginChatGPT(newAccount),
     cancelChatGPTLogin: () => app.CancelChatGPTLogin(),
     logoutChatGPT: () => app.LogoutChatGPT(),
+    getChatGPTUsage: () => app.GetChatGPTUsage(),
+    openChatGPTUsage: () => app.OpenChatGPTUsage(),
+    getContextBreakdown: () => app.GetContextBreakdown(),
     listTools: async () => (await app.ListTools()) ?? [],
     setDisabledTools: (names) => app.SetDisabledTools(names),
     getPermissionRules: async () => (await app.GetPermissionRules()) ?? [],
