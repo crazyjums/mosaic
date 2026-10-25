@@ -1,7 +1,7 @@
 // 应用外壳：左侧会话栏 + 右侧对话区（消息流、输入框、状态栏）+ 权限弹窗。
 // 组件只从 useChat 读状态、调用动作；事件处理全部在 store/reducer.ts。
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import ActivityPanel from "./components/ActivityPanel";
 import Composer from "./components/Composer";
 import ContextPanel from "./components/ContextPanel";
@@ -9,6 +9,7 @@ import MessageList from "./components/MessageList";
 import PermissionDialog from "./components/PermissionDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import Sidebar from "./components/Sidebar";
+import EditableTitle from "./components/EditableTitle";
 import StatusBar from "./components/StatusBar";
 import { t } from "./i18n";
 import { useChat } from "./store/chatStore";
@@ -35,7 +36,7 @@ export default function App() {
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center border-b border-line px-5 text-sm">
-          <span className="truncate font-medium">{title || t("新会话")}</span>
+          <HeaderTitle title={title} />
           <div className="flex-1" />
           {/* 上下文面板只在宽窗口（xl）显示，按钮也一样 */}
           <button
@@ -65,6 +66,23 @@ export default function App() {
       </main>
       <PermissionDialog />
       <SettingsDialog />
+    </div>
+  );
+}
+
+// 顶部的会话标题：双击或点 ✎ 改名。空会话（还没发消息）也能先起名，第一轮结束时一起保存。
+function HeaderTitle({ title }: { title: string }) {
+  const sessionId = useChat((s) => s.sessionId);
+  const renameSession = useChat((s) => s.renameSession);
+  const [editing, setEditing] = useState(false);
+  return (
+    <div className="group flex min-w-0 items-center gap-1">
+      <EditableTitle value={title} placeholder={t("新会话")} editing={editing} onEditingChange={setEditing} onSave={(v) => (sessionId ? renameSession(sessionId, v) : false)} className="font-medium" />
+      {!editing && (
+        <button className="shrink-0 rounded px-1 text-xs text-muted opacity-0 hover:text-fg group-hover:opacity-100 focus:opacity-100" onClick={() => setEditing(true)} title={t("改名")} aria-label={t("改名")}>
+          ✎
+        </button>
+      )}
     </div>
   );
 }

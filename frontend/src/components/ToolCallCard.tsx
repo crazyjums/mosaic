@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ToolStatus, ToolView } from "../store/reducer";
 import { t } from "../i18n";
+import { IMAGE_EXT, svgDataURL, WorkspaceImage, ZoomableImage } from "./MediaView";
 
 // label 是中文原文，渲染时翻译。
 const STATUS: Record<ToolStatus, { label: string; className: string }> = {
@@ -18,7 +19,7 @@ const RISK: Record<string, string> = { read: "只读", write: "写入", exec: "�
 function headline(input: unknown): string {
   if (input && typeof input === "object") {
     const o = input as Record<string, unknown>;
-    for (const k of ["command", "path", "query", "url"]) {
+    for (const k of ["command", "path", "pattern", "source", "query", "url"]) {
       if (typeof o[k] === "string") return o[k] as string;
     }
   }
@@ -47,6 +48,7 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
           {!!tool.durationMs && <span className="text-muted">· {tool.durationMs}ms</span>}
         </span>
       </button>
+      <ImagePreview tool={tool} />
       {open && (
         <div className="space-y-2 border-t border-line px-3 py-2 text-xs">
           {tool.permission && (
@@ -61,6 +63,21 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// 写出的是图片（模型常用 write_file 生成 SVG 效果图）：在卡片下方直接显示，不用展开。
+// 覆盖写入的 SVG 直接用参数里的内容（历史记录里看到的是当时写的版本）；其他情况从工作区读当前文件。
+function ImagePreview({ tool }: { tool: ToolView }) {
+  if (tool.status !== "done" || !["write_file", "edit_file"].includes(tool.name)) return null;
+  const o = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
+  const path = typeof o.path === "string" ? o.path : "";
+  if (!IMAGE_EXT.test(path)) return null;
+  const inline = tool.name === "write_file" && o.mode !== "append" && /\.svg$/i.test(path) && typeof o.content === "string";
+  return (
+    <div className="border-t border-line px-3 py-2">
+      {inline ? <ZoomableImage src={svgDataURL(o.content as string)} alt={path} /> : <WorkspaceImage path={path} alt={path} />}
     </div>
   );
 }

@@ -254,6 +254,20 @@ export function createDemoBackend(): Backend {
       }
       sessions.delete(id);
     },
+    renameSession: async (id, title) => {
+      const s = sessions.get(id) ?? (id === current.summary.id ? current : undefined);
+      if (!s) throw new Error("session not found");
+      if (!title.trim()) throw new Error("标题不能为空");
+      s.summary.title = title.trim().slice(0, 100);
+      const ev = { type: "session_updated", data: { title: s.summary.title }, seq: ++seq, id: rid("ev"), session_id: id, agent_id: "main", ts: new Date().toISOString(), v: 1 } as unknown as AgentEvent;
+      listeners.forEach((cb) => cb(ev));
+    },
+    openExternalURL: async (url) => {
+      window.open(url, "_blank", "noopener");
+    },
+    readWorkspaceImage: async () => {
+      throw new Error("浏览器演示模式不能读取本地文件");
+    },
     setModel: async (p, m) => {
       provider = p || "fake";
       model = m || "demo";

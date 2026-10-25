@@ -25,6 +25,8 @@ export interface UIPrefs {
   customSkins: Skin[];
   /** 是否显示右侧的上下文明细面板（窗口足够宽时） */
   contextPanel: boolean;
+  /** 左侧会话栏是否收起（收起后只剩一列图标） */
+  sidebarCollapsed: boolean;
 }
 
 export const DEFAULT_PREFS: UIPrefs = {
@@ -38,6 +40,7 @@ export const DEFAULT_PREFS: UIPrefs = {
   skin: DEFAULT_SKIN_ID,
   customSkins: [],
   contextPanel: true,
+  sidebarCollapsed: false,
 };
 
 /** 字号作用在根元素上：Tailwind 的尺寸都是 rem，整个界面会等比缩放。 */
@@ -68,6 +71,7 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     skin: pick(r.skin, ids, d.skin),
     customSkins,
     contextPanel: typeof r.contextPanel === "boolean" ? r.contextPanel : d.contextPanel,
+    sidebarCollapsed: typeof r.sidebarCollapsed === "boolean" ? r.sidebarCollapsed : d.sidebarCollapsed,
   };
 }
 

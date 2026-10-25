@@ -102,6 +102,10 @@ body {
   .btn {
     @apply shrink-0 rounded-md border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50;
   }
+  /* 收起后的会话栏里的图标按钮 */
+  .rail-btn {
+    @apply flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50;
+  }
 }
 
 /* 状态栏：某一项此刻没有内容（组件返回 null）时整项隐藏；相邻两个有内容的项之间画一条竖线。

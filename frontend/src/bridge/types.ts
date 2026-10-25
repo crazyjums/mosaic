@@ -284,6 +284,12 @@ export interface Backend {
   newSession(): Promise<Status>;
   loadSession(id: string): Promise<Status>;
   deleteSession(id: string): Promise<void>;
+  /** 修改会话标题（当前会话或历史会话）；成功后后端会发 session_updated */
+  renameSession(id: string, title: string): Promise<void>;
+  /** 读取当前会话工作区内的图片，返回 data URL（聊天里显示模型生成的 SVG / PNG） */
+  readWorkspaceImage(path: string): Promise<string>;
+  /** 在系统浏览器中打开 http / https 链接 */
+  openExternalURL(url: string): Promise<void>;
   setModel(profile: string, model: string): Promise<Status>;
   /** 立即返回；对话过程通过 onEvent 推送 */
   send(text: string): Promise<void>;

@@ -36,6 +36,8 @@ interface Store extends ChatState {
   newSession(): Promise<void>;
   loadSession(id: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
+  /** 修改会话标题；失败时显示提示并返回 false */
+  renameSession(id: string, title: string): Promise<boolean>;
   setModel(profile: string, model: string): Promise<void>;
   setPermissionMode(mode: PermissionMode): Promise<void>;
   /** 为当前会话选择工作区；传空字符串表示跟随默认工作区 */
@@ -99,9 +101,9 @@ export const useChat = create<Store>((set, get) => {
       // 所有事件都流经 reducer。一轮结束后刷新会话列表和状态栏数据。
       b.onEvent((ev) => {
         set((s) => applyEvent(s, ev));
-        if (ev.type === "session_updated" && ev.session_id === get().sessionId) {
-          set({ title: ev.data.title });
-          void refreshMeta(); // 会话列表里的标题也要更新
+        if (ev.type === "session_updated") {
+          if (ev.session_id === get().sessionId) set({ title: ev.data.title });
+          void refreshMeta(); // 会话列表里的标题也要更新（历史会话改名时也一样）
         }
         if (ev.type === "turn_end" && !ev.data.replay) {
           void refreshMeta();
@@ -179,6 +181,16 @@ export const useChat = create<Store>((set, get) => {
         }
         set({ sessions: await backend().listSessions() });
       }),
+
+    renameSession: async (id, title) => {
+      try {
+        await backend().renameSession(id, title);
+        return true;
+      } catch (e) {
+        set({ toast: String(e instanceof Error ? e.message : e) });
+        return false;
+      }
+    },
 
     setModel: (profile, model) =>
       guard(async () => {

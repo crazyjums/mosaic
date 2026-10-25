@@ -24,6 +24,9 @@ interface GoApp {
   NewSession(): Promise<Status>;
   LoadSession(id: string): Promise<Status>;
   DeleteSession(id: string): Promise<void>;
+  RenameSession(id: string, title: string): Promise<void>;
+  ReadWorkspaceImage(path: string): Promise<string>;
+  OpenExternalURL(url: string): Promise<void>;
   SetModel(profile: string, model: string): Promise<Status>;
   Send(text: string): Promise<void>;
   Cancel(): Promise<void>;
@@ -96,6 +99,9 @@ export function createWailsBackend(): Backend {
     newSession: () => app.NewSession(),
     loadSession: (id) => app.LoadSession(id),
     deleteSession: (id) => app.DeleteSession(id),
+    renameSession: (id, title) => app.RenameSession(id, title),
+    readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),
+    openExternalURL: (url) => app.OpenExternalURL(url),
     setModel: (p, m) => app.SetModel(p, m),
     send: (t) => app.Send(t),
     cancel: () => app.Cancel(),
