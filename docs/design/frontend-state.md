@@ -72,7 +72,7 @@ stateDiagram-v2
 - 队列按会话绑定，先进先出；条目状态 `queued → sending → (delivered 即移除 | failed)`；
 - `drain` 取队首时**同步**标记为 `sending`，再异步调用后端——连续触发两次 drain 也不会重复发送；
 - 只有真实事件才推进状态：`turn_start` 表示后端接收了（条目移除），`error`（`send_failed` / `busy` / `attachment_error`）表示失败（条目回到队首并标记失败），`turn_end` 触发下一次 drain；
-- 取消（`cancelled`）和出错会让队列“暂停”，只有用户点继续或发新消息才恢复；失败的队首条目挡住后面的，直到重试或删除；
+- 取消（`cancelled`）和出错会让队列“暂停”，只有用户点“继续发送”或发新消息才恢复；失败的队首条目挡住后面的，直到重试或删除；
 - 切换会话不丢队列（按会话 ID 分开存），只有当前会话的队列会被 drain。
 
 测试：`store/queue.test.ts`（状态机）、`store/chatStore.queue.test.ts`（用 mock 后端覆盖 FIFO、失败重试、停止后保留、会话隔离）。
