@@ -20,6 +20,15 @@ export type TurnEndReason = "completed" | "max_steps" | "cancelled" | "error";
 export type Risk = "read" | "write" | "exec" | "";
 export type Decision = "allow" | "allow_session" | "deny";
 
+/** 随用户消息发出的附件摘要：文本附件只有名字和大小；图片带 base64 数据用来显示缩略图。 */
+export interface AttachmentInfo {
+  name: string;
+  kind: "image" | "text";
+  media_type?: string;
+  size: number;
+  data?: string;
+}
+
 /** 每种事件类型对应的载荷。键就是事件的 type 字段。 */
 export interface PayloadMap {
   turn_start: { turn_id: string; provider: string; model: string; replay?: boolean };
@@ -31,7 +40,7 @@ export interface PayloadMap {
     session_usage: Usage;
     replay?: boolean;
   };
-  user_message: { text: string };
+  user_message: { text: string; attachments?: AttachmentInfo[] };
 
   message_start: { provider: string; model: string; step: number };
   text_delta: { text: string };

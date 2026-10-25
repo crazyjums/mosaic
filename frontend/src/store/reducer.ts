@@ -10,7 +10,7 @@
 //   - 工具调用的详细状态放在 tools 字典里（按 call_id 索引），因为它会被后续多个事件
 //     （permission_request、permission_resolved、tool_result）更新，而这些事件不一定带 message_id。
 
-import type { AgentEvent, Decision, PayloadMap, Risk, TurnEndReason, Usage } from "../protocol/events";
+import type { AgentEvent, AttachmentInfo, Decision, PayloadMap, Risk, TurnEndReason, Usage } from "../protocol/events";
 import { PROTOCOL_VERSION } from "../protocol/events";
 
 export type ToolStatus =
@@ -65,7 +65,7 @@ export interface RouteView {
 }
 
 export type TimelineItem =
-  | { kind: "user"; id: string; text: string }
+  | { kind: "user"; id: string; text: string; attachments?: AttachmentInfo[] }
   | AssistantItem
   | { kind: "error"; id: string; code: string; message: string; fatal: boolean }
   | { kind: "notice"; id: string; text: string }
@@ -166,7 +166,7 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
       };
 
     case "user_message":
-      return { ...s, timeline: [...s.timeline, { kind: "user", id: ev.id, text: ev.data.text }] };
+      return { ...s, timeline: [...s.timeline, { kind: "user", id: ev.id, text: ev.data.text, attachments: ev.data.attachments }] };
 
     case "message_start": {
       const item: AssistantItem = {

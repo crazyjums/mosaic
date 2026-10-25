@@ -25,6 +25,7 @@ function fmtTime(iso: string): string {
 
 export default function Sidebar() {
   const { sessions, sessionId, newSession, loadSession, deleteSession, renameSession, running, backendKind } = useChat();
+  const queue = useChat((s) => s.queue);
   const openSettings = useSettings((s) => s.show);
   const collapsed = useUIPrefs((s) => s.prefs.sidebarCollapsed);
   const updatePrefs = useUIPrefs((s) => s.update);
@@ -136,6 +137,7 @@ export default function Sidebar() {
                       />
                     </div>
                     <div className="truncate text-[11px] text-muted" title={`${s.workspace ? s.workspace + "\n" : ""}${s.provider}/${s.model} · ${new Date(s.updated_at).toLocaleString()}`}>
+                      {queue.some((m) => m.sessionId === s.id) && <span className="mr-1 rounded-full bg-accent-soft px-1.5 text-[10px] font-medium text-accent">{t("待发送 {n} 条", { n: queue.filter((m) => m.sessionId === s.id).length })}</span>}
                       {s.workspace && <>📁 {baseName(s.workspace)} · </>}
                       {s.provider}/{s.model} · {fmtTime(s.updated_at)}
                     </div>

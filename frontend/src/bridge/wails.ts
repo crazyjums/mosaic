@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -67,6 +67,7 @@ interface GoApp {
   GetVersion(): Promise<string>;
   CheckUpdate(): Promise<UpdateInfo>;
   ListSkills(): Promise<SkillInfo[] | null>;
+  SendMessage(text: string, attachments: Attachment[]): Promise<void>;
   GetVersionHistory(): Promise<ReleaseNotes[] | null>;
   InstallUpdate(): Promise<void>;
   GetUpdateStatus(): Promise<UpdateStatus>;
@@ -129,7 +130,7 @@ export function createWailsBackend(): Backend {
     readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),
     openExternalURL: (url) => app.OpenExternalURL(url),
     setModel: (p, m) => app.SetModel(p, m),
-    send: (t) => app.Send(t),
+    send: (t, atts) => (atts?.length ? app.SendMessage(t, atts) : app.Send(t)),
     cancel: () => app.Cancel(),
     respondPermission: (id, d: Decision) => app.RespondPermission(id, d),
     listProviders: async () => (await app.ListProviders()) ?? [],

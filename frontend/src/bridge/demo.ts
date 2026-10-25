@@ -11,9 +11,9 @@
 //   3. 遇到 permission_request 时按当前权限档位处理（与 Go 端 permission.ModePolicy 一致）：
 //      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
-import type { AgentEvent, Decision, Usage } from "../protocol/events";
+import type { AgentEvent, AttachmentInfo, Decision, Usage } from "../protocol/events";
 import type {
-  Backend, General, GeneralView, GroupView, MemberState, UsageNode, UsageReport, UsageRequest, UsageTotals, MCPServerConfig, PermissionMode, PermissionRule, ProfileInfo, ProviderView, SessionSummary, Status, ToolInfo,
+  Attachment, Backend, General, GeneralView, GroupView, MemberState, UsageNode, UsageReport, UsageRequest, UsageTotals, MCPServerConfig, PermissionMode, PermissionRule, ProfileInfo, ProviderView, SessionSummary, Status, ToolInfo,
 } from "./types";
 import raw from "./demo-events.jsonl?raw";
 
@@ -169,7 +169,11 @@ export function createDemoBackend(): Backend {
   }
 
   /** 回放录制的 demo 剧本。 */
-  async function play(text: string) {
+  /** 附件 → user_message 事件里的摘要（与后端 core.attachmentInfos 一致：文本只有名字和大小，图片带数据） */
+  const infosOf = (atts: Attachment[] = []): AttachmentInfo[] =>
+    atts.map((a) => (a.data ? { name: a.name, kind: "image" as const, media_type: a.media_type, size: Math.floor((a.data.length * 3) / 4), data: a.data } : { name: a.name, kind: "text" as const, size: (a.text ?? "").length }));
+
+  async function play(text: string, atts: Attachment[] = []) {
     // 每一轮重新生成 message_id / call_id，避免多轮回放时 ID 冲突。
     const ids = new Map<string, string>();
     const remap = (id: string) => {
@@ -185,6 +189,7 @@ export function createDemoBackend(): Backend {
       const ev = JSON.parse(recordedPrompt ? json.replaceAll(recordedPrompt, escaped) : json) as AgentEvent;
       if (ev.message_id) ev.message_id = remap(ev.message_id);
       if ("call_id" in ev.data) ev.data.call_id = remap(ev.data.call_id);
+      if (ev.type === "user_message" && atts.length) ev.data.attachments = infosOf(atts);
 
       switch (ev.type) {
         case "text_delta":
@@ -227,11 +232,11 @@ export function createDemoBackend(): Backend {
   }
 
   /** "echo" 模型：复述用户输入。 */
-  async function playEcho(text: string) {
+  async function playEcho(text: string, atts: Attachment[] = []) {
     const base = { v: 1, id: "", seq: 0, session_id: "", agent_id: "main", ts: "" };
     const message_id = rid("msg");
     emit({ ...base, type: "turn_start", data: { turn_id: rid("turn"), provider: "fake", model } });
-    emit({ ...base, type: "user_message", data: { text } });
+    emit({ ...base, type: "user_message", data: { text, attachments: atts.length ? infosOf(atts) : undefined } });
     emit({ ...base, message_id, type: "message_start", data: { provider: "fake", model, step: 1 } });
     await stream({ ...base, message_id, type: "text_delta", data: { text: "" } }, `（fake）你说的是：${text}`);
     const usage = { input_tokens: 40, output_tokens: 12 };
@@ -393,13 +398,13 @@ export function createDemoBackend(): Backend {
     fetchModels: async () => {
       throw new Error(demoOnly);
     },
-    send: async (text) => {
+    send: async (text, atts) => {
       if (running) throw new Error("engine: a turn is already running");
       running = true;
       cancelled = false;
       if (!current.summary.title) current.summary.title = text.slice(0, 40);
       sessions.set(current.summary.id, current);
-      (model === "echo" ? playEcho(text) : play(text)).finally(() => {
+      (model === "echo" ? playEcho(text, atts) : play(text, atts)).finally(() => {
         running = false;
         current.summary.updated_at = new Date().toISOString();
         current.summary.message_count += 1;

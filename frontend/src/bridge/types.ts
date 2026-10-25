@@ -75,6 +75,16 @@ export interface LoadedSession extends HistoryPage {
   status: Status;
 }
 
+/** 要随消息发出的附件（对应 core.Attachment）：图片带 base64，文本带内容 */
+export interface Attachment {
+  name: string;
+  media_type?: string;
+  /** 图片的 base64（不带 data: 前缀） */
+  data?: string;
+  /** 文本附件的内容 */
+  text?: string;
+}
+
 /** 一个技能（对应 skill.Info）：输入框里键入 / 时的补全项 */
 export interface SkillInfo {
   name: string;
@@ -320,7 +330,8 @@ export interface Backend {
   openExternalURL(url: string): Promise<void>;
   setModel(profile: string, model: string): Promise<Status>;
   /** 立即返回；对话过程通过 onEvent 推送 */
-  send(text: string): Promise<void>;
+  /** 发送一条消息；可带附件（图片、文本文件）。后端同一时间只跑一轮，排队由界面的发送队列负责（store/queue.ts） */
+  send(text: string, attachments?: Attachment[]): Promise<void>;
   cancel(): Promise<void>;
   respondPermission(requestId: string, decision: Decision): Promise<void>;
   // ---- 设置：厂商配置 ----

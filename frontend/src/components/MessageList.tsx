@@ -96,7 +96,7 @@ export default function MessageList() {
             case "user":
               return (
                 <div key={it.id} className="flex justify-end">
-                  <UserBubble text={it.text} />
+                  <UserBubble text={it.text} attachments={it.attachments} />
                 </div>
               );
             case "error":
