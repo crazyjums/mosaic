@@ -4,6 +4,7 @@ import { PRESETS, type Preset } from "../store/presets";
 import { useSettings } from "../store/settingsStore";
 import { t } from "../i18n";
 import AppearanceSettings from "./AppearanceSettings";
+import ChatGPTAccount from "./ChatGPTAccount";
 import DataSettings from "./DataSettings";
 import GeneralSettings from "./GeneralSettings";
 import MCPSettings from "./MCPSettings";
@@ -30,9 +31,13 @@ const SOURCE_LABEL: Record<ProviderView["source"], string> = {
   config: "配置文件",
   settings: "",
   override: "已覆盖配置文件",
+  account: "",
 };
 
-const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示" };
+const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号" };
+
+/** 左侧列表里"ChatGPT 账号登录"入口的选中值（还没登录时没有 chatgpt 配置档可选） */
+const CHATGPT_ENTRY = "\u0000chatgpt";
 
 export default function SettingsDialog() {
   const { open, tab, setTab, providers, error, hide } = useSettings();
@@ -44,7 +49,7 @@ export default function SettingsDialog() {
   useEffect(() => {
     if (!open) return;
     const first = providers.find((p) => p.type !== "fake" && p.available);
-    setSelected((cur) => (cur && providers.some((p) => p.name === cur) ? cur : first?.name ?? null));
+    setSelected((cur) => (cur === CHATGPT_ENTRY || (cur && providers.some((p) => p.name === cur)) ? cur : first?.name ?? null));
   }, [open, providers]);
 
   useEffect(() => {
@@ -117,7 +122,15 @@ export default function SettingsDialog() {
               </button>
             ))}
           </nav>
-          <div className="border-t border-line p-3">
+          <div className="space-y-2 border-t border-line p-3">
+            {!providers.some((p) => p.type === "chatgpt") && (
+              <button
+                className={`w-full rounded-lg border px-3 py-2 text-sm ${selected === CHATGPT_ENTRY ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
+                onClick={() => setSelected(CHATGPT_ENTRY)}
+              >
+                {t("用 ChatGPT 账号登录")}
+              </button>
+            )}
             <button
               className={`w-full rounded-lg border border-dashed px-3 py-2 text-sm ${selected === null ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
               onClick={() => setSelected(null)}
@@ -130,10 +143,16 @@ export default function SettingsDialog() {
         {/* 右：表单。key 保证切换配置档时表单状态重置 */}
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center border-b border-line px-5">
-            <span className="text-sm font-medium">{current ? `编辑：${current.name}` : "添加厂商"}</span>
+            <span className="text-sm font-medium">{selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : current ? `编辑：${current.name}` : "添加厂商"}</span>
           </header>
           {error && <div className="border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">{error}</div>}
-          <ProviderForm key={current?.name ?? "__new__"} current={current} onSaved={setSelected} />
+          {selected === CHATGPT_ENTRY ? (
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <ChatGPTAccount onLoggedIn={() => setSelected("chatgpt")} />
+            </div>
+          ) : (
+            <ProviderForm key={current?.name ?? "__new__"} current={current} onSaved={setSelected} />
+          )}
         </section>
       </div>
         )}
@@ -180,6 +199,8 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
   const [fetchError, setFetchError] = useState("");
 
   const isFake = current?.type === "fake";
+  // ChatGPT 账号：没有 Base URL 和 API Key，名称固定；表单只编辑模型列表和思考选项。
+  const isChatGPT = form.type === "chatgpt";
   const preset = PRESETS.find((p) => p.id === presetId);
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }));
 
@@ -295,6 +316,10 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           <div className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">当前不可用：{current.error}</div>
         )}
 
+        {isChatGPT && <ChatGPTAccount onLoggedIn={() => {}} />}
+
+        {!isChatGPT && (
+        <>
         <div className="grid grid-cols-2 gap-4">
           <Field label="名称">
             <input className="input" value={form.name} onChange={(e) => patch({ name: e.target.value })} placeholder="例如 deepseek、公司网关" />
@@ -345,6 +370,8 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </div>
           <Hint>密钥只保存在本机（数据目录下的 settings.json；在“常规”中开启后改为保存到系统钥匙串），不会显示在界面上。</Hint>
         </Field>
+        </>
+        )}
 
         <Field label="模型列表">
           <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-lg border border-line bg-bg px-2 py-1.5 focus-within:border-accent/60">
@@ -408,7 +435,32 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
         <details className="rounded-lg border border-line px-3 py-2">
           <summary className="cursor-pointer text-sm text-muted">高级选项</summary>
           <div className="mt-3 space-y-4">
-            {form.type === "openai" ? (
+            {isChatGPT ? (
+              <>
+                <Field label="思考过程">
+                  <select
+                    className="input"
+                    value={String(form.options.thinking ?? "adaptive")}
+                    onChange={(e) => patch({ options: { ...form.options, thinking: e.target.value } })}
+                  >
+                    <option value="adaptive">请求思考摘要（界面显示在思考卡片里）</option>
+                    <option value="omit">不发送 reasoning 参数（模型不支持时选这个）</option>
+                  </select>
+                </Field>
+                <Field label="Effort（思考深度）">
+                  <select
+                    className="input"
+                    value={String(form.options.effort ?? "")}
+                    onChange={(e) => patch({ options: { ...form.options, effort: e.target.value || undefined } })}
+                  >
+                    <option value="">模型默认</option>
+                    {["minimal", "low", "medium", "high", "xhigh"].map((x) => (
+                      <option key={x}>{x}</option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            ) : form.type === "openai" ? (
               <Field label="输出上限字段名">
                 <select
                   className="input"

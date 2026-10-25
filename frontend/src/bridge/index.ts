@@ -5,7 +5,7 @@ import type { Backend } from "./types";
 import { createWailsBackend, isWails } from "./wails";
 
 export type {
-  Backend, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, ChatGPTStatus, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 

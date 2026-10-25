@@ -8,7 +8,7 @@
 import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import type {
-  Backend, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, ChatGPTStatus, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -42,6 +42,10 @@ interface GoApp {
   GetDataInfo(): Promise<DataInfo>;
   OpenDataDir(): Promise<void>;
   ClearSessions(): Promise<number>;
+  GetChatGPT(): Promise<ChatGPTStatus>;
+  LoginChatGPT(newAccount: boolean): Promise<string>;
+  CancelChatGPTLogin(): Promise<void>;
+  LogoutChatGPT(): Promise<void>;
   ListTools(): Promise<ToolInfo[] | null>;
   SetDisabledTools(names: string[]): Promise<void>;
   GetPermissionRules(): Promise<PermissionRule[] | null>;
@@ -105,6 +109,10 @@ export function createWailsBackend(): Backend {
     getDataInfo: () => app.GetDataInfo(),
     openDataDir: () => app.OpenDataDir(),
     clearSessions: () => app.ClearSessions(),
+    getChatGPT: () => app.GetChatGPT(),
+    loginChatGPT: (newAccount) => app.LoginChatGPT(newAccount),
+    cancelChatGPTLogin: () => app.CancelChatGPTLogin(),
+    logoutChatGPT: () => app.LogoutChatGPT(),
     listTools: async () => (await app.ListTools()) ?? [],
     setDisabledTools: (names) => app.SetDisabledTools(names),
     getPermissionRules: async () => (await app.GetPermissionRules()) ?? [],

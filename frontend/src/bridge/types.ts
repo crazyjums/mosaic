@@ -107,8 +107,8 @@ export interface ProviderView {
   has_api_key: boolean;
   /** 掩码后的密钥，例如 "sk-…a1b2" */
   api_key_hint: string;
-  /** config：来自 config.toml；settings：界面添加；override：界面覆盖了 config.toml */
-  source: "config" | "settings" | "override";
+  /** config：来自 config.toml；settings：界面添加；override：界面覆盖了 config.toml；account：ChatGPT 账号登录 */
+  source: "config" | "settings" | "override" | "account";
   deletable: boolean;
   available: boolean;
   error?: string;
@@ -186,6 +186,19 @@ export interface KeychainStatus {
   warning?: string;
 }
 
+/** 对应 settings.ChatGPTStatus（内嵌 siwc.Status）。不含任何令牌 */
+export interface ChatGPTStatus {
+  state: "logged_out" | "pending" | "logged_in";
+  email?: string;
+  plan?: string;
+  /** 等待登录时的授权地址，浏览器没有自动打开时可以复制 */
+  login_url?: string;
+  error?: string;
+  /** 本机已有签发的 client_id，下次登录不用重新注册 */
+  registered: boolean;
+  models_error?: string;
+}
+
 export interface Backend {
   /** 用于在界面上标明当前是"桌面端"还是"浏览器演示" */
   readonly kind: "wails" | "demo";
@@ -222,6 +235,12 @@ export interface Backend {
   openDataDir(): Promise<void>;
   /** 删除所有历史会话，返回删除的数量 */
   clearSessions(): Promise<number>;
+  // ---- 设置：ChatGPT 账号登录 ----
+  getChatGPT(): Promise<ChatGPTStatus>;
+  /** 在系统浏览器中打开授权页面，返回授权地址 */
+  loginChatGPT(newAccount: boolean): Promise<string>;
+  cancelChatGPTLogin(): Promise<void>;
+  logoutChatGPT(): Promise<void>;
   // ---- 设置：权限与工具 ----
   listTools(): Promise<ToolInfo[]>;
   setDisabledTools(names: string[]): Promise<void>;

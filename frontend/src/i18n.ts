@@ -243,6 +243,23 @@ export const EN: Record<string, string> = {
   "未保存的修改": "Unsaved changes",
   "示例": "Example",
 
+  // ---- 设置：ChatGPT 账号 ----
+  "ChatGPT 账号": "ChatGPT account",
+  "用 ChatGPT 账号登录": "Sign in with ChatGPT",
+  "使用其他账号": "Use another account",
+  "退出登录": "Sign out",
+  "未登录": "Not signed in",
+  "已登录 {email}": "Signed in as {email}",
+  "等待你在浏览器中完成登录…": "Waiting for you to finish signing in in the browser…",
+  "浏览器没有自动打开？复制下面的地址，在这台电脑的浏览器中打开：": "Browser didn't open? Copy this address and open it in a browser on this computer:",
+  "复制": "Copy",
+  "已复制": "Copied",
+  "退出 ChatGPT 账号？本机保存的令牌会被删除并吊销。": "Sign out of ChatGPT? The tokens stored on this computer will be deleted and revoked.",
+  "使用 OpenAI 官方的“Sign in with ChatGPT”：在浏览器中登录并授权后，可以用 ChatGPT 套餐（Go / Plus / Pro 等）里的额度调用 GPT 模型，不需要 API Key。用量计入你的 ChatGPT 额度，可以在 ChatGPT 的设置中为本应用设置上限或撤销授权。":
+    "Uses OpenAI's official \"Sign in with ChatGPT\": after you sign in and authorize in the browser, GPT models run on your ChatGPT plan (Go / Plus / Pro, …) without an API key. Usage counts against your ChatGPT limits; you can cap it or revoke access for this app in ChatGPT settings.",
+  "令牌只保存在本机的数据目录中，不会发给界面或其他程序。下面的模型列表可以编辑；额度用完时会提示错误，不会自动改用付费 API。":
+    "Tokens are stored only in this computer's data directory and are never sent to the UI or other programs. The model list below is editable; when your plan limit is reached you get an error, it never switches to paid API usage.",
+
   // ---- 设置：状态栏脚本 ----
   "自定义脚本": "Custom script",
   "脚本输出": "Script output",

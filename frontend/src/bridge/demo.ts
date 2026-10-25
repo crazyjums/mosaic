@@ -328,6 +328,12 @@ export function createDemoBackend(): Backend {
     respondPermission: async (id, decision) => {
       if (pending?.requestId === id) pending.resolve(decision);
     },
+    getChatGPT: async () => ({ state: "logged_out", registered: false, error: demoOnly }),
+    loginChatGPT: async () => {
+      throw new Error(demoOnly);
+    },
+    cancelChatGPTLogin: async () => {},
+    logoutChatGPT: async () => {},
     // ---- 权限与工具、状态栏脚本、MCP、外观：演示模式下只保存在内存里 ----
     listTools: async () => demoTools.map((t) => ({ ...t, disabled: disabledTools.includes(t.name) })),
     setDisabledTools: async (names) => {
