@@ -9,13 +9,14 @@ import { useSettings } from "../store/settingsStore";
 // 和状态栏设置"改了就存"不同，这里有明确的"保存"按钮：换工作区影响很大（agent 读写的目录变了），
 // 应该由用户确认后再生效。输入框留空 = 使用默认值，占位文字显示默认值是多少。
 
-type Form = { workspace: string; maxSteps: string; maxTokens: string; shellTimeout: string; titleMode: NonNullable<General["title_mode"]> };
+type Form = { workspace: string; maxSteps: string; maxTokens: string; shellTimeout: string; historyTurns: string; titleMode: NonNullable<General["title_mode"]> };
 
 const toForm = (g: General): Form => ({
   workspace: g.workspace ?? "",
   maxSteps: g.max_steps ? String(g.max_steps) : "",
   maxTokens: g.max_tokens ? String(g.max_tokens) : "",
   shellTimeout: g.shell_timeout_seconds ? String(g.shell_timeout_seconds) : "",
+  historyTurns: g.history_turns ? String(g.history_turns) : "",
   titleMode: g.title_mode ?? "",
 });
 
@@ -51,11 +52,12 @@ export default function GeneralSettings() {
       max_steps: num(form.maxSteps),
       max_tokens: num(form.maxTokens),
       shell_timeout_seconds: num(form.shellTimeout),
+      history_turns: num(form.historyTurns),
       system_prompt: general.saved.system_prompt, // 系统提示词在另一个标签页编辑，这里原样保留
       title_mode: form.titleMode,
     };
-    if ([g.max_steps, g.max_tokens, g.shell_timeout_seconds].some((n) => !Number.isInteger(n) || (n as number) < 0)) {
-      setLocalError("步数、输出上限、超时都需要是正整数（留空表示使用默认值）");
+    if ([g.max_steps, g.max_tokens, g.shell_timeout_seconds, g.history_turns].some((n) => !Number.isInteger(n) || (n as number) < 0)) {
+      setLocalError("步数、输出上限、超时、加载轮数都需要是正整数（留空表示使用默认值）");
       return;
     }
     setLocalError("");
@@ -109,6 +111,13 @@ export default function GeneralSettings() {
 
         <Row label="命令超时" hint="shell 工具执行单条命令的最长时间，超时会结束整个进程组。">
           <NumberInput value={form.shellTimeout} onChange={(v) => patch({ shellTimeout: v })} placeholder={`默认 ${d.shell_timeout_seconds}`} unit="秒" disabled={running} />
+        </Row>
+
+        <Row
+          label={t("历史会话加载轮数")}
+          hint={t("打开历史会话时先加载最近这么多轮对话（一轮 = 一次你的发言和模型的回复），滚到顶部或点“加载更早的对话”时每次再加载这么多轮。会话很长时调小可以打开得更快；只影响显示，不影响发给模型的上下文。")}
+        >
+          <NumberInput value={form.historyTurns} onChange={(v) => patch({ historyTurns: v })} placeholder={`默认 ${d.history_turns ?? 20}`} unit={t("轮")} disabled={running} />
         </Row>
 
         <Row label={t("会话标题")} hint={t("“由模型生成”会在第一轮对话结束后，用当前模型额外发一次很短的请求（几百个 token）。失败时保留截取的第一句。")}>

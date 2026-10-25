@@ -65,6 +65,16 @@ export interface WorkspaceInfo {
   changed_files: number;
 }
 
+/** 一批重放事件（时间顺序），加上这批之前还有多少轮没加载 */
+export interface HistoryPage {
+  events: AgentEvent[];
+  earlier: number;
+}
+
+export interface LoadedSession extends HistoryPage {
+  status: Status;
+}
+
 /** 对应 settings.General。数字为 0、字符串为空表示"未设置，沿用默认值" */
 export interface General {
   workspace?: string;
@@ -74,6 +84,8 @@ export interface General {
   system_prompt?: string;
   /** 会话标题：first_message（截取第一句，默认）/ model（由模型生成） */
   title_mode?: "" | "first_message" | "model";
+  /** 打开历史会话时先加载的最近轮数，也是"加载更早的"每次加载的轮数 */
+  history_turns?: number;
 }
 
 /** 对应 settings.GeneralView */
@@ -285,7 +297,9 @@ export interface Backend {
   getProfiles(): Promise<ProfileInfo[]>;
   listSessions(): Promise<SessionSummary[]>;
   newSession(): Promise<Status>;
-  loadSession(id: string): Promise<Status>;
+  /** 加载历史会话：只返回最近若干轮的重放事件，更早的用 loadEarlierHistory 按需取 */
+  loadSession(id: string): Promise<LoadedSession>;
+  loadEarlierHistory(sessionId: string): Promise<HistoryPage>;
   deleteSession(id: string): Promise<void>;
   /** 修改会话标题（当前会话或历史会话）；成功后后端会发 session_updated */
   renameSession(id: string, title: string): Promise<void>;

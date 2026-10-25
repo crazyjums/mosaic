@@ -129,6 +129,17 @@ export function initialState(sessionId: string | null = null): ChatState {
   };
 }
 
+/** 依次应用一批事件（历史重放用）：调用方只需要 set 一次，界面只渲染一次。 */
+export function foldEvents(state: ChatState, evs: AgentEvent[]): ChatState {
+  return evs.reduce(applyEvent, state);
+}
+
+/** 把更早的一页历史放到已有内容前面。先在空状态上折叠成一段时间线，再拼接。 */
+export function prependHistory(state: ChatState, evs: AgentEvent[]): ChatState {
+  const frag = foldEvents(initialState(state.sessionId), evs);
+  return { ...state, timeline: [...frag.timeline, ...state.timeline], tools: { ...frag.tools, ...state.tools } };
+}
+
 /** 应用一个事件，返回新状态（不修改旧状态）。 */
 export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
   // 第 0 步：过滤。只处理当前会话的事件；尚未确定会话时采纳第一个事件的会话。

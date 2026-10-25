@@ -22,7 +22,8 @@ interface GoApp {
   GetProfiles(): Promise<ProfileInfo[] | null>;
   ListSessions(): Promise<SessionSummary[] | null>;
   NewSession(): Promise<Status>;
-  LoadSession(id: string): Promise<Status>;
+  LoadSession(id: string): Promise<{ status: Status; events: unknown[] | null; earlier: number }>;
+  LoadEarlierHistory(sessionId: string): Promise<{ events: unknown[] | null; earlier: number }>;
   DeleteSession(id: string): Promise<void>;
   RenameSession(id: string, title: string): Promise<void>;
   ReadWorkspaceImage(path: string): Promise<string>;
@@ -100,6 +101,9 @@ export function isWails(): boolean {
   return !!w.go?.app?.App && !!w.runtime;
 }
 
+/** 后端返回的重放事件：空历史是 null；和实时事件一样丢弃不认识的类型。 */
+const toEvents = (raw: unknown[] | null): AgentEvent[] => (raw ?? []).filter(isKnownEvent);
+
 export function createWailsBackend(): Backend {
   const w = window as unknown as WailsWindow;
   const app = w.go!.app!.App!;
@@ -111,7 +115,14 @@ export function createWailsBackend(): Backend {
     getProfiles: async () => (await app.GetProfiles()) ?? [],
     listSessions: async () => (await app.ListSessions()) ?? [],
     newSession: () => app.NewSession(),
-    loadSession: (id) => app.LoadSession(id),
+    loadSession: async (id) => {
+      const r = await app.LoadSession(id);
+      return { status: r.status, events: toEvents(r.events), earlier: r.earlier };
+    },
+    loadEarlierHistory: async (sessionId) => {
+      const r = await app.LoadEarlierHistory(sessionId);
+      return { events: toEvents(r.events), earlier: r.earlier };
+    },
     deleteSession: (id) => app.DeleteSession(id),
     renameSession: (id, title) => app.RenameSession(id, title),
     readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),

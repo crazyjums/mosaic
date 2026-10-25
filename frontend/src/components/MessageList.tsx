@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 import type { AssistantItem, TimelineItem } from "../store/reducer";
@@ -22,22 +22,58 @@ export default function MessageList() {
   const running = useChat((s) => s.running);
   const backendKind = useChat((s) => s.backendKind);
   const isDemoModel = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "fake");
+  const sessionId = useChat((s) => s.sessionId);
+  const earlier = useChat((s) => s.earlier);
+  const loadingEarlier = useChat((s) => s.loadingEarlier);
+  const prependTick = useChat((s) => s.prependTick);
+  const loadEarlier = useChat((s) => s.loadEarlier);
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  // 接入更早的历史前的内容高度：接入后用它补偿滚动位置，避免用户正在看的内容被顶走。
+  const heightBefore = useRef(0);
+
+  // 切换会话后回到"跟随底部"：上一个会话可能停在中间。
+  useEffect(() => {
+    stick.current = true;
+  }, [sessionId]);
 
   useEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [timeline]);
 
+  // 更早的历史接到前面之后，让可见内容保持不动。必须在浏览器绘制之前完成，所以用 layout effect。
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && prependTick > 0) el.scrollTop += el.scrollHeight - heightBefore.current;
+  }, [prependTick]);
+
+  const more = () => {
+    const el = ref.current;
+    if (!el || loadingEarlier) return;
+    heightBefore.current = el.scrollHeight;
+    stick.current = false;
+    void loadEarlier();
+  };
+
   const onScroll = () => {
     const el = ref.current;
-    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (!el) return;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    // 滚到顶部附近自动加载上一页；按钮是兜底（内容没填满一屏、没法滚动时用）。
+    if (earlier > 0 && el.scrollTop < 120) more();
   };
 
   return (
     <div ref={ref} onScroll={onScroll} className="min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-6 py-6">
+        {earlier > 0 && (
+          <div className="flex justify-center">
+            <button className="btn text-xs" onClick={more} disabled={loadingEarlier}>
+              {loadingEarlier ? t("加载中…") : t("加载更早的对话（还有 {n} 轮）", { n: earlier })}
+            </button>
+          </div>
+        )}
         {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} />}
         {group(timeline).map((it, idx, all) => {
           if (Array.isArray(it)) {

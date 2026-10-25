@@ -125,8 +125,9 @@ export function createDemoBackend(): Backend {
       max_tokens: general.max_tokens || 0,
       shell_timeout_seconds: general.shell_timeout_seconds || 60,
       system_prompt: general.system_prompt || "",
+      history_turns: general.history_turns || 20,
     },
-    defaults: { workspace: demoWorkspace, max_steps: 20, max_tokens: 0, shell_timeout_seconds: 60 },
+    defaults: { workspace: demoWorkspace, max_steps: 20, max_tokens: 0, shell_timeout_seconds: 60, history_turns: 20 },
     default_system_prompt:
       `You are a helpful coding agent running inside a desktop client.\n\nEnvironment:\n- Workspace root: ${general.workspace || demoWorkspace} (all file paths are relative to it)\n- OS: browser/demo\n\nGuidelines:\n- ...（浏览器演示模式下的示意）`,
     workspace_locked: false,
@@ -299,10 +300,10 @@ export function createDemoBackend(): Backend {
       const s = sessions.get(id);
       if (!s) throw new Error("session not found");
       current = s;
-      // 演示模式下直接重放保存的事件；真实后端会把历史消息转换成事件（core.ReplayEvents）。
-      s.events.forEach((ev) => listeners.forEach((cb) => cb(ev)));
-      return status();
+      // 演示模式下直接返回保存的事件；真实后端会把历史消息转换成最近几轮的事件（core.LoadSessionTail）。
+      return { status: status(), events: [...s.events], earlier: 0 };
     },
+    loadEarlierHistory: async () => ({ events: [], earlier: 0 }),
     deleteSession: async (id) => {
       // 与真实后端一致：删除当前会话时切换到新的空会话，运行中不允许删除当前会话。
       if (id === current.summary.id) {
