@@ -35,6 +35,9 @@ type Info struct {
 	PubDate   string `json:"pub_date,omitempty"`
 	// Releases 是当前版本之后到最新版本之间的全部更新日志（最新的在前）。
 	Releases []Release `json:"releases,omitempty"`
+	// CurrentRelease 是当前版本自己的更新日志。已经是最新版本时没有"新版本日志"可看，
+	// 关于页就用它告诉用户这个版本带来了什么；清单里没有这个版本的日志时为空。
+	CurrentRelease *Release `json:"current_release,omitempty"`
 	// Level 是更新建议：critical（含安全修复，建议尽快）/ recommended（含修复）/ optional（只有新功能）。
 	Level string `json:"level,omitempty"`
 	// Breaking 为 true 表示这些版本里有不兼容变更，更新前需要先看说明。
@@ -152,6 +155,7 @@ func (u *Updater) Check(ctx context.Context) (*Info, error) {
 		return nil, err
 	}
 	if !newer {
+		info.CurrentRelease = findRelease(m.Releases, u.Current)
 		return info, nil
 	}
 	info.Available = true

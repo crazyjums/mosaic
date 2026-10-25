@@ -252,3 +252,15 @@ func newerReleases(all []Release, current, latest string) []Release {
 	})
 	return out
 }
+
+// findRelease 在清单的日志里找指定版本；找不到返回 nil。
+func findRelease(all []Release, version string) *Release {
+	for i := range all {
+		if same, err := Newer(all[i].Version, version); err == nil && !same {
+			if back, err := Newer(version, all[i].Version); err == nil && !back {
+				return &all[i]
+			}
+		}
+	}
+	return nil
+}
