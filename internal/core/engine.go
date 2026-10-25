@@ -491,7 +491,11 @@ func (e *Engine) openSession(ctx context.Context, id string) (*Session, error) {
 	}
 	// 会话里记录的厂商配置档可能已经被删掉了；此时回落到默认配置档，历史仍然可读。
 	if _, _, err := e.cfg.Catalog.Get(s.Provider); err != nil {
-		if p, m, err2 := e.resolveModel("", ""); err2 == nil {
+		p, m, err2 := e.resolveModel("", "")
+		if errors.Is(err2, ErrNoProvider) {
+			p, m, err2 = "", "", nil // 一个厂商都没有了：回到"未配置"状态，发送时给出明确的提示
+		}
+		if err2 == nil {
 			s.Provider, s.Model = p, m
 		}
 	}
