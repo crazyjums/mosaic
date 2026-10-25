@@ -30,6 +30,7 @@ func TestRoundTripAllTypes(t *testing.T) {
 		ContextCompacted{BeforeTokens: 100, AfterTokens: 10},
 		Error{Code: "internal", Message: "boom", Fatal: true},
 		SessionUpdated{Title: "新标题"},
+		Route{Group: "主力", Profile: "b", Model: "m", Try: 2, HandedOn: []RouteAttempt{{Profile: "a", Model: "m", Kind: "rate_limit", Message: "429"}}},
 	}
 	if len(samples) != len(AllTypes()) {
 		t.Fatalf("样例数 %d 与已登记类型数 %d 不一致：新增事件类型后请补充样例", len(samples), len(AllTypes()))

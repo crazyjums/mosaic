@@ -16,6 +16,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/secret"
 	"github.com/crazyjums/myllmapp/internal/siwc"
+	"github.com/crazyjums/myllmapp/internal/usage"
 )
 
 // ProviderView 是发给前端的配置档视图。注意：不含 API Key 明文。
@@ -79,6 +80,11 @@ type Manager struct {
 	chatgpt          *siwc.Manager
 	chatgptModelsErr string
 	codexQuota       *codexquota.Client // 剩余额度查询（可选，见 chatgpt.go）
+
+	// 用量账本、模型组健康状态，见 groups.go。health 在厂商目录重建之间保持。
+	recorder provider.UsageRecorder
+	usageSrc usage.Source
+	health   *provider.Health
 }
 
 // NewManager 读取设置文件。path 为 settings.json 的路径；base 为配置文件中的配置档。不使用钥匙串。
@@ -114,7 +120,11 @@ func (m *Manager) Profiles() []provider.ProfileConfig {
 
 // Catalog 用合并后的配置档创建厂商目录。
 func (m *Manager) Catalog() *provider.Catalog {
-	return provider.NewCatalog(m.registry, m.Profiles())
+	m.mu.Lock()
+	ps, _ := m.merged(m.file)
+	opts := m.catalogOptions()
+	m.mu.Unlock()
+	return provider.NewCatalogWith(m.registry, ps, opts)
 }
 
 // DefaultSelection 返回上次在界面上选择的厂商和模型（可能为空）。
@@ -143,7 +153,7 @@ func (m *Manager) Providers() []ProviderView {
 			BaseURL:      p.BaseURL,
 			Models:       nonNil(p.Models),
 			DefaultModel: p.DefaultModel,
-			Options:      p.Options,
+			Options:      redactOptions(p.Options),
 			HasAPIKey:    p.APIKey != "",
 			APIKeyHint:   maskKey(p.APIKey),
 			Source:       sources[p.Name],
@@ -223,6 +233,13 @@ func (m *Manager) Save(in ProviderInput) error {
 		return err
 	}
 	m.file = next
+	// 用户改过这个配置档（换了密钥、改了地址），之前记下的失败不再成立。
+	if m.health != nil {
+		m.health.ResetProfile(in.Name)
+		if in.OriginalName != "" {
+			m.health.ResetProfile(in.OriginalName)
+		}
+	}
 	return nil
 }
 
@@ -245,6 +262,9 @@ func (m *Manager) Delete(name string) error {
 		return err
 	}
 	m.file = next
+	if m.health != nil {
+		m.health.ResetProfile(name)
+	}
 	return nil
 }
 
@@ -436,6 +456,14 @@ func (m *Manager) normalizeConnection(in ProviderInput) (ProviderInput, error) {
 	if in.Options == nil {
 		in.Options = map[string]any{}
 	}
+	m.restoreProxySecret(&in)
+	if px, _ := in.Options["proxy"].(string); strings.TrimSpace(px) != "" {
+		if err := provider.ValidateProxy(px); err != nil {
+			return in, err
+		}
+	} else {
+		delete(in.Options, "proxy")
+	}
 	// OpenAI 兼容的本地服务（Ollama、vLLM、LM Studio）通常不需要密钥。
 	if in.Type == "openai" && in.APIKey == "" {
 		in.Options["allow_no_key"] = true
@@ -526,7 +554,7 @@ func (m *Manager) apply(next File) error {
 		return nil
 	}
 	ps, _ := m.merged(next)
-	return m.engine.ReplaceCatalog(provider.NewCatalog(m.registry, ps))
+	return m.engine.ReplaceCatalog(provider.NewCatalogWith(m.registry, ps, m.catalogOptions()))
 }
 
 // currentIsFake 判断当前会话是否还在用演示厂商。
@@ -542,6 +570,7 @@ func (m *Manager) currentIsFake() bool {
 
 func cloneFile(f File) File {
 	f.Providers = slices.Clone(f.Providers)
+	f.Groups = slices.Clone(f.Groups)
 	f.PermissionRules = slices.Clone(f.PermissionRules)
 	f.DisabledTools = slices.Clone(f.DisabledTools)
 	f.MCPServers = slices.Clone(f.MCPServers)

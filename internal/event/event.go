@@ -30,6 +30,8 @@ const (
 	TypeThinkingDelta Type = "thinking_delta"
 	TypeImage         Type = "image"
 	TypeMessageEnd    Type = "message_end"
+	// TypeRoute：模型组告诉界面"这条消息实际是哪个成员在应答"，以及前面有哪些尝试失败后被转交。
+	TypeRoute Type = "route"
 
 	// 工具调用与权限。
 	TypeToolCall           Type = "tool_call"

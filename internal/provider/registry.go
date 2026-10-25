@@ -120,20 +120,25 @@ type ModelMeta struct {
 	// 单价的单位是"美元 / 百万 token"。
 	InputPrice  float64 `json:"input_price,omitempty"`
 	OutputPrice float64 `json:"output_price,omitempty"`
+	// 缓存读 / 写的单价。没填时按普通输入价计算（估算会偏高而不是偏低）。
+	CacheReadPrice  float64 `json:"cache_read_price,omitempty"`
+	CacheWritePrice float64 `json:"cache_write_price,omitempty"`
 }
 
-// parseModelMeta 从 options["models_meta"] 解析每个模型的附加信息。
+// ParseModelMeta 从 options["models_meta"] 解析每个模型的附加信息。
 // 结构：{"模型名": {"context_window": 200000, "input_price": 3, "output_price": 15}}。
 // TOML 和 JSON 解析出的数字类型不同（int64 / float64），都要支持。
-func parseModelMeta(opts map[string]any) map[string]ModelMeta {
+func ParseModelMeta(opts map[string]any) map[string]ModelMeta {
 	raw, _ := opts["models_meta"].(map[string]any)
 	out := map[string]ModelMeta{}
 	for model, v := range raw {
 		m, _ := v.(map[string]any)
 		meta := ModelMeta{
-			ContextWindow: int(number(m["context_window"])),
-			InputPrice:    number(m["input_price"]),
-			OutputPrice:   number(m["output_price"]),
+			ContextWindow:   int(number(m["context_window"])),
+			InputPrice:      number(m["input_price"]),
+			OutputPrice:     number(m["output_price"]),
+			CacheReadPrice:  number(m["cache_read_price"]),
+			CacheWritePrice: number(m["cache_write_price"]),
 		}
 		if meta != (ModelMeta{}) {
 			out[model] = meta
@@ -279,7 +284,7 @@ func (c *Catalog) buildGroup(cfg ProfileConfig, raw map[string]Provider, opts Ca
 		default:
 			gm.leaf = raw[m.Profile]
 			gm.cacheSeparate = cacheSeparateType(mc.Type)
-			gm.ctxWindow = parseModelMeta(mc.Options)[m.Model].ContextWindow
+			gm.ctxWindow = ParseModelMeta(mc.Options)[m.Model].ContextWindow
 			usable++
 		}
 		g.members = append(g.members, gm)
@@ -333,7 +338,7 @@ func (c *Catalog) Profiles() []ProfileInfo {
 			DefaultModel: cfg.DefaultModel,
 			HasAPIKey:    cfg.APIKey != "",
 			Available:    c.errors[name] == nil,
-			ModelMeta:    parseModelMeta(cfg.Options),
+			ModelMeta:    ParseModelMeta(cfg.Options),
 		}
 		if err := c.errors[name]; err != nil {
 			info.Error = err.Error()

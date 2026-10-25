@@ -247,6 +247,24 @@ tool_call ──(message_end)──┬──────────────
 {"call_id": "call_eab12343f8d5", "name": "list_dir", "output": "README.md\nsrc/", "is_error": false, "duration_ms": 0}
 ```
 
+#### `route`
+
+只在使用**模型组**（见 [用量与故障转移方案](design/usage-and-failover.html)）时产生：在这条消息的第一个内容之前到达，说明实际是哪个成员在应答。界面据此把消息头的"厂商 / 模型"更新为实际应答者，发生过转交时给出标记。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `group` | string | 模型组名称 |
+| `profile` | string | 实际应答的厂商配置档 |
+| `model` | string | 实际应答的模型 |
+| `try` | int | 第几次尝试；1 表示第一个成员就成功了 |
+| `handed_on` | array? | 前面失败后被转交的尝试：`profile` / `model` / `kind`（`rate_limit` `server` `auth` `network` `context` `quota`）/ `message` |
+
+```json
+{"group": "主力", "profile": "deepseek", "model": "v4", "try": 2, "handed_on": [{"profile": "anthropic", "model": "sonnet", "kind": "rate_limit", "message": "anthropic: HTTP 429 …"}]}
+```
+
+只有成员在**还没有输出任何内容**时失败才会转交；已经输出内容后失败，不转交，按普通的 `error` 事件处理。
+
 ### 4.4 错误
 
 #### `error`

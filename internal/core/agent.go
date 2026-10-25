@@ -215,6 +215,8 @@ func (a *Agent) callModel(ctx context.Context, em emitter, step int, msgs []prov
 	msgID := event.NewID("msg")
 	em.emit(msgID, event.MessageStart{Provider: a.cfg.Provider.Name(), Model: a.cfg.Model, Step: step})
 
+	// 把会话 ID 和调用来源交给计量层记账（见 provider/usage.go）。
+	ctx = provider.WithCall(ctx, provider.CallInfo{SessionID: a.cfg.SessionID, Source: provider.SourceChat})
 	req := provider.Request{
 		Model:     a.cfg.Model,
 		System:    a.cfg.System,
@@ -243,6 +245,15 @@ func (a *Agent) callModel(ctx context.Context, em emitter, step int, msgs []prov
 // translateDelta 把一个 Delta 翻译成统一事件。没有对应事件的 Delta（签名、用量、停止）只进累加器。
 func (a *Agent) translateDelta(em emitter, msgID string, d provider.Delta) {
 	switch d.Type {
+	case provider.DeltaRoute:
+		if d.Route == nil {
+			return
+		}
+		r := event.Route{Group: d.Route.Group, Profile: d.Route.Profile, Model: d.Route.Model, Try: d.Route.Try}
+		for _, at := range d.Route.HandedOn {
+			r.HandedOn = append(r.HandedOn, event.RouteAttempt{Profile: at.Profile, Model: at.Model, Kind: string(at.Kind), Message: at.Message})
+		}
+		em.emit(msgID, r)
 	case provider.DeltaText:
 		em.emit(msgID, event.TextDelta{Text: d.Text})
 	case provider.DeltaThinking:
