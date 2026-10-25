@@ -68,7 +68,7 @@ export type TimelineItem =
   | { kind: "user"; id: string; text: string; attachments?: AttachmentInfo[] }
   | AssistantItem
   | { kind: "error"; id: string; code: string; message: string; fatal: boolean }
-  | { kind: "notice"; id: string; text: string }
+  | { kind: "notice"; id: string; text: string; detail?: string }
   | { kind: "turn_end"; id: string; reason: TurnEndReason; steps: number; usage: Usage; replay: boolean };
 
 /** 预留：子 agent 树的节点。 */
@@ -295,7 +295,15 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
         ...s,
         timeline: [
           ...s.timeline,
-          { kind: "notice", id: ev.id, text: `上下文已压缩：${ev.data.before_tokens} → ${ev.data.after_tokens} tokens，移除 ${ev.data.removed_messages} 条消息` },
+          {
+            kind: "notice",
+            id: ev.id,
+            // 回放（恢复会话）时没有压缩前后的 token 数，只说明"更早的对话已压缩"。
+            text: ev.data.replay
+              ? "更早的对话已压缩为摘要"
+              : `上下文已压缩：${ev.data.before_tokens} → ${ev.data.after_tokens} tokens，移除 ${ev.data.removed_messages} 条消息`,
+            detail: ev.data.summary,
+          },
         ],
       };
 

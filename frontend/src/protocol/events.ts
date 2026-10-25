@@ -66,7 +66,7 @@ export interface PayloadMap {
   task_start: { task_id: string; title: string; kind: string };
   task_log: { task_id: string; stream: string; text: string };
   task_end: { task_id: string; status: string; exit_code: number };
-  context_compacted: { before_tokens: number; after_tokens: number; removed_messages: number; summary?: string };
+  context_compacted: { before_tokens: number; after_tokens: number; removed_messages: number; summary?: string; replay?: boolean };
 
   /** 使用模型组时，说明这条消息实际由哪个成员应答，以及前面有哪些尝试被转交 */
   route: {

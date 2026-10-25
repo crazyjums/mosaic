@@ -112,7 +112,13 @@ export default function MessageList() {
             case "notice":
               return (
                 <div key={it.id} className="text-center text-xs text-muted">
-                  {it.text}
+                  {it.text.startsWith("上下文已压缩：") ? it.text : t(it.text)}
+                  {it.detail && (
+                    <details className="mx-auto mt-1 max-w-[80%] text-left">
+                      <summary className="cursor-pointer text-center">{t("查看摘要")}</summary>
+                      <div className="mt-1 whitespace-pre-wrap rounded-ctl border border-line bg-side p-2 text-ink">{it.detail}</div>
+                    </details>
+                  )}
                 </div>
               );
             case "turn_end":
