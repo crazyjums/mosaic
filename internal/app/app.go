@@ -38,7 +38,9 @@ type App struct {
 	unsubscribe func()
 
 	upd *update.Updater
-	us  updateState
+	// changelog 是 CHANGELOG.md 原文，见 SetChangelog。
+	changelog string
+	us        updateState
 }
 
 // New 创建绑定对象。emit 为 nil 时使用 Wails 的 runtime.EventsEmit。

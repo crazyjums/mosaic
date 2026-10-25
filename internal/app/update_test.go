@@ -86,3 +86,15 @@ func TestUpdateDisabledForDevBuild(t *testing.T) {
 		t.Fatalf("开发版应显示不可用: %+v %v", info, err)
 	}
 }
+
+func TestGetVersionHistory(t *testing.T) {
+	a := &App{}
+	if got := a.GetVersionHistory(); len(got) != 0 {
+		t.Fatalf("没有设置日志时应为空: %v", got)
+	}
+	a.SetChangelog("# 更新日志\n\n## [Unreleased]\n\n### 新增\n- 未发布\n\n## [1.1.0] - 2026-10-25\n\n### 新增\n- 甲\n\n## [1.0.0] - 2026-10-01\n\n### 修复\n- 乙\n")
+	got := a.GetVersionHistory()
+	if len(got) != 2 || got[0].Version != "1.1.0" || got[1].Version != "1.0.0" {
+		t.Fatalf("应跳过 Unreleased，最新在前: %+v", got)
+	}
+}
