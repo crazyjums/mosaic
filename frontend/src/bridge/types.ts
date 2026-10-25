@@ -75,6 +75,17 @@ export interface LoadedSession extends HistoryPage {
   status: Status;
 }
 
+/** 一个技能（对应 skill.Info）：输入框里键入 / 时的补全项 */
+export interface SkillInfo {
+  name: string;
+  description: string;
+  /** project：工作区里的；user：个人目录里的 */
+  source: "project" | "user";
+  /** 所在的根目录，例如 ".myllmapp/skills"、".claude/skills" */
+  origin: string;
+  dir: string;
+}
+
 /** 对应 settings.General。数字为 0、字符串为空表示"未设置，沿用默认值" */
 export interface General {
   workspace?: string;
@@ -362,6 +373,8 @@ export interface Backend {
   getVersion(): Promise<string>;
   /** 检查更新：网络或签名错误以异常返回；disabled 非空表示更新功能不可用（开发版 / 没配置公钥） */
   checkUpdate(): Promise<UpdateInfo>;
+  /** 当前会话可用的技能（随工作区变化，每次都重新扫描） */
+  listSkills(): Promise<SkillInfo[]>;
   /** 随程序打包的全部历史版本更新日志，最新的在前；离线可用 */
   getVersionHistory(): Promise<ReleaseNotes[]>;
   /** 下载并安装最近一次检查到的版本，然后重启；立即返回，进度用 getUpdateStatus 轮询 */

@@ -96,6 +96,7 @@ flowchart TB
 | | `tool/builtin` | 内置工具（文件、搜索、shell、git、todo） |
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现；用量账本（`usage_events` 表） |
 | | `usage` | 用量报表：聚合、计价、CSV 导出、异步写入（只存数字，不存内容） |
+| | `skill` | 技能：发现 SKILL.md 文件夹、生成系统提示词里的清单、读取正文和资源文件（只读、限定在技能文件夹内） |
 | | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |
 | | `secret` | 系统钥匙串（保存 API Key，可选） |
 | | `codexquota` | 可选：读取本机 Codex CLI 的登录，只读查询 ChatGPT 套餐的剩余额度（未公开接口） |

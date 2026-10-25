@@ -62,6 +62,9 @@ func Register(reg *tool.Registry, opts Options) {
 	todos := newTodoStore()
 	reg.MustRegister(&TodoWrite{store: todos})
 	reg.MustRegister(&TodoRead{store: todos})
+	// 技能：个人技能放在用户目录里；读不到用户目录时只搜索工作区里的技能。
+	home, _ := os.UserHomeDir()
+	reg.MustRegister(NewReadSkill(home))
 }
 
 // resolvePath 把模型给出的路径解析为工作区内的绝对路径。
