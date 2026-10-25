@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/crazyjums/myllmapp/internal/event"
@@ -22,8 +23,11 @@ type EngineConfig struct {
 	Compactor Compactor
 	Subagents *SubagentRegistry
 
+	// Workspace 是默认工作区：没有选过工作区的会话使用它。每个会话可以有自己的工作区（Session.Workspace）。
 	Workspace string
-	// SystemPrompt 为空时使用 DefaultSystemPrompt(Workspace)。
+	// WorkspaceLocked 为 true 时所有会话都使用 Workspace，不能单独设置（CLI 的 -workspace 参数）。
+	WorkspaceLocked bool
+	// SystemPrompt 为空时使用 DefaultSystemPrompt(会话的工作区)。
 	SystemPrompt string
 	MaxSteps     int
 	MaxTokens    int
@@ -128,7 +132,14 @@ type Status struct {
 	Model     string         `json:"model"`
 	Usage     provider.Usage `json:"usage"`
 	Running   bool           `json:"running"`
-	Workspace string         `json:"workspace"`
+	// Workspace 是当前会话实际使用的工作区。
+	Workspace string `json:"workspace"`
+	// WorkspaceIsDefault 为 true 表示当前会话没有单独选过工作区，跟随默认工作区。
+	WorkspaceIsDefault bool `json:"workspace_is_default"`
+	// WorkspaceLocked 为 true 表示工作区由启动参数指定，不能为会话单独选择。
+	WorkspaceLocked bool `json:"workspace_locked"`
+	// WorkspaceMissing 为 true 表示工作区目录不存在（例如被删除或移动了），发送消息前需要重新选择。
+	WorkspaceMissing bool `json:"workspace_missing"`
 	// PendingPermissions 让重新连接的界面知道是否有弹窗需要恢复。
 	PendingPermissions []string `json:"pending_permissions"`
 	// PermissionMode 是当前权限档位（readonly / default / accept_edits / auto）；策略不支持切换时为空。
@@ -137,10 +148,15 @@ type Status struct {
 
 func (e *Engine) Status() Status {
 	e.mu.Lock()
-	sess, running, workspace := e.session, e.running, e.cfg.Workspace
+	sess, running := e.session, e.running
+	workspace, isDefault := e.workspaceLocked(sess)
+	locked := e.cfg.WorkspaceLocked
 	e.mu.Unlock()
 	snap := sess.Snapshot()
 	return Status{
+		WorkspaceIsDefault: isDefault,
+		WorkspaceLocked:    locked,
+		WorkspaceMissing:   workspace != "" && !isDir(workspace),
 		SessionID:          snap.ID,
 		Title:              snap.Title,
 		Provider:           snap.Provider,
@@ -201,16 +217,30 @@ func (e *Engine) Runtime() RuntimeConfig {
 	return RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens, TitleMode: e.cfg.TitleMode}
 }
 
-// runtimeLocked 返回本轮实际使用的参数：补上默认值、展开默认提示词。调用方需持有 e.mu。
+// workspaceLocked 返回会话实际使用的工作区，以及它是不是默认工作区。调用方需持有 e.mu。
+func (e *Engine) workspaceLocked(s *Session) (dir string, isDefault bool) {
+	if ws := s.workspace(); ws != "" && !e.cfg.WorkspaceLocked {
+		return ws, false
+	}
+	return e.cfg.Workspace, true
+}
+
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+// runtimeLocked 返回本轮实际使用的参数：工作区取当前会话的，补上默认值、展开默认提示词。调用方需持有 e.mu。
 func (e *Engine) runtimeLocked() RuntimeConfig {
-	rt := RuntimeConfig{Workspace: e.cfg.Workspace, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens, TitleMode: e.cfg.TitleMode}
+	ws, _ := e.workspaceLocked(e.session)
+	rt := RuntimeConfig{Workspace: ws, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens, TitleMode: e.cfg.TitleMode}
 	if rt.SystemPrompt == "" {
 		rt.SystemPrompt = DefaultSystemPrompt(rt.Workspace)
 	}
 	return rt
 }
 
-// UpdateRuntime 修改运行参数，从下一轮开始生效。运行中返回 ErrBusy：
+// UpdateRuntime 修改运行参数（Workspace 是默认工作区），从下一轮开始生效。运行中返回 ErrBusy：
 // 一轮中途换工作区，前后两次工具调用会落在不同目录，结果难以理解。
 // 调用方负责校验（例如工作区目录存在），内核只做替换。
 func (e *Engine) UpdateRuntime(rt RuntimeConfig) error {
@@ -223,7 +253,8 @@ func (e *Engine) UpdateRuntime(rt RuntimeConfig) error {
 		return fmt.Errorf("engine: workspace is required")
 	}
 	// 换了工作区，之前"本会话总是允许"的授权是针对旧目录给的，不应该带到新目录。
-	if rt.Workspace != e.cfg.Workspace {
+	// （只有当前会话跟随默认工作区时，它的工作区才真的变了。）
+	if _, isDefault := e.workspaceLocked(e.session); rt.Workspace != e.cfg.Workspace && isDefault {
 		e.cfg.Policy.Reset()
 	}
 	e.cfg.Workspace, e.cfg.SystemPrompt, e.cfg.MaxSteps, e.cfg.MaxTokens = rt.Workspace, rt.SystemPrompt, rt.MaxSteps, rt.MaxTokens
@@ -278,15 +309,16 @@ func (e *Engine) SetModel(profile, model string) error {
 	return nil
 }
 
-// NewSession 开启一个新的空会话（沿用当前的厂商和模型）。
+// NewSession 开启一个新的空会话，沿用当前会话的厂商、模型和工作区。
+//
+// 沿用工作区：在一个代码仓库里工作时，新开的会话通常还是同一个仓库；要换仓库，在新会话里重新选择即可。
 func (e *Engine) NewSession() (Status, error) {
 	e.mu.Lock()
 	if e.running {
 		e.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	old := e.session.Snapshot()
-	e.session = NewSession(event.NewID("sess"), old.Provider, old.Model)
+	e.session = e.freshSessionLocked()
 	e.mu.Unlock()
 	e.cfg.Policy.Reset()
 	return e.Status(), nil
@@ -312,6 +344,11 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 	}
 	// 运行参数在持锁时取一份副本：UpdateRuntime 可能在本轮结束后修改它们。
 	rt := e.runtimeLocked()
+	// 空表示没有配置工作区（只在测试里出现：没有工具时不需要工作区），不当作"目录不存在"。
+	if rt.Workspace != "" && !isDir(rt.Workspace) {
+		e.mu.Unlock()
+		return TurnResult{}, fmt.Errorf("工作区 %s 不存在（可能被移动或删除了），请在状态栏上重新选择工作区", rt.Workspace)
+	}
 	disabled := e.disabledLocked()
 	ctx, cancel := context.WithCancel(ctx)
 	e.running, e.cancel = true, cancel
@@ -452,8 +489,7 @@ func (e *Engine) DeleteSession(ctx context.Context, id string) error {
 		return ErrBusy
 	}
 	if isCurrent {
-		old := e.session.Snapshot()
-		e.session = NewSession(event.NewID("sess"), old.Provider, old.Model)
+		e.session = e.freshSessionLocked()
 	}
 	e.mu.Unlock()
 	if isCurrent {
@@ -547,10 +583,49 @@ func (e *Engine) DeleteAllSessions(ctx context.Context) (int, error) {
 		}
 	}
 	// 当前会话也在被清空之列：换成新的空会话，否则下一轮结束时它又会被保存回去。
-	old := e.session.Snapshot()
-	e.session = NewSession(event.NewID("sess"), old.Provider, old.Model)
+	e.session = e.freshSessionLocked()
 	e.cfg.Policy.Reset()
 	return n, nil
+}
+
+// freshSessionLocked 创建一个新的空会话，沿用当前会话的厂商、模型和工作区。调用方需持有 e.mu。
+func (e *Engine) freshSessionLocked() *Session {
+	old := e.session.Snapshot()
+	s := NewSession(event.NewID("sess"), old.Provider, old.Model)
+	s.Workspace = old.Workspace
+	return s
+}
+
+// SetSessionWorkspace 为当前会话选择工作区；dir 为空表示改回跟随默认工作区。运行中返回 ErrBusy。
+//
+// 调用方负责校验目录（必须是已存在的目录、绝对路径）。会话已经有内容时立即保存，
+// 这样在会话列表里也能看到新的工作区；空会话等第一轮结束时再保存。
+func (e *Engine) SetSessionWorkspace(ctx context.Context, dir string) (Status, error) {
+	e.mu.Lock()
+	if e.running {
+		e.mu.Unlock()
+		return Status{}, ErrBusy
+	}
+	if e.cfg.WorkspaceLocked {
+		e.mu.Unlock()
+		return Status{}, fmt.Errorf("工作区由启动参数 -workspace 指定，不能为会话单独选择")
+	}
+	sess := e.session
+	before, _ := e.workspaceLocked(sess)
+	sess.setWorkspace(dir)
+	after, _ := e.workspaceLocked(sess)
+	e.mu.Unlock()
+
+	// 换了目录，"本会话总是允许"的授权是针对旧目录给的，清掉。
+	if after != before {
+		e.cfg.Policy.Reset()
+	}
+	if e.cfg.Store != nil && len(sess.messages()) > 0 {
+		if err := e.cfg.Store.SaveSession(ctx, sess.Snapshot()); err != nil {
+			return e.Status(), err
+		}
+	}
+	return e.Status(), nil
 }
 
 // Subagents 返回子 agent 定义注册表（预留扩展点）。

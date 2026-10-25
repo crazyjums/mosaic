@@ -15,10 +15,13 @@ import (
 // 字段公开是为了让 store 能直接序列化；但运行期间 agent 会并发修改它（同时界面可能读状态），
 // 所以修改都走带锁的方法，读取用 Snapshot 拿一份副本。
 type Session struct {
-	ID        string
-	Title     string
-	Provider  string // 配置档名称
-	Model     string
+	ID       string
+	Title    string
+	Provider string // 配置档名称
+	Model    string
+	// Workspace 是这个会话的工作区（绝对路径）。为空表示跟随默认工作区（设置 → 常规），
+	// 旧版本保存的会话都是这样。一个会话通常对应一个代码仓库，所以工作区跟着会话走。
+	Workspace string
 	Messages  []provider.Message
 	Usage     provider.Usage
 	CreatedAt time.Time
@@ -42,6 +45,7 @@ func (s *Session) Snapshot() *Session {
 		Title:     s.Title,
 		Provider:  s.Provider,
 		Model:     s.Model,
+		Workspace: s.Workspace,
 		Messages:  append([]provider.Message(nil), s.Messages...),
 		Usage:     s.Usage,
 		CreatedAt: s.CreatedAt,
@@ -88,6 +92,18 @@ func (s *Session) setTitle(t string) {
 	s.Title = t
 }
 
+func (s *Session) setWorkspace(dir string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Workspace = dir
+}
+
+func (s *Session) workspace() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Workspace
+}
+
 func (s *Session) setModel(profile, model string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -108,6 +124,7 @@ type SessionSummary struct {
 	Title        string    `json:"title"`
 	Provider     string    `json:"provider"`
 	Model        string    `json:"model"`
+	Workspace    string    `json:"workspace"` // 为空表示跟随默认工作区
 	MessageCount int       `json:"message_count"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

@@ -610,3 +610,62 @@ func TestContextBreakdown(t *testing.T) {
 		t.Fatal("禁用的工具不计入")
 	}
 }
+
+func TestPerSessionWorkspace(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	ctx := context.Background()
+	if st := h.engine.Status(); !st.WorkspaceIsDefault || st.Workspace != h.workspace {
+		t.Fatalf("新会话默认跟随默认工作区: %+v", st)
+	}
+
+	// 为当前会话选择工作区：工具在这个目录里读写。
+	repoA := t.TempDir()
+	st, err := h.engine.SetSessionWorkspace(ctx, repoA)
+	if err != nil || st.Workspace != repoA || st.WorkspaceIsDefault {
+		t.Fatalf("set: %+v %v", st, err)
+	}
+	h.engine.Send(ctx, "演示")
+	if _, err := os.Stat(filepath.Join(repoA, "agent-demo", "hello.md")); err != nil {
+		t.Fatalf("文件应写进会话的工作区: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.workspace, "agent-demo")); err == nil {
+		t.Fatal("不应写进默认工作区")
+	}
+	idA := h.engine.Status().SessionID
+	if list, _ := h.engine.ListSessions(ctx); len(list) != 1 || list[0].Workspace != repoA {
+		t.Fatalf("会话列表应带上工作区: %+v", list)
+	}
+
+	// 新会话沿用当前会话的工作区；可以单独改。
+	st, _ = h.engine.NewSession()
+	if st.Workspace != repoA {
+		t.Fatalf("新会话应沿用工作区: %+v", st)
+	}
+	repoB := t.TempDir()
+	if _, err := h.engine.SetSessionWorkspace(ctx, repoB); err != nil {
+		t.Fatal(err)
+	}
+	h.engine.Send(ctx, "另一个仓库")
+
+	// 切回会话 A：工作区跟着会话恢复。
+	st, _ = h.engine.LoadSession(ctx, idA)
+	if st.Workspace != repoA {
+		t.Fatalf("加载会话应恢复它的工作区: %+v", st)
+	}
+	// 改回默认。
+	if st, _ := h.engine.SetSessionWorkspace(ctx, ""); !st.WorkspaceIsDefault || st.Workspace != h.workspace {
+		t.Fatalf("应回到默认工作区: %+v", st)
+	}
+
+	// 目录被删除：状态里标出来，发送时给出明确的错误。
+	gone := filepath.Join(t.TempDir(), "gone")
+	os.Mkdir(gone, 0o755)
+	h.engine.SetSessionWorkspace(ctx, gone)
+	os.Remove(gone)
+	if !h.engine.Status().WorkspaceMissing {
+		t.Fatal("应标记工作区不存在")
+	}
+	if _, err := h.engine.Send(ctx, "hi"); err == nil || !strings.Contains(err.Error(), "不存在") {
+		t.Fatalf("应拒绝在不存在的工作区运行: %v", err)
+	}
+}
