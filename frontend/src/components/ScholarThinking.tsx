@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { t } from "../i18n";
+import { useAgentPhase } from "../store/useAgentPhase";
+import MosaicMark from "./MosaicMark";
 
 // 模型思考时的动画：一位戴金丝眼镜、博士帽的学者，托着下巴思考，头顶冒出思考泡泡。
 //
@@ -24,11 +26,12 @@ export default function ScholarThinking({ since, label }: { since?: number; labe
       clearInterval(sym);
     };
   }, []);
+  const phaseState = useAgentPhase();
   const secs = since ? Math.max(0, Math.floor((now - since) / 1000)) : null;
 
   return (
-    <div className="flex items-center gap-3" role="status" aria-live="polite">
-      <svg className={`scholar scholar-phase-${phase} h-24 w-24 shrink-0`} viewBox="0 0 120 112" aria-hidden="true" data-phase={phase}>
+    <div className="flex items-center gap-3 rounded-card border border-line bg-panel py-1.5 pl-2 pr-4 shadow-card" role="status" aria-live="polite">
+      <svg className={`scholar scholar-phase-${phase} h-20 w-20 shrink-0`} viewBox="0 0 120 112" aria-hidden="true" data-phase={phase}>
         {/* 思考泡泡：从小到大依次浮现；最大的泡泡里按阶段显示 三个点 / 问号 / 灯泡 */}
         <g className="scholar-bubbles">
           <circle className="scholar-bubble b1" cx="88" cy="40" r="2.2" />
@@ -113,10 +116,12 @@ export default function ScholarThinking({ since, label }: { since?: number; labe
           <path d="M64.5 79 Q63.5 73 66 72" stroke="#e1b083" strokeWidth="3" fill="none" strokeLinecap="round" />
         </g>
       </svg>
-      <div className="text-sm text-muted">
+      <div className="min-w-0 flex-1 text-sm text-muted">
         <div className="font-medium text-fg">{label ?? t("正在思考…")}</div>
         {secs !== null && secs >= 1 && <div className="text-xs tabular-nums">{t("已等待 {n} 秒", { n: secs })}</div>}
       </div>
+      {/* 金色拼块的动作由真实的 Agent 阶段决定（开始 / 工作中 / 需要处理），见 store/agentPhase.ts */}
+      <MosaicMark size="md" state={phaseState === "static" ? "thinking" : phaseState} className="shrink-0" />
     </div>
   );
 }

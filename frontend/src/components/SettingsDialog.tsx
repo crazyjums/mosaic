@@ -5,6 +5,8 @@ import { useSettings } from "../store/settingsStore";
 import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
 import AboutSettings from "./AboutSettings";
+import MosaicMark from "./MosaicMark";
+import NavIcon from "./Icons";
 import GroupEditor from "./GroupEditor";
 import UsageSettings from "./UsageSettings";
 import AppearanceSettings from "./AppearanceSettings";
@@ -73,23 +75,36 @@ export default function SettingsDialog() {
   const current = providers.find((p) => p.name === selected) ?? null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6" onMouseDown={hide}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-3 sm:p-6" onMouseDown={hide} role="dialog" aria-modal="true" aria-label={t("设置")}>
       <div
-        className="flex h-[min(760px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
+        className="shadow-pop flex h-[min(780px,94vh)] w-full max-w-[var(--modal-width)] flex-col overflow-hidden rounded-modal border border-line bg-panel md:flex-row"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto border-b border-line px-3">
+        {/* 左：分类导航。窄窗口里变成顶部一排可横向滚动的按钮 */}
+        <nav className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-side p-2 md:w-52 md:flex-col md:items-stretch md:overflow-y-auto md:border-b-0 md:border-r md:p-3" aria-label={t("设置分类")}>
+          <div className="hidden items-center gap-2 px-2 pb-3 pt-1 md:flex">
+            <MosaicMark size="xs" />
+            <span className="text-sm font-semibold">{t("设置")}</span>
+          </div>
           {TABS.map(([id, label]) => (
             <button
               key={id}
-              className={`shrink-0 rounded-md px-3 py-1 text-sm ${tab === id ? "bg-panel-2 font-medium text-fg" : "text-muted hover:text-fg"}`}
+              className={`flex shrink-0 items-center gap-2.5 rounded-ctl px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
+                tab === id ? "bg-accent font-medium text-on-accent" : "text-muted hover:bg-panel-2 hover:text-fg"
+              }`}
               onClick={() => setTab(id)}
+              aria-current={tab === id ? "page" : undefined}
             >
+              <NavIcon name={id} className="shrink-0" />
               {id === "mcp" ? label : t(label)}
             </button>
           ))}
+        </nav>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex h-12 shrink-0 items-center border-b border-line px-5">
+          <h2 className="text-[15px] font-semibold">{t(TABS.find((x) => x[0] === tab)?.[1] ?? "常规")}</h2>
           <div className="flex-1" />
-          <button className="px-2 text-muted hover:text-fg" onClick={hide} title={t("关闭（Esc）")}>
+          <button className="rounded-ctl px-2 py-1 text-muted hover:bg-panel-2 hover:text-fg" onClick={hide} title={t("关闭（Esc）")} aria-label={t("关闭（Esc）")}>
             ✕
           </button>
         </div>
@@ -187,6 +202,7 @@ export default function SettingsDialog() {
         </section>
       </div>
         )}
+        </div>
       </div>
     </div>
   );

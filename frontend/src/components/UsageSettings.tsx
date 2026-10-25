@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import { useSettings } from "../store/settingsStore";
 import { useUIPrefs } from "../store/uiPrefs";
 import { fmtCost, fmtDay, fmtPct, fmtTokens, nodeCost } from "../store/usageFormat";
+import MosaicMark from "./MosaicMark";
 
 // 设置 → 用量：用了多少 token、花了多少钱，按天展开。
 //
@@ -108,12 +109,12 @@ export default function UsageSettings() {
 
       {tot && (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <Card label={t("输入")} value={fmtTokens(tot.input)} hint={t("含缓存读写")} />
-            <Card label={t("输出")} value={fmtTokens(tot.output)} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <Card label={t("输入")} value={fmtTokens(tot.input)} hint={t("含缓存读写")} dot="var(--accent)" />
+            <Card label={t("输出")} value={fmtTokens(tot.output)} dot="var(--think)" />
             <Card label={t("缓存命中")} value={tot.input > 0 ? fmtPct(tot.cache_hit) : "—"} />
             <Card label={t("请求")} value={String(tot.requests)} />
-            <Card label={t("预估花费")} value={tot.cost_usd > 0 || tot.unpriced_calls === 0 ? money(tot.cost_usd) : "—"} />
+            <Card label={t("预估花费")} value={tot.cost_usd > 0 || tot.unpriced_calls === 0 ? money(tot.cost_usd) : "—"} dot="var(--gold)" />
           </div>
 
           <div className="space-y-1 text-xs text-muted">
@@ -134,10 +135,15 @@ export default function UsageSettings() {
 
           {by === "day" && report.nodes.length > 0 && <DayChart nodes={report.nodes} />}
 
-          <div className="overflow-x-auto rounded-lg border border-line">
+          <div className="card overflow-x-auto">
             <div className="min-w-[520px] text-sm">
               <Row head cells={[by === "session" ? t("会话") : by === "day" ? t("日期") : t("名称"), t("输入"), t("输出"), t("缓存命中"), t("请求"), t("花费")]} />
-              {report.nodes.length === 0 && <div className="px-3 py-6 text-center text-muted">{loading ? t("加载中…") : t("这个时间范围里没有调用记录")}</div>}
+              {report.nodes.length === 0 && (
+                <div className="flex flex-col items-center gap-3 px-3 py-10 text-center text-muted">
+                  <MosaicMark size="md" />
+                  {loading ? t("加载中…") : t("这个时间范围里没有调用记录")}
+                </div>
+              )}
               {report.nodes.map((n) => (
                 <NodeRow key={n.key || "_"} node={n} by={by} money={nodeCostFn(currency, cnyRate, t("套餐"))} />
               ))}
@@ -157,13 +163,13 @@ const nodeCostFn = (currency: "usd" | "cny", rate: number, plan: string) => (n: 
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
-    <div className="inline-flex overflow-hidden rounded-lg border border-line text-sm" role="radiogroup">
+    <div className="inline-flex overflow-hidden rounded-ctl border border-line bg-panel text-sm" role="radiogroup">
       {options.map(([v, label]) => (
         <button
           key={v}
           role="radio"
           aria-checked={value === v}
-          className={`px-3 py-1 ${value === v ? "bg-accent text-on-accent" : "text-muted hover:bg-panel-2 hover:text-fg"}`}
+          className={`px-3 py-1 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${value === v ? "bg-accent font-medium text-on-accent" : "text-muted hover:bg-panel-2 hover:text-fg"}`}
           onClick={() => onChange(v)}
         >
           {/^[A-Z]+$/.test(label) ? label : t(label)}
@@ -173,14 +179,15 @@ function Seg<T extends string>({ value, options, onChange }: { value: T; options
   );
 }
 
-function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Card({ label, value, hint, dot }: { label: string; value: string; hint?: string; dot?: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-panel-2 px-3 py-2">
-      <div className="text-[11px] text-muted">
-        {label}
-        {hint && <span className="ml-1 opacity-70">· {hint}</span>}
+    <div className="card min-w-0 px-3.5 py-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-muted">
+        {dot && <span className="inline-block h-2 w-2 shrink-0 rounded-sm" style={{ background: dot }} aria-hidden="true" />}
+        <span className="truncate">{label}</span>
+        {hint && <span className="truncate opacity-70">· {hint}</span>}
       </div>
-      <div className="truncate text-lg font-semibold tabular-nums">{value}</div>
+      <div className="mt-1 truncate text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
     </div>
   );
 }
@@ -189,7 +196,7 @@ const GRID = "grid grid-cols-[minmax(150px,2.4fr)_repeat(5,minmax(60px,1fr))] it
 
 function Row({ cells, head }: { cells: string[]; head?: boolean }) {
   return (
-    <div className={`${GRID} ${head ? "border-b border-line text-xs text-muted" : ""}`}>
+    <div className={`${GRID} ${head ? "border-b border-line bg-panel-2 text-xs font-medium text-muted" : ""}`}>
       {cells.map((c, i) => (
         <span key={i} className={`truncate ${i > 0 ? "text-right tabular-nums" : ""}`}>
           {c}
@@ -244,16 +251,25 @@ function DayChart({ nodes }: { nodes: UsageNode[] }) {
     { key: "out", label: t("输出"), v: n.output, color: "var(--think)" },
   ];
   const max = Math.max(1, ...days.map((n) => parts(n).reduce((a, p) => a + p.v, 0)));
-  const W = 600, H = 110, gap = 3;
+  const W = 600, H = 110, gap = 6, left = 38; // left：给纵轴刻度留的宽度
   // 每根最宽 36：只有一两天数据时，不要拉成一整面色块。
-  const bw = Math.min(36, Math.max(4, (W - gap * (days.length - 1)) / days.length));
+  const bw = Math.min(36, Math.max(4, (W - left - gap * (days.length - 1)) / days.length));
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H + 16}`} className="h-36 w-full" role="img" aria-label={t("每天的 token 用量")} preserveAspectRatio="xMinYMax meet">
-        <line x1="0" x2={W} y1={H} y2={H} stroke="var(--border)" />
+    <div className="card px-4 py-3">
+      <div className="mb-1 text-xs font-medium text-muted">{t("每天的 token 用量")}</div>
+      <svg viewBox={`0 0 ${W} ${H + 16}`} className="usage-chart h-36 w-full" role="img" aria-label={t("每天的 token 用量")} preserveAspectRatio="xMinYMax meet">
+        {/* 纵轴：三条参考线（0、一半、最大值），刻度是真实的 token 数 */}
+        {[0, 0.5, 1].map((f) => (
+          <g key={f}>
+            <line x1={left} x2={W} y1={H - f * (H - 4)} y2={H - f * (H - 4)} stroke="var(--border)" strokeDasharray={f === 0 ? undefined : "3 4"} />
+            <text x={left - 6} y={H - f * (H - 4) + 3} textAnchor="end" fontSize="9" fill="var(--muted)">
+              {fmtTokens(Math.round(max * f))}
+            </text>
+          </g>
+        ))}
         {days.map((n, i) => {
           let y = H;
-          const x = i * (bw + gap);
+          const x = left + i * (bw + gap);
           return (
             <g key={n.key}>
               <title>{`${n.label}  ${t("输入")} ${fmtTokens(n.input)} · ${t("输出")} ${fmtTokens(n.output)} · ${t("请求")} ${n.requests}`}</title>
@@ -271,7 +287,7 @@ function DayChart({ nodes }: { nodes: UsageNode[] }) {
           );
         })}
       </svg>
-      <div className="flex flex-wrap gap-3 text-[11px] text-muted">
+      <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-muted">
         {parts(days[0] ?? ({} as UsageNode)).map((p) => (
           <span key={p.key} className="flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-sm" style={{ background: p.color }} />

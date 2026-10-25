@@ -71,7 +71,8 @@ function demoUsageReport(req: UsageRequest): UsageReport {
   const totals = zero();
   inRange.forEach((r) => add2(totals, r));
   const merge = (a: UsageTotals, b: UsageTotals) => {
-    for (const k of Object.keys(a) as (keyof UsageTotals)[]) if (k !== "cache_hit") a[k] += b[k];
+    // 只累加数字字段：节点上还有 key / label / children，不能被当成数字加起来
+    for (const k of Object.keys(zero()) as (keyof UsageTotals)[]) if (k !== "cache_hit") a[k] += b[k];
   };
   const groupBy = (keyOf: (r: (typeof rows)[number]) => string, label: (k: string) => string): UsageNode[] => {
     const m = new Map<string, UsageNode>();

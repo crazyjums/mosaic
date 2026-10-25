@@ -86,14 +86,17 @@ export default function MessageList() {
             case "user":
               return (
                 <div key={it.id} className="flex justify-end">
-                  <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent/15 px-4 py-2 text-[15px]">{it.text}</div>
+                  <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed">{it.text}</div>
                 </div>
               );
             case "error":
               return (
-                <div key={it.id} className={`rounded-lg border px-3 py-2 text-sm ${it.fatal ? "border-danger/40 bg-danger/10 text-danger" : "border-warn/40 bg-warn/10 text-warn"}`}>
-                  <span className="mr-2 font-mono text-xs opacity-70">{it.code}</span>
-                  {it.message}
+                <div key={it.id} role="alert" className={`flex gap-2 rounded-ctl border px-3 py-2.5 text-sm ${it.fatal ? "border-danger/40 bg-danger/10 text-danger" : "border-warn/40 bg-warn/10 text-warn"}`}>
+                  <span aria-hidden="true">{it.fatal ? "⛔" : "⚠"}</span>
+                  <div className="min-w-0 break-words">
+                    <span className="mr-2 font-mono text-xs opacity-70">{it.code}</span>
+                    {it.message}
+                  </div>
                 </div>
               );
             case "notice":
@@ -142,7 +145,7 @@ function Empty({ demo, demoModel, noProvider }: { demo: boolean; demoModel: bool
   const openSettings = useSettings((s) => s.show);
   return (
     <div className="mt-24 text-center text-muted">
-      <div className="text-2xl font-semibold text-fg">myllmapp</div>
+      <div className="text-2xl font-semibold text-fg">Mosaic</div>
       <p className="mt-2 text-sm">{t("自己实现的 agent harness · 思考、工具调用、权限确认全过程可视化")}</p>
       {/* 新会话先确认工作区：一个会话通常对应一个代码仓库 */}
       <WorkspacePicker variant="card" />

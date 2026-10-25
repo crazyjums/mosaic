@@ -29,7 +29,7 @@ export default function UpdateDialog() {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6" onClick={() => !busy && closeDialog()} role="dialog" aria-modal="true">
-      <div className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-line bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[85vh] w-full max-w-xl flex-col shadow-pop rounded-modal border border-line bg-panel" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
             <div className="text-[15px] font-semibold">{available ? t("发现新版本 {v}", { v: info!.latest }) : t("检查更新")}</div>

@@ -74,7 +74,7 @@ function DangerConfirm({ onCancel, onConfirm }: { onCancel: () => void; onConfir
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" role="alertdialog" aria-modal="true" aria-labelledby="danger-title">
-      <div className="w-full max-w-md rounded-xl border border-danger/50 bg-panel shadow-2xl">
+      <div className="shadow-pop w-full max-w-md rounded-modal border border-danger/50 bg-panel">
         <div className="px-5 py-4">
           <div id="danger-title" className="flex items-center gap-2 text-sm font-semibold text-danger">
             <span>⚠</span> {t("开启「全部放行」？")}
