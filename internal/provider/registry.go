@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -22,6 +23,17 @@ type ProfileConfig struct {
 	// Options 是适配器特有的选项（例如 fake 的脚本路径、anthropic 的 effort），
 	// 由各适配器自己解释，避免为每个厂商的特殊参数修改这个公共结构。
 	Options map[string]any
+	// Auth 是动态令牌来源，用于 OAuth 登录这类"令牌会过期、需要刷新"的认证方式
+	// （例如用 ChatGPT 账号登录）。为 nil 时使用 APIKey。
+	Auth TokenSource
+}
+
+// TokenSource 提供访问令牌。实现负责缓存和刷新，适配器每次请求前调用一次。
+//
+// 为什么不在登录后把令牌写进 APIKey：OAuth 访问令牌一小时就过期，
+// 而厂商目录（Catalog）只在配置变化时重建；交给 TokenSource 按需刷新，适配器就不用关心过期。
+type TokenSource interface {
+	Token(ctx context.Context) (string, error)
 }
 
 // Factory 根据配置档创建 Provider 实例。
