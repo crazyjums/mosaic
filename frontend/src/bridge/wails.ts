@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, UpdateInfo, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -54,6 +54,15 @@ interface GoApp {
   GetChatGPTUsage(): Promise<ChatGPTUsage>;
   SetCodexQuota(on: boolean): Promise<void>;
   OpenChatGPTUsage(): Promise<void>;
+  GetUsageReport(req: UsageRequest): Promise<UsageReport>;
+  SaveUsageCSV(req: UsageRequest): Promise<string>;
+  GetGroups(): Promise<GroupView[]>;
+  SaveGroup(input: GroupInput): Promise<void>;
+  DeleteGroup(name: string): Promise<void>;
+  GetGroupStatuses(): Promise<GroupStatus[]>;
+  ResetGroupMember(profile: string, model: string): Promise<void>;
+  GetProxy(): Promise<ProxyView>;
+  SetProxy(raw: string): Promise<void>;
   GetVersion(): Promise<string>;
   CheckUpdate(): Promise<UpdateInfo>;
   InstallUpdate(): Promise<void>;
@@ -133,6 +142,15 @@ export function createWailsBackend(): Backend {
     getChatGPTUsage: () => app.GetChatGPTUsage(),
     setCodexQuota: (on) => app.SetCodexQuota(on),
     openChatGPTUsage: () => app.OpenChatGPTUsage(),
+    getUsageReport: (req) => app.GetUsageReport(req),
+    saveUsageCSV: (req) => app.SaveUsageCSV(req),
+    getGroups: () => app.GetGroups(),
+    saveGroup: (input) => app.SaveGroup(input),
+    deleteGroup: (name) => app.DeleteGroup(name),
+    getGroupStatuses: () => app.GetGroupStatuses(),
+    resetGroupMember: (profile, model) => app.ResetGroupMember(profile, model),
+    getProxy: () => app.GetProxy(),
+    setProxy: (raw) => app.SetProxy(raw),
     getVersion: () => app.GetVersion(),
     checkUpdate: () => app.CheckUpdate(),
     installUpdate: () => app.InstallUpdate(),

@@ -3,7 +3,7 @@ import { useChat } from "../store/chatStore";
 import type { AssistantItem } from "../store/reducer";
 import { useUIPrefs } from "../store/uiPrefs";
 import { t } from "../i18n";
-import AssistantMessage from "./AssistantMessage";
+import AssistantMessage, { HandoffMark } from "./AssistantMessage";
 import ImageBlock from "./ImageBlock";
 import Markdown from "./Markdown";
 import ScholarThinking from "./ScholarThinking";
@@ -37,9 +37,11 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
   const hasProcess = allTools.length > 0 || thoughts > 0 || items.length > 1 || (answer.length === 0 && last.blocks.length > 0);
   const waiting = allTools.filter((x) => x.status === "awaiting_permission");
 
+  const handoffs = items.reduce((n, it) => n + (it.route?.handedOn.length ?? 0), 0);
   let summary: string;
   if (allTools.length > 0) summary = t("思考与工具调用 · {n} 步 · {m} 次工具调用", { n: items.length, m: allTools.length });
   else summary = t("思考过程 · {n} 步", { n: items.length });
+  if (handoffs > 0) summary += ` · ${t("转交 {n} 次", { n: handoffs })}`;
 
   return (
     <div className="space-y-2">
@@ -64,6 +66,14 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
             {failed > 0 && <span className="text-danger">{t("{n} 次失败", { n: failed })}</span>}
           </button>
         ))}
+      {/* 只有最终回答、没有过程可折叠时，转交的标记也要让人看得到 */}
+      {!hasProcess && handoffs > 0 && (
+        <div className="flex items-center text-[11px] text-muted">
+          {last.provider}/{last.model}
+          {last.route && <span className="ml-1">[{last.route.group}]</span>}
+          {last.route && <HandoffMark route={last.route} />}
+        </div>
+      )}
       {!open && waiting.map((x) => <ToolCallCard key={x.callId} tool={x} />)}
       {/* 工作中、还没开始输出最终回答：显示动画 */}
       {live && answer.length === 0 && waiting.length === 0 && (

@@ -109,6 +109,10 @@ func (m *Manager) merged(f File) ([]provider.ProfileConfig, map[string]Source) {
 		f.Providers = slices.DeleteFunc(slices.Clone(f.Providers), func(s ProviderSetting) bool { return s.Type == "chatgpt" })
 	}
 	ps, sources := merge(base, f)
+	for _, g := range f.Groups {
+		ps = append(ps, groupProfile(g))
+		sources[g.Name] = SourceSettings
+	}
 	for i := range ps {
 		if ps[i].Type == "chatgpt" {
 			if ps[i].BaseURL == "" {
@@ -117,6 +121,7 @@ func (m *Manager) merged(f File) ([]provider.ProfileConfig, map[string]Source) {
 			ps[i] = m.withAuth(ps[i])
 			sources[ps[i].Name] = SourceAccount
 		}
+		ps[i] = m.applyProxy(ps[i])
 	}
 	return ps, sources
 }
@@ -126,7 +131,7 @@ func (m *Manager) withAuth(p provider.ProfileConfig) provider.ProfileConfig {
 	if p.Type == "chatgpt" && m.chatgpt != nil && m.chatgpt.LoggedIn() {
 		p.Auth = m.chatgpt
 	}
-	return p
+	return m.applyProxy(p) // 没有单独设置代理的，用全局默认代理（测试连接、获取模型列表也要走它）
 }
 
 // ChatGPT 返回账号状态；没有关联登录管理器（例如测试）时返回"未登录"。

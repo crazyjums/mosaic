@@ -9,6 +9,7 @@ import (
 
 	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/permission"
+	"github.com/crazyjums/myllmapp/internal/provider"
 )
 
 // FileName 是设置文件名，位于数据目录下。
@@ -37,6 +38,10 @@ type File struct {
 	DefaultProvider string            `json:"default_provider,omitempty"`
 	DefaultModel    string            `json:"default_model,omitempty"`
 	Providers       []ProviderSetting `json:"providers"`
+	// Groups 是模型组（故障转移）。它们和厂商配置档一起出现在模型下拉框里，见 groups.go。
+	Groups []provider.GroupConfig `json:"groups,omitempty"`
+	// Proxy 是全局默认代理，没有单独设置代理的厂商都用它。地址里可能带密码，和 API Key 一样存在本文件里（权限 600）。
+	Proxy string `json:"proxy,omitempty"`
 
 	// General 是"设置 → 常规 / 系统提示词"中的参数，零值字段表示沿用配置文件。
 	General General `json:"general"`

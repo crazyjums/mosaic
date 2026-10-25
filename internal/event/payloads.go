@@ -186,6 +186,28 @@ type Error struct {
 	Fatal   bool   `json:"fatal"`
 }
 
+// RouteAttempt 是一次失败后被转交的尝试。
+type RouteAttempt struct {
+	Profile string `json:"profile"`
+	Model   string `json:"model"`
+	// Kind 是失败类别：rate_limit / server / auth / network / context / quota。
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
+}
+
+// Route 只在使用模型组时产生：在这条消息的第一个内容之前到达，说明实际应答的成员。
+// 界面据此把消息头的"厂商 / 模型"更新为实际应答者，并在发生过转交时给出标记。
+type Route struct {
+	Group   string `json:"group"`
+	Profile string `json:"profile"`
+	Model   string `json:"model"`
+	// Try 是第几次尝试（1 表示第一个成员就成功了）。
+	Try      int            `json:"try"`
+	HandedOn []RouteAttempt `json:"handed_on,omitempty"`
+}
+
+func (Route) EventType() Type { return TypeRoute }
+
 // SessionUpdated 表示会话的元数据变了，界面据此刷新标题和会话列表。
 type SessionUpdated struct {
 	Title string `json:"title"`
@@ -249,6 +271,7 @@ func init() {
 	register[ContextCompacted]()
 	register[Error]()
 	register[SessionUpdated]()
+	register[Route]()
 }
 
 // AllTypes 返回所有已登记的事件类型，测试用它检查"每种事件都能往返序列化"。

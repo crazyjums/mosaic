@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -697,5 +698,85 @@ func TestRenameSession(t *testing.T) {
 	}
 	if err := h.engine.RenameSession(ctx, "nope", "x"); err == nil {
 		t.Fatal("不存在的会话应报错")
+	}
+}
+
+// flaky 是测试用的厂商：失败 n 次后正常应答。
+type flaky struct {
+	name  string
+	fails int
+	calls int
+}
+
+func (f *flaky) Name() string { return f.name }
+func (f *flaky) Stream(_ context.Context, _ provider.Request, on func(provider.Delta)) error {
+	f.calls++
+	if f.calls <= f.fails {
+		return &provider.HTTPError{Status: 429, Err: errors.New("rate limited")}
+	}
+	on(provider.Delta{Type: provider.DeltaText, Text: "来自 " + f.name})
+	on(provider.Delta{Type: provider.DeltaUsage, Usage: &provider.Usage{InputTokens: 7, OutputTokens: 3}})
+	on(provider.Delta{Type: provider.DeltaStop, StopReason: provider.StopEndTurn})
+	return nil
+}
+
+type usageLog struct {
+	mu sync.Mutex
+	ev []provider.UsageEvent
+}
+
+func (u *usageLog) RecordUsage(e provider.UsageEvent) {
+	u.mu.Lock()
+	u.ev = append(u.ev, e)
+	u.mu.Unlock()
+}
+
+// 模型组：第一个成员被限流，自动转交给第二个；界面收到 route 事件，账本带上会话 ID。
+func TestGroupFailoverEmitsRouteAndRecordsUsage(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register("flaky", func(cfg provider.ProfileConfig) (provider.Provider, error) {
+		n := 0
+		if cfg.Name == "a" {
+			n = 99
+		}
+		return &flaky{name: cfg.Name, fails: n}, nil
+	})
+	ledger := &usageLog{}
+	cat := provider.NewCatalogWith(reg, []provider.ProfileConfig{
+		{Name: "a", Type: "flaky", Models: []string{"m"}, DefaultModel: "m"},
+		{Name: "b", Type: "flaky", Models: []string{"m"}, DefaultModel: "m"},
+		{Name: "主力", Type: provider.GroupType, Models: []string{provider.GroupModel}, DefaultModel: provider.GroupModel,
+			Options: provider.GroupOptions(provider.GroupConfig{Members: []provider.GroupMember{{Profile: "a", Model: "m"}, {Profile: "b", Model: "m"}}, Strategy: provider.StrategyOrder})},
+	}, provider.CatalogOptions{Recorder: ledger})
+	eng, err := core.NewEngine(core.EngineConfig{
+		Catalog: cat, Tools: tool.NewRegistry(), Store: store.NewMemory(), Policy: permission.NewModePolicy(permission.ModeDefault),
+		Workspace: t.TempDir(), DefaultProfile: "主力", DefaultModel: provider.GroupModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := &event.Recorder{}
+	eng.Bus().Subscribe(rec.Handle)
+
+	if _, err := eng.Send(context.Background(), "你好"); err != nil {
+		t.Fatal(err)
+	}
+	routes := payloads[event.Route](rec)
+	if len(routes) != 1 || routes[0].Profile != "b" || routes[0].Try != 2 || len(routes[0].HandedOn) != 1 || routes[0].HandedOn[0].Profile != "a" || routes[0].HandedOn[0].Kind != "rate_limit" {
+		t.Fatalf("route 事件: %+v", routes)
+	}
+	ledger.mu.Lock()
+	defer ledger.mu.Unlock()
+	if len(ledger.ev) != 2 || ledger.ev[0].Status != provider.StatusHandedOn || ledger.ev[1].Status != provider.StatusOK ||
+		ledger.ev[1].SessionID != eng.Status().SessionID || ledger.ev[1].Usage.InputTokens != 7 || ledger.ev[1].Source != provider.SourceChat {
+		t.Fatalf("账本: %+v", ledger.ev)
+	}
+	// 历史里只有一条应答，来自成员 b。
+	var texts []string
+	for _, p := range payloads[event.TextDelta](rec) {
+		texts = append(texts, p.Text)
+	}
+	if strings.Join(texts, "") != "来自 b" {
+		t.Fatalf("文本: %v", texts)
 	}
 }

@@ -51,13 +51,17 @@ func New(cfg provider.ProfileConfig) (provider.Provider, error) {
 	if base == "" {
 		base = defaultBaseURL
 	}
+	client, err := provider.NewHTTPClient(cfg) // 代理和超时
+	if err != nil {
+		return nil, err
+	}
 	p := &Provider{
 		name:      cfg.Name,
 		baseURL:   base,
 		apiKey:    cfg.APIKey,
 		maxTokens: cfg.MaxTokens,
 		thinking:  "adaptive",
-		client:    &http.Client{},
+		client:    client,
 	}
 	if v, _ := cfg.Options["thinking"].(string); v != "" {
 		p.thinking = v
@@ -173,7 +177,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 		ev, err := r.Next()
 		if errors.Is(err, io.EOF) {
 			// 正常情况下应先收到 message_stop；没收到就断流，说明连接被意外中断。
-			return errors.New("anthropic: stream ended before message_stop")
+			return fmt.Errorf("anthropic: stream ended before message_stop: %w", provider.ErrStreamInterrupted)
 		}
 		if err != nil {
 			return err
@@ -294,9 +298,9 @@ func httpError(resp *http.Response) error {
 		} `json:"error"`
 	}
 	if json.Unmarshal(b, &e) == nil && e.Error != nil {
-		return fmt.Errorf("anthropic: HTTP %d %s: %s", resp.StatusCode, e.Error.Type, e.Error.Message)
+		return provider.NewHTTPError(resp, fmt.Errorf("anthropic: HTTP %d %s: %s", resp.StatusCode, e.Error.Type, e.Error.Message))
 	}
-	return fmt.Errorf("anthropic: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	return provider.NewHTTPError(resp, fmt.Errorf("anthropic: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
 }
 
 func firstNonZero(vs ...int) int {

@@ -6,6 +6,12 @@
 //   - 调用契约（provider.go）：Request（发什么）、Delta（流式收到什么）、Provider（怎么调用）。
 //   - 注册与实例化（registry.go）：适配器类型（openai / anthropic / fake）→ 工厂函数；
 //     配置里的每个"厂商配置档"（profile）→ 一个 Provider 实例，汇总在 Catalog 里。
+//   - 错误分类（errors.go）：适配器把 HTTP 状态码、Retry-After 带出来，Classify 判断"换成员有没有意义"。
+//   - 网络代理（httpclient.go）：每个配置档可以单独设置 http / socks5 代理，或强制直连。
+//   - 用量计量（usage.go）：Catalog 给每个 Provider 包一层，每次调用记一条 UsageEvent（只有数字，不含内容）。
+//   - 模型组与故障转移（group.go、health.go）：一个虚拟厂商，由多个"配置档 + 模型"组成，
+//     成员在"还没有输出任何内容"时失败就换下一个；失败的成员进入冷却，到期后用真实请求试探恢复。
+//     它自己也是 Provider，所以内核完全不知道背后有几个厂商。
 //
 // # 不负责什么
 //

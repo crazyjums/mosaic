@@ -18,6 +18,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool"
 	"github.com/crazyjums/myllmapp/internal/tool/builtin"
+	"github.com/crazyjums/myllmapp/internal/usage"
 )
 
 // Options 是入口层可以覆盖的少量选项（通常来自命令行参数）。
@@ -92,14 +93,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		return nil, fmt.Errorf("bootstrap: workspace %q is not an existing directory", workspace)
 	}
 
-	// 步骤 3：工具与厂商。单个厂商配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
-	tools := tool.NewRegistry()
-	builtin.Register(tools, builtin.Options{ShellTimeout: time.Duration(eff.ShellTimeoutSeconds) * time.Second})
-	shell, _ := tools.Get("shell")
-	catalog := settingsMgr.Catalog()
-	profile, model := pickDefault(catalog, cfg, settingsMgr)
-
-	// 步骤 4：存储。
+	// 步骤 3a：存储。先于厂商目录打开：目录要接入用量账本，每次模型调用都会记账。
 	var st core.SessionStore
 	closeFn := func() error { return nil }
 	if opts.NoStore {
@@ -111,6 +105,23 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		}
 		st, closeFn = sqlite, sqlite.Close
 	}
+	// 用量账本：异步写入（不拖住对话）；退出时先等队列写完再关数据库。
+	if led, ok := st.(interface {
+		usage.Source
+		usage.Sink
+	}); ok {
+		w := usage.NewWriter(led, nil)
+		settingsMgr.SetUsage(w, led)
+		inner := closeFn
+		closeFn = func() error { w.Close(); return inner() }
+	}
+
+	// 步骤 3：工具与厂商。单个厂商配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
+	tools := tool.NewRegistry()
+	builtin.Register(tools, builtin.Options{ShellTimeout: time.Duration(eff.ShellTimeoutSeconds) * time.Second})
+	shell, _ := tools.Get("shell")
+	catalog := settingsMgr.Catalog()
+	profile, model := pickDefault(catalog, cfg, settingsMgr)
 
 	// 步骤 5：权限策略。优先级：命令行参数 > 上次在状态栏上的切换 > 配置文件。
 	// 记住的档位不会是 auto（见 settings.SetPermissionMode）；旧版本写进去的 auto 也忽略，

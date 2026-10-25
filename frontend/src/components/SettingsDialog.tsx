@@ -5,6 +5,8 @@ import { useSettings } from "../store/settingsStore";
 import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
 import AboutSettings from "./AboutSettings";
+import GroupEditor from "./GroupEditor";
+import UsageSettings from "./UsageSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import ChatGPTAccount from "./ChatGPTAccount";
 import DataSettings from "./DataSettings";
@@ -23,6 +25,7 @@ const TABS = [
   ["mcp", "MCP"],
   ["appearance", "外观"],
   ["statusline", "状态栏"],
+  ["usage", "用量"],
   ["data", "数据"],
   ["about", "关于"],
 ] as const;
@@ -37,7 +40,10 @@ const SOURCE_LABEL: Record<ProviderView["source"], string> = {
   account: "",
 };
 
-const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号" };
+const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", group: "模型组" };
+
+/** 左侧列表里"添加模型组"的选中值 */
+const NEW_GROUP = "\u0000newgroup";
 
 /** 左侧列表里"ChatGPT 账号登录"入口的选中值（还没登录时没有 chatgpt 配置档可选） */
 const CHATGPT_ENTRY = "\u0000chatgpt";
@@ -53,7 +59,7 @@ export default function SettingsDialog() {
   useEffect(() => {
     if (!open) return;
     const first = providers.find((p) => p.type !== "fake" && p.available);
-    setSelected((cur) => (cur === CHATGPT_ENTRY || (cur && providers.some((p) => p.name === cur)) ? cur : first?.name ?? null));
+    setSelected((cur) => (cur === CHATGPT_ENTRY || cur === NEW_GROUP || (cur && providers.some((p) => p.name === cur)) ? cur : first?.name ?? null));
   }, [open, providers]);
 
   useEffect(() => {
@@ -99,6 +105,8 @@ export default function SettingsDialog() {
           <GeneralSettings />
         ) : tab === "prompt" ? (
           <PromptSettings />
+        ) : tab === "usage" ? (
+          <UsageSettings />
         ) : tab === "about" ? (
           <AboutSettings />
         ) : tab === "data" ? (
@@ -149,19 +157,30 @@ export default function SettingsDialog() {
             >
               ＋ 添加厂商
             </button>
+            <button
+              className={`w-full rounded-lg border border-dashed px-3 py-2 text-sm ${selected === NEW_GROUP ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
+              onClick={() => setSelected(NEW_GROUP)}
+              title={t("多个厂商组成一组，失败时自动换下一个")}
+            >
+              {t("＋ 添加模型组（故障转移）")}
+            </button>
           </div>
         </aside>
 
         {/* 右：表单。key 保证切换配置档时表单状态重置 */}
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center border-b border-line px-5">
-            <span className="text-sm font-medium">{selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : current ? `编辑：${current.name}` : "添加厂商"}</span>
+            <span className="text-sm font-medium">
+              {selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : selected === NEW_GROUP ? t("添加模型组") : current?.type === "group" ? t("编辑模型组：{name}", { name: current.name }) : current ? `编辑：${current.name}` : "添加厂商"}
+            </span>
           </header>
           {error && <div className="border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">{error}</div>}
           {selected === CHATGPT_ENTRY ? (
             <div className="flex-1 overflow-y-auto px-5 py-4">
               <ChatGPTAccount onLoggedIn={() => setSelected("chatgpt")} />
             </div>
+          ) : selected === NEW_GROUP || current?.type === "group" ? (
+            <GroupEditor key={selected ?? "__g__"} name={selected === NEW_GROUP ? null : current?.name ?? null} providers={providers} onSaved={(n) => setSelected(n)} />
           ) : (
             <ProviderForm key={current?.name ?? "__new__"} current={current} onSaved={setSelected} />
           )}
@@ -447,6 +466,17 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
         <details className="rounded-lg border border-line px-3 py-2">
           <summary className="cursor-pointer text-sm text-muted">高级选项</summary>
           <div className="mt-3 space-y-4">
+            <Field label={t("网络代理")}>
+              <input
+                className="input font-mono"
+                value={String(form.options.proxy ?? "")}
+                onChange={(e) => patch({ options: { ...form.options, proxy: e.target.value || undefined } })}
+                placeholder={t("留空沿用全局设置")}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <Hint>{t("留空：沿用“常规”里的全局代理；direct：强制直连（国内厂商通常选这个）；也可以填 http://、https://、socks5:// 开头的代理地址。")}</Hint>
+            </Field>
             {isChatGPT ? (
               <>
                 <Field label="思考过程">
@@ -524,7 +554,7 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
               </>
             )}
             {form.models.length > 0 && (
-              <Field label="模型信息（用于状态栏显示上下文占用和预估花费，可留空）">
+              <Field label={t("模型信息（用于状态栏的上下文占用，和用量页的花费预估；可留空）")}>
                 <ModelMetaTable models={form.models} meta={metaOf(form.options)} onChange={(m) => patch({ options: { ...form.options, models_meta: m } })} />
               </Field>
             )}
@@ -588,13 +618,15 @@ function ModelMetaTable({ models, meta, onChange }: { models: string[]; meta: Me
           <th className="w-32 pb-1 text-right font-normal">上下文窗口（tokens）</th>
           <th className="w-28 pb-1 text-right font-normal">输入 $/百万</th>
           <th className="w-28 pb-1 text-right font-normal">输出 $/百万</th>
+          <th className="w-28 pb-1 text-right font-normal" title={t("缓存命中的输入价；没填时按输入价算")}>{t("缓存读 $/百万")}</th>
+          <th className="w-28 pb-1 text-right font-normal" title={t("写入缓存的输入价；没填时按输入价算")}>{t("缓存写 $/百万")}</th>
         </tr>
       </thead>
       <tbody>
         {models.map((m) => (
           <tr key={m}>
             <td className="truncate py-0.5 pr-2 font-mono">{m}</td>
-            {(["context_window", "input_price", "output_price"] as const).map((k) => (
+            {(["context_window", "input_price", "output_price", "cache_read_price", "cache_write_price"] as const).map((k) => (
               <td key={k} className="py-0.5 pl-2">
                 <input className={cell} inputMode="decimal" placeholder="—" defaultValue={meta[m]?.[k] ?? ""} onBlur={(e) => set(m, k, e.target.value)} />
               </td>

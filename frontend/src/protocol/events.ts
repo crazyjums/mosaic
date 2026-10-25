@@ -59,6 +59,15 @@ export interface PayloadMap {
   task_end: { task_id: string; status: string; exit_code: number };
   context_compacted: { before_tokens: number; after_tokens: number; removed_messages: number; summary?: string };
 
+  /** 使用模型组时，说明这条消息实际由哪个成员应答，以及前面有哪些尝试被转交 */
+  route: {
+    group: string;
+    profile: string;
+    model: string;
+    try: number;
+    handed_on?: { profile: string; model: string; kind: string; message: string }[];
+  };
+
   error: { code: string; message: string; fatal: boolean };
 
   /** 会话元数据变了（目前是由模型生成的标题，在第一轮结束之后到达） */
@@ -86,7 +95,7 @@ export type AgentEvent = { [K in EventType]: Envelope<K> }[EventType];
 
 const KNOWN_TYPES = new Set<string>([
   "turn_start", "turn_end", "user_message",
-  "message_start", "text_delta", "thinking_delta", "image", "message_end",
+  "message_start", "text_delta", "thinking_delta", "image", "message_end", "route",
   "tool_call", "tool_result", "permission_request", "permission_resolved",
   "subagent_start", "subagent_end", "task_start", "task_log", "task_end",
   "context_compacted", "error", "session_updated",

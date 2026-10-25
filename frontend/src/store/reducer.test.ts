@@ -79,4 +79,18 @@ describe("applyEvent", () => {
     const s = replay(evs);
     expect(s.timeline.filter((t) => t.kind === "notice")).toHaveLength(1);
   });
+
+  it("route 事件：消息头改为实际应答的成员，并记录被转交的尝试", () => {
+    const base = { v: 1, id: "e", seq: 1, session_id: "s", agent_id: "main", ts: "2026-10-25T00:00:00Z" };
+    const events = [
+      { ...base, type: "message_start", message_id: "m1", data: { provider: "主力", model: "auto", step: 1 } },
+      {
+        ...base, type: "route", message_id: "m1",
+        data: { group: "主力", profile: "deepseek", model: "v4", try: 2, handed_on: [{ profile: "anthropic", model: "sonnet", kind: "rate_limit", message: "429" }] },
+      },
+    ] as AgentEvent[];
+    const m = replay(events).timeline[0] as AssistantItem;
+    expect([m.provider, m.model]).toEqual(["deepseek", "v4"]);
+    expect(m.route).toEqual({ group: "主力", tried: 2, handedOn: [{ profile: "anthropic", model: "sonnet", kind: "rate_limit", message: "429" }] });
+  });
 });

@@ -5,6 +5,9 @@
 //   - SQLite 实现（sqlite.go）：使用纯 Go 驱动 modernc.org/sqlite，不需要 CGO；
 //     两张表：sessions（元数据、累计用量）和 messages（按序号保存中立格式消息的 JSON）。
 //   - 内存实现（memory.go）：测试和"不想落盘"的 CLI 会话使用。
+//   - 用量账本（usage.go）：usage_events 表（迁移 3），实现 usage.Source / usage.Sink，
+//     聚合在 SQL 里完成；内存实现复用 usage.Aggregate，两者用同一组用例保证结果一致。
+//     账本不设外键到 sessions：删除会话或清空历史不会抹掉用量统计。
 //
 // # 不负责什么
 //

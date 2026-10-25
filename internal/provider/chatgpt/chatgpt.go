@@ -47,7 +47,11 @@ func New(cfg provider.ProfileConfig) (provider.Provider, error) {
 	}
 	thinking, _ := cfg.Options["thinking"].(string)
 	effort, _ := cfg.Options["effort"].(string)
-	return &Provider{name: cfg.Name, baseURL: base, auth: cfg.Auth, thinking: thinking, effort: effort, client: &http.Client{}}, nil
+	client, err := provider.NewHTTPClient(cfg) // 代理和超时
+	if err != nil {
+		return nil, err
+	}
+	return &Provider{name: cfg.Name, baseURL: base, auth: cfg.Auth, thinking: thinking, effort: effort, client: client}, nil
 }
 
 func (p *Provider) Name() string { return p.name }
@@ -160,7 +164,7 @@ func (p *Provider) stream(ctx context.Context, req provider.Request, onDelta fun
 		ev, err := r.Next()
 		if errors.Is(err, io.EOF) {
 			// 流结束却没有 response.completed：通常是连接被中断。
-			return errors.New("chatgpt: stream ended unexpectedly")
+			return fmt.Errorf("chatgpt: stream ended unexpectedly: %w", provider.ErrStreamInterrupted)
 		}
 		if err != nil {
 			return err
@@ -231,7 +235,7 @@ func normalizeArgs(s string) json.RawMessage {
 }
 
 // ErrUsageLimit 表示 ChatGPT 套餐额度已用完（或达到了用户为本应用设置的上限）。
-var ErrUsageLimit = errors.New("ChatGPT 套餐额度已用完（或达到了你为本应用设置的上限），请稍后再试或改用 API Key")
+var ErrUsageLimit = provider.NewQuotaError("ChatGPT 套餐额度已用完（或达到了你为本应用设置的上限），请稍后再试或改用 API Key")
 
 // explain 把套餐额度特有的错误码翻译成用户能理解的说明。原始信息附在后面，方便排查。
 func explain(e apiError) error {
@@ -269,12 +273,12 @@ func httpError(resp *http.Response) error {
 		if resp.StatusCode == http.StatusUnauthorized && body.Error.Code == "" {
 			body.Error.Code = "invalid_api_key"
 		}
-		return fmt.Errorf("HTTP %d: %w", resp.StatusCode, explain(*body.Error))
+		return provider.NewHTTPError(resp, fmt.Errorf("HTTP %d: %w", resp.StatusCode, explain(*body.Error)))
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("HTTP 401: %w", explain(apiError{Code: "invalid_api_key"}))
+		return provider.NewHTTPError(resp, fmt.Errorf("HTTP 401: %w", explain(apiError{Code: "invalid_api_key"})))
 	}
-	return fmt.Errorf("chatgpt: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	return provider.NewHTTPError(resp, fmt.Errorf("chatgpt: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
 }
 
 // ListModels 获取账号可用的模型，实现 provider.ModelLister。

@@ -393,7 +393,8 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 	if rt.TitleMode == "model" && res.Reason == event.TurnCompleted && isFirstTurn(sess) {
 		before := sess.Snapshot().Title
 		go func() {
-			title, err := generateTitle(context.Background(), p, snap.Model, sess)
+			tctx := provider.WithCall(context.Background(), provider.CallInfo{SessionID: sess.ID, Source: provider.SourceTitle})
+			title, err := generateTitle(tctx, p, snap.Model, sess)
 			// 生成期间用户手动改了名，以用户的为准。
 			if err != nil || title == "" || sess.Snapshot().Title != before {
 				return
@@ -667,6 +668,14 @@ func (e *Engine) RenameSession(ctx context.Context, id, title string) error {
 	}
 	e.bus.Publish(event.New(id, event.RootAgentID, "", event.SessionUpdated{Title: title}))
 	return nil
+}
+
+// GroupStatuses 返回当前厂商目录里各模型组成员的运行状态。
+func (e *Engine) GroupStatuses() []provider.GroupStatus {
+	e.mu.Lock()
+	c := e.cfg.Catalog
+	e.mu.Unlock()
+	return c.GroupStatuses()
 }
 
 // Subagents 返回子 agent 定义注册表（预留扩展点）。

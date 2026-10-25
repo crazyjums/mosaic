@@ -13,7 +13,7 @@
 
 import type { AgentEvent, Decision, Usage } from "../protocol/events";
 import type {
-  Backend, General, GeneralView, MCPServerConfig, PermissionMode, PermissionRule, ProfileInfo, ProviderView, SessionSummary, Status, ToolInfo,
+  Backend, General, GeneralView, GroupView, MemberState, UsageNode, UsageReport, UsageRequest, UsageTotals, MCPServerConfig, PermissionMode, PermissionRule, ProfileInfo, ProviderView, SessionSummary, Status, ToolInfo,
 } from "./types";
 import raw from "./demo-events.jsonl?raw";
 
@@ -37,6 +37,61 @@ interface DemoSession {
   workspace: string;
 }
 
+/** 演示模式的用量数据：近几天的示意记录（美元）。 */
+function demoUsageReport(req: UsageRequest): UsageReport {
+  const today = new Date();
+  const day = (back: number) => new Date(today.getTime() - back * 86400_000).toISOString().slice(0, 10);
+  const mk = (back: number, profile: string, model: string, input: number, output: number, cr: number, requests: number, price?: [number, number]) => ({ day: day(back), profile, model, input, output, cr, requests, price });
+  const rows = [
+    mk(0, "anthropic", "claude-sonnet", 860_000, 98_000, 520_000, 121, [3, 15]),
+    mk(0, "volcengine", "deepseek-v4", 310_000, 31_000, 120_000, 63),
+    mk(0, "chatgpt", "gpt-6-luna", 30_000, 5_000, 0, 2),
+    mk(1, "anthropic", "claude-sonnet", 970_000, 101_000, 610_000, 142, [3, 15]),
+    mk(2, "anthropic", "claude-sonnet", 670_000, 77_000, 400_000, 90, [3, 15]),
+    mk(4, "volcengine", "deepseek-v4", 410_000, 52_000, 150_000, 71),
+  ];
+  const days = req.range === "today" ? 0 : req.range === "7d" ? 6 : req.range === "30d" ? 29 : 365;
+  const inRange = rows.filter((r) => r.day >= day2(days));
+  function day2(back: number) {
+    return new Date(today.getTime() - back * 86400_000).toISOString().slice(0, 10);
+  }
+  const zero = (): UsageTotals => ({ input: 0, output: 0, cache_read: 0, cache_write: 0, requests: 0, failed_tries: 0, handed_on: 0, cost_usd: 0, unpriced_calls: 0, plan_calls: 0, cache_hit: 0 });
+  const fin = (t: UsageTotals) => ({ ...t, cache_hit: t.input ? t.cache_read / t.input : 0 });
+  const leafOf = (r: (typeof rows)[number]): UsageNode => {
+    const t = zero();
+    add2(t, r);
+    return { key: `${r.profile}/${r.model}`, label: `${r.profile} / ${r.model}`, priced: !!r.price, plan: r.profile === "chatgpt", ...fin(t) };
+  };
+  function add2(t: UsageTotals, r: (typeof rows)[number]) {
+    t.input += r.input; t.output += r.output; t.cache_read += r.cr; t.requests += r.requests;
+    if (r.price) t.cost_usd += ((r.input - r.cr) * r.price[0] + r.cr * r.price[0] * 0.1 + r.output * r.price[1]) / 1e6;
+    else if (r.profile === "chatgpt") t.plan_calls += r.requests;
+    else t.unpriced_calls += r.requests;
+  }
+  const totals = zero();
+  inRange.forEach((r) => add2(totals, r));
+  const merge = (a: UsageTotals, b: UsageTotals) => {
+    for (const k of Object.keys(a) as (keyof UsageTotals)[]) if (k !== "cache_hit") a[k] += b[k];
+  };
+  const groupBy = (keyOf: (r: (typeof rows)[number]) => string, label: (k: string) => string): UsageNode[] => {
+    const m = new Map<string, UsageNode>();
+    for (const r of inRange) {
+      const k = keyOf(r);
+      const leaf = leafOf(r);
+      const n = m.get(k) ?? { key: k, label: label(k), priced: true, ...zero(), children: [] };
+      merge(n, leaf);
+      n.children!.push(leaf);
+      m.set(k, n);
+    }
+    return [...m.values()].map((n) => ({ ...n, ...fin(n) }));
+  };
+  const nodes = req.by === "model" ? inRange.map(leafOf) : req.by === "profile" ? groupBy((r) => r.profile, (k) => k) : groupBy((r) => r.day, (k) => k).sort((a, b) => b.key.localeCompare(a.key));
+  return {
+    by: req.by, totals: fin(totals), nodes, unpriced_models: ["volcengine/deepseek-v4"],
+    from: day2(days), to: day(0), profiles: ["anthropic", "chatgpt", "volcengine"],
+  };
+}
+
 export function createDemoBackend(): Backend {
   const listeners = new Set<(ev: AgentEvent) => void>();
   const sessions = new Map<string, DemoSession>();
@@ -51,6 +106,8 @@ export function createDemoBackend(): Backend {
   let statusLineScript = "";
   let rules: PermissionRule[] = [];
   let mcpServers: MCPServerConfig[] = [];
+  let groups: GroupView[] = [];
+  let demoProxy = "";
   let disabledTools: string[] = [];
   const demoTools: Omit<ToolInfo, "disabled">[] = [
     { name: "read_file", description: "Read a text file in the workspace.", risk: "read" },
@@ -365,6 +422,32 @@ export function createDemoBackend(): Backend {
     },
     setCodexQuota: async () => {
       throw new Error(demoOnly);
+    },
+    // 演示模式的用量、模型组和代理：内存里的示意数据，刷新页面就没了。
+    getUsageReport: async (req) => demoUsageReport(req),
+    saveUsageCSV: async () => {
+      throw new Error(demoOnly);
+    },
+    getGroups: async () => groups,
+    saveGroup: async (input) => {
+      if (!input.name.trim()) throw new Error("请填写模型组名称");
+      if (input.members.length === 0) throw new Error("模型组至少需要一个成员");
+      const { original_name, ...cfg } = input;
+      groups = groups.filter((g) => g.name !== original_name && g.name !== cfg.name).concat({ ...cfg, available: true });
+    },
+    deleteGroup: async (name) => {
+      groups = groups.filter((g) => g.name !== name);
+    },
+    getGroupStatuses: async () =>
+      groups.map((g) => ({
+        name: g.name,
+        strategy: g.strategy,
+        members: g.members.map((m, i) => ({ ...m, state: (i === 1 ? "cooling" : "healthy") as MemberState, until: i === 1 ? Date.now() + 95_000 : undefined, kind: i === 1 ? "rate_limit" : undefined, message: i === 1 ? "HTTP 429: rate limited" : undefined })),
+      })),
+    resetGroupMember: async () => {},
+    getProxy: async () => ({ set: demoProxy !== "", display: demoProxy }),
+    setProxy: async (raw) => {
+      demoProxy = raw.trim();
     },
     getVersion: async () => "dev",
     checkUpdate: async () => ({ current: "dev", latest: "", available: false, manual: false, disabled: "浏览器演示模式不检查更新" }),
