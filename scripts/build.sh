@@ -3,9 +3,9 @@
 # 桌面端一键打包脚本
 #
 # 默认行为：识别当前操作系统，编译出本系统的桌面应用
-#   macOS   → build/bin/myllmapp.app        （默认 universal，Intel + Apple Silicon 通用）
-#   Windows → build/bin/myllmapp.exe        （在 Git Bash / MSYS2 中运行）
-#   Linux   → build/bin/myllmapp
+#   macOS   → build/bin/mosaic.app        （默认 universal，Intel + Apple Silicon 通用）
+#   Windows → build/bin/mosaic.exe        （在 Git Bash / MSYS2 中运行）
+#   Linux   → build/bin/mosaic
 #
 # 也可以在 macOS / Linux 上交叉编译 Windows 版本（Wails 的 Windows 后端不需要 CGO）：
 #   ./scripts/build.sh --windows
@@ -26,7 +26,7 @@
 set -euo pipefail
 
 WAILS_VERSION="v2.17.0"
-APP_NAME="myllmapp"
+APP_NAME="mosaic"
 
 # ---------- 输出辅助 ----------
 if [[ -t 1 ]]; then

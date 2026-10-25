@@ -35,8 +35,8 @@ sequenceDiagram
   "pub_date": "2026-10-25T07:50:39Z",
   "page": "https://github.com/…/releases/tag/v1.2.3",
   "platforms": {
-    "windows-amd64": {"url": "https://…/myllmapp-windows-amd64.exe", "sha256": "…", "size": 16285184},
-    "linux-amd64":   {"url": "https://…/myllmapp-linux-amd64", "sha256": "…", "size": 15500144}
+    "windows-amd64": {"url": "https://…/mosaic-windows-amd64.exe", "sha256": "…", "size": 16285184},
+    "linux-amd64":   {"url": "https://…/mosaic-linux-amd64", "sha256": "…", "size": 15500144}
   }
 }
 ```
@@ -134,7 +134,7 @@ sequenceDiagram
 ### 流水线做了什么（`.github/workflows/release.yml`）
 
 1. `preflight`：检查签名密钥（见上）。
-2. `build`（Windows / Linux / macOS 三个平台并行）：跑 Go 和前端测试 → `wails build`（带 `-ldflags` 写入版本号）→ 上传产物。产物名：`myllmapp-windows-amd64.exe`、`myllmapp-linux-amd64`、`myllmapp-darwin-universal.zip`。
+2. `build`（Windows / Linux / macOS 三个平台并行）：跑 Go 和前端测试 → `wails build`（带 `-ldflags` 写入版本号）→ 上传产物。产物名：`mosaic-windows-amd64.exe`、`mosaic-linux-amd64`、`mosaic-darwin-universal.zip`。
 3. `release`：下载三个产物 → 用 git 提交记录生成更新说明 → `mkmanifest sign` 生成并签名 `manifest.json` / `manifest.json.sig` → `gh release create` 创建 Release，上传全部文件。带连字符的 tag 标为预发布。
 
 仓库需要允许 Actions 写入：Settings → Actions → General → Workflow permissions 选 "Read and write permissions"（工作流里已声明 `contents: write`，组织仓库有时会被上层策略覆盖）。

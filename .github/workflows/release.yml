@@ -52,18 +52,18 @@ jobs:
           - os: windows-latest
             platform: windows/amd64
             tags: ""
-            src: build/bin/myllmapp.exe
-            out: myllmapp-windows-amd64.exe
+            src: build/bin/mosaic.exe
+            out: mosaic-windows-amd64.exe
           - os: ubuntu-latest
             platform: linux/amd64
             tags: webkit2_41
-            src: build/bin/myllmapp
-            out: myllmapp-linux-amd64
+            src: build/bin/mosaic
+            out: mosaic-linux-amd64
           - os: macos-latest
             platform: darwin/universal
             tags: ""
-            src: build/bin/myllmapp.app
-            out: myllmapp-darwin-universal.zip
+            src: build/bin/mosaic.app
+            out: mosaic-darwin-universal.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -130,8 +130,8 @@ jobs:
           go run ./cmd/mkmanifest sign -version "${GITHUB_REF_NAME}" -base-url "$base" \
             -changelog CHANGELOG.md -commits-file commits.txt -notes-out notes.md \
             -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" -out dist \
-            -asset windows-amd64=dist/myllmapp-windows-amd64.exe \
-            -asset linux-amd64=dist/myllmapp-linux-amd64
+            -asset windows-amd64=dist/mosaic-windows-amd64.exe \
+            -asset linux-amd64=dist/mosaic-linux-amd64
           # 更新日志会公开发布：不能带 Claude 会话链接（可能泄露隐私）。mkmanifest 已经清理过，这里再兜底检查一次。
           if grep -qiE 'claude\.(ai|com)/code|Claude-Session|Co-Authored-By' notes.md dist/manifest.json; then
             echo "::error::更新日志里出现了 Claude 会话链接或署名行，请检查 CHANGELOG.md 和提交信息"

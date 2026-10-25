@@ -108,7 +108,7 @@ wails build    # 打包到 build/bin/
 ./scripts/build.sh --windows  # 在 macOS / Linux 上交叉编译 Windows 版
 ```
 
-> 仓库已更名为 Mosaic，但 Go module 路径（`github.com/crazyjums/myllmapp`）、可执行文件名和安装包名暂时沿用 `myllmapp`，以免一次改动牵连太多；之后会单独迁移。
+> 仓库已更名为 Mosaic，但 Go module 路径（`github.com/crazyjums/myllmapp`）、数据目录（`~/.myllmapp`）暂时沿用旧名（可执行文件和安装包已改名为 `mosaic`），以免一次改动牵连太多；之后会单独迁移。
 
 ### 接入真实模型
 

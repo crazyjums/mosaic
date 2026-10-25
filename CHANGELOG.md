@@ -13,6 +13,7 @@
 ## [Unreleased]
 
 ### 变更
+- 安装包和可执行文件改名为 mosaic（mosaic-windows-amd64.exe、mosaic-linux-amd64、mosaic-darwin-universal.zip）；会话数据目录 ~/.myllmapp 不变，已有数据不受影响。
 - 项目正式更名为 Mosaic，仓库迁移到 github.com/crazyjums/mosaic；自动更新改为从新仓库的发布页检查。
 - 发送很长的内容（粘贴日志、代码）时，消息默认折叠，只显示开头，点“展开全文”再看全部，不再把后面的对话挤得很远。
 - 展开“思考与执行”后，整块有浅色底，每一步是带编号的小卡片；真正的回答放进单独的“最终回答”卡片（可一键复制），一眼分清哪些是过程、哪些是答案。
