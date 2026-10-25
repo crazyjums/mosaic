@@ -19,7 +19,14 @@ export interface Status {
   model: string;
   usage: Usage;
   running: boolean;
+  /** 当前会话实际使用的工作区 */
   workspace: string;
+  /** 当前会话没有单独选过工作区，跟随默认工作区 */
+  workspace_is_default?: boolean;
+  /** 工作区由启动参数指定，不能为会话单独选择 */
+  workspace_locked?: boolean;
+  /** 工作区目录不存在（被移动或删除了） */
+  workspace_missing?: boolean;
   pending_permissions: string[] | null;
   /** default / auto / readonly */
   permission_mode: PermissionMode;
@@ -91,6 +98,8 @@ export interface SessionSummary {
   title: string;
   provider: string;
   model: string;
+  /** 会话的工作区；为空表示跟随默认工作区 */
+  workspace?: string;
   message_count: number;
   created_at: string;
   updated_at: string;
@@ -275,6 +284,8 @@ export interface Backend {
   // ---- 设置：常规 / 系统提示词 / 数据 ----
   getGeneral(): Promise<GeneralView>;
   saveGeneral(g: General): Promise<GeneralView>;
+  /** 为当前会话选择工作区；传空字符串表示跟随默认工作区 */
+  setSessionWorkspace(dir: string): Promise<Status>;
   /** 弹出选择文件夹对话框；取消时返回空字符串 */
   chooseDirectory(start: string): Promise<string>;
   getDataInfo(): Promise<DataInfo>;

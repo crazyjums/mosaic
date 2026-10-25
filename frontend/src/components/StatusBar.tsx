@@ -9,6 +9,7 @@ import { contextTokens, currentStep, fmtDuration, fmtLatency, fmtTokens, fmtUSD,
 import { useSettings } from "../store/settingsStore";
 import { useStatusLine, type ItemId } from "../store/statusline";
 import PermissionModeSelect from "./PermissionModeSelect";
+import WorkspacePicker from "./WorkspacePicker";
 
 // 输入框下方的状态栏。显示哪些项、按什么顺序由状态栏配置决定（设置 → 状态栏）。
 //
@@ -193,16 +194,10 @@ function TurnItem() {
   return <Tip tip={t("上一轮的总耗时")}>{t("⏱ 上一轮 {d}", { d: fmtDuration(lastMs) })}</Tip>;
 }
 
+// 工作区：点击可以为当前会话选择工作区（见 WorkspacePicker）。
 function WorkspaceItem() {
-  const path = useChat((s) => s.workspace);
-  const name = useChat((s) => s.workspaceInfo?.name);
   const style = useStatusLine((s) => s.config.workspaceStyle);
-  if (!path) return null;
-  return (
-    <Tip tip={t("工作区：{path}", { path })} className="max-w-[20rem] truncate">
-      📁 {style === "full" ? path : name || path}
-    </Tip>
-  );
+  return <WorkspacePicker variant="statusbar" full={style === "full"} />;
 }
 
 function GitItem() {

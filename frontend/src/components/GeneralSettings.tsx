@@ -68,7 +68,10 @@ export default function GeneralSettings() {
         {running && <Notice tone="warn">agent 正在运行，本轮结束后才能修改这些设置。</Notice>}
         {general.workspace_warning && <Notice tone="warn">{general.workspace_warning}</Notice>}
 
-        <Row label="工作区" hint="agent 读写文件、执行命令的根目录。工具不能访问这个目录之外的文件。">
+        <Row
+          label={t("默认工作区")}
+          hint={t("agent 读写文件、执行命令的根目录，工具不能访问它之外的文件。每个会话可以在状态栏上单独选择工作区（新会话沿用当前会话的）；没有单独选过的会话使用这里的默认工作区。")}
+        >
           {general.workspace_locked ? (
             <div className="input bg-panel-2 font-mono text-muted">{general.effective.workspace}（由启动参数 -workspace 指定，不能在这里修改）</div>
           ) : (
@@ -86,7 +89,7 @@ export default function GeneralSettings() {
             </div>
           )}
           <div className="mt-1 text-[11px] text-muted">
-            当前生效：<span className="font-mono">{general.effective.workspace}</span>。切换后，之前"本会话总是允许"的授权会被清除。
+            {t("默认工作区：")}<span className="font-mono">{general.effective.workspace}</span>
           </div>
         </Row>
 

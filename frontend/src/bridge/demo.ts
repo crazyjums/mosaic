@@ -33,6 +33,8 @@ interface DemoSession {
   summary: SessionSummary;
   events: AgentEvent[];
   usage: Usage;
+  /** 会话的工作区；为空表示跟随默认工作区 */
+  workspace: string;
 }
 
 export function createDemoBackend(): Backend {
@@ -75,12 +77,14 @@ export function createDemoBackend(): Backend {
   let model = "demo";
   let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
 
-  function newSession(): DemoSession {
+  /** 新会话沿用传入的工作区（与真实后端一致：沿用当前会话的工作区）。 */
+  function newSession(workspace = ""): DemoSession {
     const now = new Date().toISOString();
     return {
-      summary: { id: rid("sess"), title: "", provider: "fake", model: "demo", message_count: 0, created_at: now, updated_at: now },
+      summary: { id: rid("sess"), title: "", provider: "fake", model: "demo", workspace, message_count: 0, created_at: now, updated_at: now },
       events: [],
       usage: zeroUsage(),
+      workspace,
     };
   }
 
@@ -98,7 +102,8 @@ export function createDemoBackend(): Backend {
       model,
       usage: current.usage,
       running,
-      workspace: general.workspace || demoWorkspace,
+      workspace: current.workspace || general.workspace || demoWorkspace,
+      workspace_is_default: !current.workspace,
       pending_permissions: pending ? [pending.requestId] : [],
       permission_mode: permissionMode,
     };
@@ -230,7 +235,7 @@ export function createDemoBackend(): Backend {
       [...sessions.values()].map((s) => s.summary).sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     newSession: async () => {
       if (running) throw new Error("engine: a turn is already running");
-      current = newSession();
+      current = newSession(current.workspace);
       return status();
     },
     loadSession: async (id) => {
@@ -245,7 +250,7 @@ export function createDemoBackend(): Backend {
       // 与真实后端一致：删除当前会话时切换到新的空会话，运行中不允许删除当前会话。
       if (id === current.summary.id) {
         if (running) throw new Error("engine: a turn is already running");
-        current = newSession();
+        current = newSession(current.workspace);
       }
       sessions.delete(id);
     },
@@ -279,6 +284,12 @@ export function createDemoBackend(): Backend {
       general = g;
       return generalView();
     },
+    setSessionWorkspace: async (dir) => {
+      if (running) throw new Error("engine: a turn is already running");
+      current.workspace = dir;
+      current.summary.workspace = dir;
+      return status();
+    },
     chooseDirectory: async (start) => window.prompt("浏览器演示模式没有文件夹对话框，请直接输入路径：", start) ?? "",
     getDataInfo: async () => ({
       data_dir: "~/.myllmapp（演示）", settings_path: "~/.myllmapp/settings.json", db_path: "~/.myllmapp/sessions.db",
@@ -291,7 +302,7 @@ export function createDemoBackend(): Backend {
       if (running) throw new Error("engine: a turn is already running");
       const n = sessions.size;
       sessions.clear();
-      current = newSession();
+      current = newSession(current.workspace);
       return n;
     },
     getWorkspaceInfo: async () => ({

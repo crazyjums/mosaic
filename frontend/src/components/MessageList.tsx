@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 import AssistantMessage from "./AssistantMessage";
+import WorkspacePicker from "./WorkspacePicker";
 import { t } from "../i18n";
 
 // 只存中文原文，渲染时再翻译：模块加载时语言还没确定。
@@ -85,6 +86,8 @@ function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
     <div className="mt-24 text-center text-muted">
       <div className="text-2xl font-semibold text-fg">myllmapp</div>
       <p className="mt-2 text-sm">{t("自己实现的 agent harness · 思考、工具调用、权限确认全过程可视化")}</p>
+      {/* 新会话先确认工作区：一个会话通常对应一个代码仓库 */}
+      <WorkspacePicker variant="card" />
       {demo && (
         <p className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
           {t("当前是浏览器演示模式：没有连接 Go 后端，回放的是 fake provider 录制的事件流。随便输入一句话试试；在 Wails 桌面端中会连接真实内核。")}

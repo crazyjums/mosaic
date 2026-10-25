@@ -193,6 +193,25 @@ export const EN: Record<string, string> = {
   "最近 7 天 {t}（{n} 次）": "Last 7d {t} ({n} requests)",
   "查看剩余额度 ↗": "View remaining quota ↗",
 
+  // ---- 工作区 ----
+  "工作区：{path}（由启动参数指定）": "Workspace: {path} (set by a command-line flag)",
+  "工作区 {path} 不存在，请重新选择": "Workspace {path} does not exist, please choose another one",
+  "运行中不能切换工作区": "Can't switch workspaces while the agent is running",
+  "当前会话的工作区：{path}{note}。点击切换": "Workspace of this session: {path}{note}. Click to change",
+  "（默认）": " (default)",
+  "当前会话的工作区": "Workspace of this session",
+  "选择文件夹…": "Choose folder…",
+  "最近用过": "Recent",
+  "改回默认工作区": "Use the default workspace",
+  "工作区（默认）": "Workspace (default)",
+  "工作区": "Workspace",
+  "更换": "Change",
+  "这个目录不存在了，请重新选择": "This folder no longer exists, please choose another one",
+  "默认工作区": "Default workspace",
+  "agent 读写文件、执行命令的根目录，工具不能访问它之外的文件。每个会话可以在状态栏上单独选择工作区（新会话沿用当前会话的）；没有单独选过的会话使用这里的默认工作区。":
+    "The root folder where the agent reads and writes files and runs commands; tools can't access anything outside it. Each session can pick its own workspace in the status bar (new sessions inherit the current one); sessions that never picked one use this default.",
+  "默认工作区：": "Default workspace: ",
+
   // ---- 上下文明细 ----
   "显示 / 隐藏上下文明细": "Show / hide context details",
   "上下文明细": "Context details",

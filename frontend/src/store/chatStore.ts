@@ -9,7 +9,7 @@
 // 组件用 selector 订阅局部状态，流式更新时只重渲染真正变化的部分。
 
 import { create } from "zustand";
-import { backend, type PermissionMode, type ProfileInfo, type SessionSummary, type WorkspaceInfo } from "../bridge";
+import { backend, type PermissionMode, type ProfileInfo, type SessionSummary, type Status, type WorkspaceInfo } from "../bridge";
 import type { Decision } from "../protocol/events";
 import { applyEvent, initialState, type ChatState } from "./reducer";
 
@@ -18,7 +18,11 @@ interface Store extends ChatState {
   profiles: ProfileInfo[];
   sessions: SessionSummary[];
   title: string;
+  /** 当前会话实际使用的工作区（每个会话可以不同） */
   workspace: string;
+  workspaceIsDefault: boolean;
+  workspaceLocked: boolean;
+  workspaceMissing: boolean;
   /** 工作区的 git 信息，状态栏用；定时刷新 */
   workspaceInfo: WorkspaceInfo | null;
   permissionMode: PermissionMode;
@@ -34,6 +38,8 @@ interface Store extends ChatState {
   deleteSession(id: string): Promise<void>;
   setModel(profile: string, model: string): Promise<void>;
   setPermissionMode(mode: PermissionMode): Promise<void>;
+  /** 为当前会话选择工作区；传空字符串表示跟随默认工作区 */
+  setSessionWorkspace(dir: string): Promise<void>;
   refreshWorkspace(): Promise<void>;
   /** 后端换了当前会话（例如清空历史后）：清空界面并切换到后端的当前会话 */
   resetToCurrentSession(): Promise<void>;
@@ -43,6 +49,14 @@ interface Store extends ChatState {
 }
 
 let initialized = false;
+
+/** 从后端状态里取出工作区相关的字段（每个会话的工作区可以不同，切换会话时一起更新）。 */
+const wsFrom = (st: Status) => ({
+  workspace: st.workspace,
+  workspaceIsDefault: st.workspace_is_default ?? true,
+  workspaceLocked: st.workspace_locked ?? false,
+  workspaceMissing: st.workspace_missing ?? false,
+});
 
 export const useChat = create<Store>((set, get) => {
   /** 包一层错误处理：任何动作失败都变成 toast，而不是未捕获的 Promise 异常。 */
@@ -59,7 +73,7 @@ export const useChat = create<Store>((set, get) => {
     const [st, sessions, profiles] = await Promise.all([b.getStatus(), b.listSessions(), b.getProfiles()]);
     set({
       title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, sessions, profiles,
-      workspace: st.workspace, permissionMode: st.permission_mode,
+      ...wsFrom(st), permissionMode: st.permission_mode,
     });
   };
 
@@ -70,6 +84,9 @@ export const useChat = create<Store>((set, get) => {
     sessions: [],
     title: "",
     workspace: "",
+    workspaceIsDefault: true,
+    workspaceLocked: false,
+    workspaceMissing: false,
     workspaceInfo: null,
     permissionMode: "default",
     toast: null,
@@ -104,7 +121,7 @@ export const useChat = create<Store>((set, get) => {
           sessionUsage: st.usage,
           running: st.running,
           title: st.title,
-          workspace: st.workspace,
+          ...wsFrom(st),
           permissionMode: st.permission_mode,
           profiles,
           sessions,
@@ -119,7 +136,8 @@ export const useChat = create<Store>((set, get) => {
     newSession: () =>
       guard(async () => {
         const st = await backend().newSession();
-        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "" });
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", ...wsFrom(st) });
+        void get().refreshWorkspace();
       }),
 
     loadSession: (id) =>
@@ -131,7 +149,8 @@ export const useChat = create<Store>((set, get) => {
         set({ ...initialState(id), provider: prev.provider, model: prev.model });
         try {
           const st = await backend().loadSession(id);
-          set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage });
+          set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, ...wsFrom(st) });
+          void get().refreshWorkspace(); // 不同会话的工作区不同，git 信息要重新取
         } catch (e) {
           // 加载失败时后端仍停留在原会话：恢复原来的界面状态，否则 sessionId 指向一个没加载成功的会话，
           // 之后原会话的所有事件都会被 reducer 过滤掉，界面再也不响应。
@@ -155,7 +174,8 @@ export const useChat = create<Store>((set, get) => {
         // 删除的是当前会话时，后端已切换到一个新的空会话，界面跟着切换。
         if (id === get().sessionId) {
           const st = await backend().getStatus();
-          set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "" });
+          set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", ...wsFrom(st) });
+          void get().refreshWorkspace();
         }
         set({ sessions: await backend().listSessions() });
       }),
@@ -168,6 +188,13 @@ export const useChat = create<Store>((set, get) => {
 
     refreshMeta: () => guard(refreshMeta),
 
+    setSessionWorkspace: (dir) =>
+      guard(async () => {
+        const st = await backend().setSessionWorkspace(dir);
+        set(wsFrom(st));
+        await Promise.all([get().refreshWorkspace(), refreshMeta()]);
+      }),
+
     setPermissionMode: (mode) =>
       guard(async () => {
         const st = await backend().setPermissionMode(mode);
@@ -177,7 +204,7 @@ export const useChat = create<Store>((set, get) => {
     resetToCurrentSession: () =>
       guard(async () => {
         const st = await backend().getStatus();
-        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage });
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, ...wsFrom(st) });
         await refreshMeta();
       }),
 

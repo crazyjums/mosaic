@@ -1,5 +1,6 @@
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
+import { baseName } from "./WorkspacePicker";
 import { t } from "../i18n";
 
 // 左侧会话栏：新建会话、历史会话列表（点击恢复）。
@@ -33,7 +34,8 @@ export default function Sidebar() {
           >
             <div className="min-w-0 flex-1">
               <div className="truncate">{s.title || t("（无标题）")}</div>
-              <div className="truncate text-[11px] text-muted">
+              <div className="truncate text-[11px] text-muted" title={s.workspace || undefined}>
+                {s.workspace && <>📁 {baseName(s.workspace)} · </>}
                 {s.provider}/{s.model} · {new Date(s.updated_at).toLocaleString()}
               </div>
             </div>

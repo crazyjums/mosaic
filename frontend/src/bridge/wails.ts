@@ -40,6 +40,7 @@ interface GoApp {
   GetGeneral(): Promise<GeneralView>;
   SaveGeneral(g: General): Promise<GeneralView>;
   ChooseDirectory(start: string): Promise<string>;
+  SetSessionWorkspace(dir: string): Promise<Status>;
   GetDataInfo(): Promise<DataInfo>;
   OpenDataDir(): Promise<void>;
   ClearSessions(): Promise<number>;
@@ -110,6 +111,7 @@ export function createWailsBackend(): Backend {
     getGeneral: () => app.GetGeneral(),
     saveGeneral: (g) => app.SaveGeneral(g),
     chooseDirectory: (start) => app.ChooseDirectory(start),
+    setSessionWorkspace: (dir) => app.SetSessionWorkspace(dir),
     getDataInfo: () => app.GetDataInfo(),
     openDataDir: () => app.OpenDataDir(),
     clearSessions: () => app.ClearSessions(),
