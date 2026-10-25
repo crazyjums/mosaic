@@ -145,6 +145,11 @@ func (a *App) SaveGeneral(g settings.General) (settings.GeneralView, error) {
 	return a.settings.General(), nil
 }
 
+// SetSessionWorkspace 为当前会话选择工作区；dir 为空表示跟随默认工作区。运行中会返回错误。
+func (a *App) SetSessionWorkspace(dir string) (core.Status, error) {
+	return a.settings.SetSessionWorkspace(a.context(), dir)
+}
+
 // ChooseDirectory 弹出系统的"选择文件夹"对话框；用户取消时返回空字符串。
 func (a *App) ChooseDirectory(start string) (string, error) {
 	return runtime.OpenDirectoryDialog(a.context(), runtime.OpenDialogOptions{

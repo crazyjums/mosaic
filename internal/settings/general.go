@@ -215,6 +215,27 @@ func (m *Manager) SaveGeneral(g General) error {
 	return nil
 }
 
+// SetSessionWorkspace 为当前会话选择工作区（dir 为空表示跟随默认工作区）。目录必须已存在。
+func (m *Manager) SetSessionWorkspace(ctx context.Context, dir string) (core.Status, error) {
+	m.mu.Lock()
+	eng := m.engine
+	m.mu.Unlock()
+	if eng == nil {
+		return core.Status{}, errors.New("settings: engine not attached")
+	}
+	if dir != "" {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return core.Status{}, err
+		}
+		if err := checkDir(abs); err != nil {
+			return core.Status{}, fmt.Errorf("工作区不可用：%v", err)
+		}
+		dir = abs
+	}
+	return eng.SetSessionWorkspace(ctx, dir)
+}
+
 // DataInfo 返回数据目录的信息。
 func (m *Manager) DataInfo(ctx context.Context) DataInfo {
 	dir := filepath.Dir(m.path)
