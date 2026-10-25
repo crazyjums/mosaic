@@ -125,6 +125,7 @@ stateDiagram-v2
   输出里的 ANSI 颜色由 [`store/ansi.ts`](../../frontend/src/store/ansi.ts) 解析成带样式的片段（支持 16 色、256 色、真彩色、粗体等）。命令本身由后端从设置文件读取。
 - **首字延迟**：reducer 在 `message_start` 时记下 `startedAt`、在这条消息的第一个内容事件（思考 / 文本 / 工具调用 / 图片）时记下 `firstTokenAt`，都取事件信封里的 `ts`（后端时间），
   `metrics.ttft` 计算最近一次和平均值。重放的历史（`running` 为 false）不记录；
+- **思考动画**：一条 assistant 消息在收到第一个内容之前（`streaming` 且没有块）显示 `ScholarThinking`（SVG + CSS 动画，颜色跟随皮肤，"减少动态效果"时静止），收到内容后自然消失；
 - **ChatGPT 额度**：只在当前厂商是 chatgpt 类型时显示，数据来自 `GetChatGPTUsage`（本应用记的账，见 providers.md），每轮结束和每 30 秒刷新；
 - **上下文明细面板**（`components/ContextPanel.tsx`）：数据来自 `Engine.ContextBreakdown`（`core/contextinfo.go`，按字符估算），会话切换、每次模型调用结束、一轮结束时刷新（300ms 防抖）；
   后端只返回类别、序号和工具名，显示文字由前端按语言格式化；
