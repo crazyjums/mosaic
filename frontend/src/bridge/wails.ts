@@ -49,6 +49,7 @@ interface GoApp {
   CancelChatGPTLogin(): Promise<void>;
   LogoutChatGPT(): Promise<void>;
   GetChatGPTUsage(): Promise<ChatGPTUsage>;
+  SetCodexQuota(on: boolean): Promise<void>;
   OpenChatGPTUsage(): Promise<void>;
   GetContextBreakdown(): Promise<ContextBreakdown>;
   ListTools(): Promise<ToolInfo[] | null>;
@@ -120,6 +121,7 @@ export function createWailsBackend(): Backend {
     cancelChatGPTLogin: () => app.CancelChatGPTLogin(),
     logoutChatGPT: () => app.LogoutChatGPT(),
     getChatGPTUsage: () => app.GetChatGPTUsage(),
+    setCodexQuota: (on) => app.SetCodexQuota(on),
     openChatGPTUsage: () => app.OpenChatGPTUsage(),
     getContextBreakdown: () => app.GetContextBreakdown(),
     listTools: async () => (await app.ListTools()) ?? [],

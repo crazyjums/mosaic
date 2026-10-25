@@ -347,7 +347,10 @@ export function createDemoBackend(): Backend {
     logoutChatGPT: async () => {},
     getChatGPTUsage: async () => {
       const w = { requests: 0, input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
-      return { logged_in: false, last_5h: w, last_7d: w, usage_url: "https://chatgpt.com/settings/usage" };
+      return { logged_in: false, last_5h: w, last_7d: w, usage_url: "https://chatgpt.com/settings/usage", quota_enabled: false };
+    },
+    setCodexQuota: async () => {
+      throw new Error(demoOnly);
     },
     openChatGPTUsage: async () => {
       window.open("https://chatgpt.com/settings/usage", "_blank", "noopener");

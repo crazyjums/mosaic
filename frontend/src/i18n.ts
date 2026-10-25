@@ -212,6 +212,30 @@ export const EN: Record<string, string> = {
     "The root folder where the agent reads and writes files and runs commands; tools can't access anything outside it. Each session can pick its own workspace in the status bar (new sessions inherit the current one); sessions that never picked one use this default.",
   "默认工作区：": "Default workspace: ",
 
+  // ---- 思考动画 / 剩余额度 ----
+  "正在思考…": "Thinking…",
+  "已等待 {n} 秒": "Waiting {n}s",
+  "5 小时用量上限": "5-hour limit",
+  "每周限额": "Weekly limit",
+  "{n} 天限额": "{n}-day limit",
+  "{n} 小时限额": "{n}-hour limit",
+  "用量限额": "Usage limit",
+  "周": "wk",
+  "即将重置": "Resets soon",
+  "{m} 分钟后重置": "Resets in {m} min",
+  "{h} 小时 {m} 分钟后重置": "Resets in {h} h {m} min",
+  "{date} 重置": "Resets {date}",
+  "额度来源：你的 {plan} 套餐": "Quota source: your {plan} plan",
+  "剩余 {p}%": "{p}% left",
+  "额外额度": "Credits",
+  "本应用用量：最近 5 小时 {a}（{n} 次）· 最近 7 天 {b}（{m} 次）": "This app: last 5h {a} ({n} requests) · last 7d {b} ({m} requests)",
+  "显示剩余额度（读取本机 Codex 登录）": "Show remaining quota (reads the local Codex login)",
+  "Sign in with ChatGPT 目前查不到剩余额度。开启后读取官方 Codex CLI 的登录（~/.codex/auth.json），只读地查询 ChatGPT 的用量接口；不会修改 Codex 的登录。这是未公开的接口，可能随时失效。":
+    "Sign in with ChatGPT can't read the remaining quota yet. When enabled, the app reads the official Codex CLI login (~/.codex/auth.json) and queries ChatGPT's usage endpoint read-only; the Codex login is never modified. This endpoint is undocumented and may stop working at any time.",
+  "在 ChatGPT 中查看用量 ↗": "View usage in ChatGPT ↗",
+  "{w} 剩 {p}%": "{w} {p}% left",
+  "ChatGPT 额度（点击查看详情）": "ChatGPT quota (click for details)",
+
   // ---- 上下文明细 ----
   "显示 / 隐藏上下文明细": "Show / hide context details",
   "上下文明细": "Context details",

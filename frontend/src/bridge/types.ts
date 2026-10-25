@@ -225,6 +225,26 @@ export interface ChatGPTUsage {
   limit_hit_at?: string;
   limit_message?: string;
   usage_url: string;
+  /** 是否开启了"读取 Codex 登录查询剩余额度" */
+  quota_enabled: boolean;
+  quota?: Quota;
+  quota_error?: string;
+}
+
+/** 对应 codexquota.Window */
+export interface QuotaWindow {
+  /** 窗口长度：5 小时 = 18000，每周 = 604800 */
+  seconds: number;
+  used_percent: number;
+  reset_at?: string;
+}
+
+/** 对应 codexquota.Quota：ChatGPT 套餐的剩余额度（从 Codex 登录查询） */
+export interface Quota {
+  plan?: string;
+  windows: QuotaWindow[] | null;
+  credits?: number;
+  fetched_at: string;
 }
 
 /** 对应 core.ContextPart */
@@ -299,6 +319,8 @@ export interface Backend {
   cancelChatGPTLogin(): Promise<void>;
   logoutChatGPT(): Promise<void>;
   getChatGPTUsage(): Promise<ChatGPTUsage>;
+  /** 开启或关闭"读取本机 Codex 登录查询剩余额度"（未公开接口） */
+  setCodexQuota(on: boolean): Promise<void>;
   /** 在浏览器中打开 ChatGPT 的用量页面（地址由后端固定） */
   openChatGPTUsage(): Promise<void>;
   // ---- 上下文明细 ----

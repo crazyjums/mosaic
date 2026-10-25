@@ -3,12 +3,14 @@ import { useShallow } from "zustand/react/shallow";
 import { backend } from "../bridge";
 import { t } from "../i18n";
 import { parseAnsi } from "../store/ansi";
+import { remaining, remainingTone, windowShort } from "../store/quota";
 import { useChat } from "../store/chatStore";
 import type { ChatGPTUsage } from "../bridge";
 import { contextTokens, currentStep, fmtDuration, fmtLatency, fmtTokens, fmtUSD, modelMeta, sessionCost, ttft } from "../store/metrics";
 import { useSettings } from "../store/settingsStore";
 import { useStatusLine, type ItemId } from "../store/statusline";
 import PermissionModeSelect from "./PermissionModeSelect";
+import ChatGPTQuotaDetails from "./ChatGPTQuota";
 import WorkspacePicker from "./WorkspacePicker";
 
 // 输入框下方的状态栏。显示哪些项、按什么顺序由状态栏配置决定（设置 → 状态栏）。
@@ -331,43 +333,73 @@ function TTFTItem() {
   );
 }
 
-// ChatGPT 额度：只在当前使用 ChatGPT 账号（chatgpt 类型的厂商）时显示。
+// ChatGPT 额度：只在当前使用 ChatGPT 账号（chatgpt 类型的厂商）时显示。点击弹出详细信息。
 //
-// OpenAI 目前没有提供查询剩余额度的接口，所以这里显示的是本应用自己记的账：最近 5 小时 / 7 天用掉的 token
-// （套餐限额就是按这两个窗口计算的），以及最近一次请求是否遇到"额度已用完"。剩余额度要点击后在 ChatGPT 网页上看。
+// 开启"读取 Codex 登录查询剩余额度"后显示剩余百分比（5 小时 / 每周）；
+// 没开启或查询失败时，显示本应用自己记的账（最近 5 小时 / 7 天用掉的 token）。
 function ChatGPTQuotaItem() {
   const isChatGPT = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "chatgpt");
   const refreshKey = useChat((s) => `${s.lastTurnMs}|${s.running}|${s.sessionId}`);
   const [u, setU] = useState<ChatGPTUsage | null>(null);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const load = () => void backend().getChatGPTUsage().then(setU).catch(() => {});
 
   useEffect(() => {
     if (!isChatGPT) return;
-    const load = () => void backend().getChatGPTUsage().then(setU).catch(() => {});
     load();
-    const timer = setInterval(load, 30000);
+    const timer = setInterval(load, 60000);
     return () => clearInterval(timer);
   }, [isChatGPT, refreshKey]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   if (!isChatGPT || !u?.logged_in) return null;
-  const total = (w: ChatGPTUsage["last_5h"]) => w.input_tokens + w.output_tokens;
-  const open = () => void backend().openChatGPTUsage();
-  const tip = [
-    t("本应用通过 ChatGPT 账号用掉的套餐额度："),
-    t("最近 5 小时：{n} 次请求，输入 {i} / 输出 {o} tokens", { n: u.last_5h.requests, i: u.last_5h.input_tokens, o: u.last_5h.output_tokens }),
-    t("最近 7 天：{n} 次请求，输入 {i} / 输出 {o} tokens", { n: u.last_7d.requests, i: u.last_7d.input_tokens, o: u.last_7d.output_tokens }),
-    t("OpenAI 目前没有提供查询剩余额度的接口；点击在浏览器中打开 ChatGPT 的用量页面查看。"),
-  ].join("\n");
-
+  const windows = u.quota?.windows ?? [];
+  let label: ReactNode;
   if (u.limit_hit_at) {
-    return (
-      <button className="whitespace-nowrap text-danger hover:underline" title={`${u.limit_message ?? ""}\n\n${tip}`} onClick={open}>
-        {t("⚠ GPT 额度已用完")}
-      </button>
+    label = <span className="text-danger">{t("⚠ GPT 额度已用完")}</span>;
+  } else if (windows.length > 0) {
+    label = (
+      <>
+        GPT{" "}
+        {windows.map((w, i) => {
+          const pct = remaining(w);
+          const tone = remainingTone(pct);
+          return (
+            <span key={w.seconds} className={tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : ""}>
+              {i > 0 && " · "}
+              {t("{w} 剩 {p}%", { w: windowShort(w.seconds), p: pct })}
+            </span>
+          );
+        })}
+      </>
     );
+  } else {
+    const total = (w: ChatGPTUsage["last_5h"]) => fmtTokens(w.input_tokens + w.output_tokens);
+    label = t("GPT 5h {h} · 7d {d}", { h: total(u.last_5h), d: total(u.last_7d) });
   }
+
   return (
-    <button className="whitespace-nowrap hover:text-fg hover:underline" title={tip} onClick={open}>
-      {t("GPT 5h {h} · 7d {d}", { h: fmtTokens(total(u.last_5h)), d: fmtTokens(total(u.last_7d)) })}
-    </button>
+    <span ref={ref} className="relative">
+      <button className="whitespace-nowrap hover:text-fg" onClick={() => setOpen(!open)} title={t("ChatGPT 额度（点击查看详情）")}>
+        {label}
+        {u.quota_enabled && u.quota_error && <span className="text-warn"> ⚠</span>}
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-lg border border-line bg-panel p-3 text-left shadow-xl">
+          <ChatGPTQuotaDetails usage={u} onChange={load} />
+        </div>
+      )}
+    </span>
   );
 }
