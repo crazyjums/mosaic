@@ -8,12 +8,13 @@
 - 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐（Go / Plus / Pro）的额度调用 GPT 模型，不需要 API Key
 - 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关
 - 🧩 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
-- 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、自定义脚本……）
+- 👀 **可视化**：思考过程、工具调用、权限确认、图片；上下文明细面板（各部分占多少、哪几条最大）；
+  可自定义的状态栏（上下文占用、预估花费、首字延迟、ChatGPT 额度、git 分支、自定义脚本……）
 - 🎨 **皮肤**：7 套内置配色（深浅两用），可以新建、编辑自定义皮肤，导出成 JSON 分享
 - ⚙️ **设置都在界面上**：工作区、系统提示词、外观（深浅色 / 字号 / 宽度 / 发送键）、中英文界面、API Key 存系统钥匙串……修改即时生效
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
 
-![对话：思考过程、工具调用卡片、自定义状态栏](docs/images/chat-done-dark.png)
+![对话：思考过程、工具调用卡片、右侧的上下文明细、底部的状态栏](docs/images/chat-done-dark.png)
 
 ## 界面一览
 
@@ -24,7 +25,7 @@
 | ![权限确认弹窗](docs/images/chat-permission.png) | ![浅色主题](docs/images/chat-done-light.png) |
 | **权限确认**：写文件、执行命令前停下来等你确认；本会话总是允许、拒绝后模型会换个办法继续 | **浅色主题**：思考过程默认在输出结束后折叠 |
 | ![ChatGPT 账号登录](docs/images/settings-chatgpt.png) | ![MCP 服务器](docs/images/settings-mcp.png) |
-| **用 ChatGPT 账号登录**：登录后自动出现 chatgpt 厂商，模型列表可编辑 | **MCP**：显示连接状态和服务器提供的工具，进程退出时自动移除工具 |
+| **用 ChatGPT 账号登录**：登录后自动出现 chatgpt 厂商，显示本应用用掉的套餐额度 | **MCP**：显示连接状态和服务器提供的工具，进程退出时自动移除工具 |
 | ![权限规则与工具开关](docs/images/settings-permissions.png) | ![状态栏](docs/images/settings-statusline.png) |
 | **权限规则与工具开关**：规则优先于权限档位，MCP 工具也在这里 | **状态栏**：选择显示的项和顺序，支持自定义脚本（ANSI 颜色） |
 | ![皮肤](docs/images/settings-skins.png) | ![外观设置（英文界面）](docs/images/settings-appearance-en.png) |

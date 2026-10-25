@@ -123,4 +123,9 @@ stateDiagram-v2
 - **实时性**：reducer 在每个 `message_end` 把用量累加进 `sessionUsage`，`turn_end` 再用后端的权威值覆盖；耗时由 `turn_start` 的时间戳计算，组件运行中每秒刷新。
 - **脚本输出**：`ScriptItem` 在会话、模型、运行状态、用量变化时（节流到每秒最多一次）和每 15 秒调用 `RunStatusLine`，同一时间只跑一个；
   输出里的 ANSI 颜色由 [`store/ansi.ts`](../../frontend/src/store/ansi.ts) 解析成带样式的片段（支持 16 色、256 色、真彩色、粗体等）。命令本身由后端从设置文件读取。
+- **首字延迟**：reducer 在 `message_start` 时记下 `startedAt`、在这条消息的第一个内容事件（思考 / 文本 / 工具调用 / 图片）时记下 `firstTokenAt`，都取事件信封里的 `ts`（后端时间），
+  `metrics.ttft` 计算最近一次和平均值。重放的历史（`running` 为 false）不记录；
+- **ChatGPT 额度**：只在当前厂商是 chatgpt 类型时显示，数据来自 `GetChatGPTUsage`（本应用记的账，见 providers.md），每轮结束和每 30 秒刷新；
+- **上下文明细面板**（`components/ContextPanel.tsx`）：数据来自 `Engine.ContextBreakdown`（`core/contextinfo.go`，按字符估算），会话切换、每次模型调用结束、一轮结束时刷新（300ms 防抖）；
+  后端只返回类别、序号和工具名，显示文字由前端按语言格式化；
 - **每项可以为空**：组件返回 null 时外层 `.statusline-item:empty` 被隐藏，分隔线用 `:not(:empty) ~ :not(:empty)::before` 绘制，所以关掉的项和暂时没数据的项都不会留下多余的分隔线。

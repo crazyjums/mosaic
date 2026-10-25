@@ -122,6 +122,8 @@ SSE 事件 → Delta：
 - **思考**：请求 `reasoning.summary = auto`，思考摘要显示在思考卡片里。思考不回传：`store=false` 时回传思考需要请求加密内容，套餐这条路未必支持，没有它模型照样能继续；
 - **事件**：`response.output_text.delta` → 文本，`response.reasoning_summary_text.delta` → 思考，`response.output_item.done`（`function_call`，参数已完整）→ 工具调用，`response.completed` → 用量与停止原因；`response.failed` 和 `error` 事件转换成错误——额度用完可能在开始输出之后才到达；
 - **错误码**：`subscription_sharing_usage_limit_exceeded`（额度用完）、`subscription_sharing_user_not_eligible`、`subscription_sharing_unsupported_capability`、`subscription_sharing_route_not_supported` 都翻译成中文说明，原始信息附在后面；
+- **用量记账**：OpenAI 没有提供查询剩余额度的接口，适配器在每次 `response.completed` 后把用量交给令牌来源的可选接口 `ReportUsage`，遇到额度用完调用 `ReportLimit`；
+  `siwc.Manager` 记在 `chatgpt/usage.jsonl` 里，状态栏按 5 小时 / 7 天汇总。在适配器里记账（而不是统计事件），是因为标题生成、测试连接也消耗额度却不产生对话事件；
 - **模型列表**：`GET /v1/models` 在这条路上返回 `{"models": [...]}`，元素形状没有写死，字符串或带 `id` / `slug` 的对象都接受。
 
 为什么不复用 Codex CLI 的登录：那需要冒用 Codex 的 client_id 和请求头去调 `chatgpt.com` 的内部接口，违反条款，也随时可能失效。
