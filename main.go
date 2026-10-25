@@ -13,6 +13,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -21,9 +22,14 @@ import (
 	"github.com/crazyjums/myllmapp/internal/app"
 	"github.com/crazyjums/myllmapp/internal/bootstrap"
 	"github.com/crazyjums/myllmapp/internal/config"
+	"github.com/crazyjums/myllmapp/internal/update"
 )
 
 func main() {
+	// 刚完成自更新时：等旧进程退出（避免两个实例同时打开数据库），再清理被替换下来的旧程序。
+	update.WaitForPrevious(10 * time.Second)
+	update.CleanupOld()
+
 	cfg, err := config.Load("")
 	if err != nil {
 		log.Fatal(err)
