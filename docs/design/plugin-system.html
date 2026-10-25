@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>myllmapp 插件系统方案</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：左侧目录 + 正文单栏；宽表格和代码在各自容器里横向滚动。
+   色彩：冷灰纸面 + 石墨，强调色用深青；风险等级用独立的语义色。 */
+:root {
+  --bg: #f5f6f7;
+  --surface: #ffffff;
+  --surface-2: #eceff1;
+  --fg: #16202a;
+  --muted: #5b6874;
+  --line: #d7dde2;
+  --accent: #0b6e72;
+  --accent-soft: #dbeeee;
+  --read: #1f7a4d;
+  --write: #9a6700;
+  --exec: #b3261e;
+  --code-bg: #101820;
+  --code-fg: #d7e2ea;
+  --font-sans: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1418; --surface: #151d23; --surface-2: #1c262d; --fg: #e4eaee; --muted: #93a1ac; --line: #2a363f;
+    --accent: #4fc3c7; --accent-soft: #14343a; --read: #5ec28d; --write: #e0b04a; --exec: #ff8a80;
+    --code-bg: #0a1014; --code-fg: #d0dce4; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1418; --surface: #151d23; --surface-2: #1c262d; --fg: #e4eaee; --muted: #93a1ac; --line: #2a363f;
+  --accent: #4fc3c7; --accent-soft: #14343a; --read: #5ec28d; --write: #e0b04a; --exec: #ff8a80;
+  --code-bg: #0a1014; --code-fg: #d0dce4; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+header.top { padding-block: 40px 28px; border-bottom: 1px solid var(--line); }
+.kicker { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(26px, 4vw, 38px); line-height: 1.2; margin: 8px 0 12px; font-weight: 600; text-wrap: balance; }
+.lede { max-width: 62ch; color: var(--muted); font-size: 16px; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 18px; font-size: 12.5px; color: var(--muted); font-family: var(--font-mono); }
+.layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; padding-top: 28px; }
+nav.toc { position: sticky; top: 20px; align-self: start; font-size: 13px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+nav.toc a { display: block; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--muted); text-decoration: none; }
+nav.toc a:hover { color: var(--accent); border-left-color: var(--accent); }
+article { min-width: 0; max-width: 780px; }
+section { padding-top: 12px; margin-bottom: 44px; }
+h2 { font-size: 22px; margin: 0 0 14px; font-weight: 600; text-wrap: balance; scroll-margin-top: 16px; }
+h3 { font-size: 16px; margin: 26px 0 8px; font-weight: 600; }
+p { margin: 0 0 12px; }
+ul, ol.plain { margin: 0 0 12px; padding-left: 1.3em; }
+li { margin: 3px 0; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--surface-2); padding: .1em .35em; border-radius: 4px; }
+pre { background: var(--code-bg); color: var(--code-fg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; margin: 0 0 14px; max-width: 100%; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+pre.mermaid { background: var(--surface); color: var(--fg); border: 1px solid var(--line); text-align: center; }
+.tablewrap { overflow-x: auto; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--surface-2); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.callout { background: var(--accent-soft); border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; }
+.callout.warn { background: color-mix(in srgb, var(--write) 14%, var(--surface)); }
+.callout p:last-child { margin-bottom: 0; }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 11.5px; padding: 0 7px; border-radius: 999px; border: 1px solid currentColor; line-height: 1.6; white-space: nowrap; }
+.tag.read { color: var(--read); } .tag.write { color: var(--write); } .tag.exec { color: var(--exec); }
+.tag.p { color: var(--accent); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h3 { margin: 0 0 6px; }
+.card .lvl { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); letter-spacing: .06em; }
+.card p, .card ul { font-size: 13.5px; margin-bottom: 8px; }
+.phase { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 4px 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.phase:first-of-type { border-top: 0; }
+.phase .when { font-family: var(--font-mono); font-size: 12.5px; color: var(--accent); padding-top: 2px; }
+.phase h3 { margin: 0 0 4px; }
+.phase p, .phase ul { font-size: 13.5px; margin-bottom: 6px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+.q b { display: block; margin-bottom: 4px; }
+.q p { margin: 0; font-size: 13.5px; }
+.q .rec { color: var(--accent); font-weight: 500; }
+footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 12.5px; color: var(--muted); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  nav.toc { position: static; margin-bottom: 20px; }
+  nav.toc ol { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .phase { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="kicker">技术方案 · 探讨稿</div>
+  <h1>myllmapp 插件系统方案</h1>
+  <p class="lede">让任何人都能以插件的形式扩展这个工具：提供技能、斜杠命令、外部工具、钩子，以及飞书这样的 IM 集成。方案复用现有的 MCP 机制和权限体系，不改内核主流程。</p>
+  <div class="meta"><span>分支 claude/wonderful-darwin-heulqw</span><span>基于当前代码盘点</span><span>状态：待你确认几个决策</span></div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#summary">1 结论</a></li>
+    <li><a href="#status">2 现状盘点</a></li>
+    <li><a href="#arch">3 总体架构</a></li>
+    <li><a href="#format">4 插件包格式</a></li>
+    <li><a href="#layers">5 四类能力</a></li>
+    <li><a href="#core">6 与内核的接合点</a></li>
+    <li><a href="#ui">7 界面扩展</a></li>
+    <li><a href="#security">8 安全模型</a></li>
+    <li><a href="#lifecycle">9 生命周期与分发</a></li>
+    <li><a href="#feishu">10 示例：飞书插件</a></li>
+    <li><a href="#plan">11 分期计划</a></li>
+    <li><a href="#test">12 测试策略</a></li>
+    <li><a href="#questions">13 需要你决定的事</a></li>
+  </ol>
+</nav>
+
+<article>
+
+<section id="summary">
+<h2>1 结论</h2>
+<p><b>技术上可行，而且改动量比想象的小。</b>原因是项目已经有两块现成的地基：</p>
+<ul>
+  <li><b>MCP 客户端</b>（<code>internal/mcp</code>）已经能托管任意语言写的外部进程，把它的工具接进工具系统，并走统一的权限确认。它天然就是"工具插件"的协议。</li>
+  <li><b><code>internal/plugin</code></b> 里已经定义了 Skill、斜杠命令、Hook、状态栏四类扩展的接口，状态栏脚本已经实现，只缺"从磁盘加载"和"接入内核"。</li>
+</ul>
+<p>推荐做法：<b>不发明新的插件运行时，把插件做成"一个目录 + 一份清单"，清单声明它带来的技能、命令、MCP 服务和钩子，由加载器分发给现有的各个注册表。</b></p>
+<div class="callout">
+  <p><b>核心取舍</b></p>
+  <p>① 工具能力一律走 MCP：作者可以用任何语言，不用学新协议。② 界面不允许插件注入前端代码，只提供声明式表单和按钮。③ 插件是用户电脑上的外部程序，无法沙箱，安全靠"安装前展示清单 + 默认每次询问 + 密钥进钥匙串"。</p>
+</div>
+<p>分三期交付：先做不含可执行代码的声明式插件（技能、命令），再做工具插件和飞书，最后做钩子。预计总工作量 12–16 个开发日（粗估，见第 11 节）。</p>
+</section>
+
+<section id="status">
+<h2>2 现状盘点</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>位置</th><th>已有</th><th>缺什么</th></tr></thead>
+<tbody>
+<tr><td><code>internal/plugin</code></td><td>Skill / SlashCommand / Hook / StatusLine 四个接口；<code>CommandStatusLine</code> 已实现（运行命令，JSON 进、文本出）</td><td>清单解析、磁盘加载器、注册表、与内核的连接</td></tr>
+<tr><td><code>internal/mcp</code></td><td>stdio 与 HTTP 两种传输；<code>Manager.Apply(cfgs)</code> 按配置连接、把工具注册进 / 移出工具表；状态展示；工具名 <code>mcp__服务__工具</code></td><td>"来自哪个插件"的归属信息；插件被禁用时批量摘除</td></tr>
+<tr><td><code>internal/core/tools.go</code></td><td><code>runTool</code> 的固定流程：查找 → 是否禁用 → <code>Policy.Evaluate</code> → 询问 → 执行</td><td>PreToolUse / PostToolUse 钩子调用点</td></tr>
+<tr><td><code>internal/core/subagent.go</code></td><td>子 agent 定义的注册表</td><td>调度器（插件只能提供定义）</td></tr>
+<tr><td><code>internal/permission</code></td><td>风险等级 read / write / exec、四档模式、规则、"本会话总是允许"</td><td>无需改动，插件工具直接复用</td></tr>
+<tr><td><code>internal/secret</code></td><td>系统钥匙串封装</td><td>无需改动，插件的密钥配置直接用</td></tr>
+<tr><td>前端</td><td>设置页框架、斜杠命令的位置（输入框）、<code>Notice</code> 等组件</td><td>插件管理页、声明式表单渲染器、斜杠命令补全</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="arch">
+<h2>3 总体架构</h2>
+<p>新增一个 <code>PluginHost</code>（放在 <code>internal/plugin</code>），负责扫描、校验、启停，并把每个插件带来的东西分发给已有的注册表。内核看不到"插件"这个概念，只看到更多的技能、工具和钩子。</p>
+<pre class="mermaid">
+flowchart LR
+  D["插件目录<br/>plugins/飞书/"] --> L["加载器<br/>校验清单"]
+  L --> H["PluginHost<br/>启用 / 停用"]
+  H --> S["技能注册表"]
+  H --> C["斜杠命令注册表"]
+  H --> M["MCP Manager<br/>工具插件"]
+  H --> K["Hook 链"]
+  H --> A["子 agent 注册表"]
+  S --> P["系统提示词 + read_skill 工具"]
+  C --> U["前端输入框"]
+  M --> T["工具表 + 权限确认"]
+  K --> R["runTool 流程"]
+</pre>
+<p>原则：<b>插件只能通过已有的扩展点接入</b>，不允许直接访问 <code>Engine</code> 内部。这样内核的改动只有两处：钩子调用点，以及系统提示词里的技能清单。</p>
+</section>
+
+<section id="format">
+<h2>4 插件包格式</h2>
+<p>一个插件是一个目录，根下有 <code>plugin.json</code>。安装位置固定，代码目录只读，运行时数据另放：</p>
+<pre><code>~/.myllmapp/plugins/feishu/        ← 插件代码（安装后只读）
+  plugin.json                      ← 清单
+  skills/feishu-docs/SKILL.md      ← 技能：给模型看的说明
+  commands/summarize-doc.md        ← 斜杠命令：提示词模板
+  server/feishu-mcp.js             ← MCP 服务（任意语言）
+~/.myllmapp/plugin-data/feishu/    ← 插件自己的运行时数据（可写）
+settings.json → plugins.feishu     ← 用户填的配置（密钥项存钥匙串，不落盘）</code></pre>
+
+<h3>清单示例</h3>
+<pre><code>{
+  "id": "feishu",                       // 小写字母、数字、-，最长 24 个字符（会成为工具名的一部分）
+  "name": "飞书",
+  "version": "0.1.0",
+  "description": "读取飞书文档和群消息",
+  "min_app_version": "1.2.0",           // 低于此版本的应用拒绝加载
+  "protocol": 1,                        // 对应事件协议版本，不匹配则拒绝加载
+
+  "skills":   [{"path": "skills/feishu-docs"}],
+  "commands": [{"name": "feishu-summary", "path": "commands/summarize-doc.md"}],
+  "mcp": [{
+    "name": "feishu",
+    "command": "node", "args": ["${PLUGIN_DIR}/server/feishu-mcp.js"],
+    "risk": "read",                     // 作者声明；用户在安装时确认后才生效
+    "env": {"LARK_PROFILE": "${config.profile}"}
+  }],
+  "hooks":    [{"point": "pre_tool_use", "command": "node hooks/audit.js", "timeout_ms": 3000}],
+  "subagents":[{"name": "doc-reader", "path": "agents/doc-reader.md"}],
+
+  "config": [                           // 声明式设置表单，见第 7 节
+    {"key": "profile", "label": "飞书应用配置名", "type": "string", "default": "default"},
+    {"key": "app_secret", "label": "App Secret", "type": "secret"}
+  ],
+  "status":  {"command": "lark-cli auth status --format json", "ok_path": "ok"},
+  "actions": [{"id": "login", "label": "登录飞书", "command": "lark-cli auth login --no-wait"}],
+
+  "requires": {"commands": ["lark-cli"]},   // 缺少时在插件页提示怎么安装
+  "network":  ["open.feishu.cn"]            // 声明会访问的域名（用于安装确认，不做强制拦截）
+}</code></pre>
+<div class="callout">
+  <p>清单格式选 JSON 而不是 TOML：设置文件和前端都是 JSON，插件作者多数来自 JS/Python 生态。路径变量 <code>${PLUGIN_DIR}</code>、<code>${DATA_DIR}</code>、<code>${config.xxx}</code> 由加载器展开，且路径必须落在插件目录内。</p>
+</div>
+</section>
+
+<section id="layers">
+<h2>5 四类能力</h2>
+<p>按"风险由低到高"分层，每一层都能独立交付。</p>
+<div class="cards">
+  <div class="card">
+    <div class="lvl">第 1 层 · 无可执行代码</div>
+    <h3>技能 · 命令 · 提示词</h3>
+    <ul>
+      <li><b>技能</b>：<code>SKILL.md</code>（前置的 name、description + 正文），采用渐进加载：系统提示词里只放名称和一句话简介，模型需要时调用 <code>read_skill</code>（read 风险，免确认）读正文。</li>
+      <li><b>斜杠命令</b>：markdown 模板，支持 <code>{{args}}</code>；输入 <code>/名称 参数</code> 后展开成一段用户消息。</li>
+      <li><b>子 agent 定义</b>：提示词 + 可用工具白名单。</li>
+    </ul>
+    <p>最容易写、最安全，应该最先做。</p>
+  </div>
+  <div class="card">
+    <div class="lvl">第 2 层 · 外部进程</div>
+    <h3>工具插件（MCP）</h3>
+    <ul>
+      <li>清单里声明一个 MCP 服务，由现有 <code>mcp.Manager</code> 启停和连接。</li>
+      <li>任意语言实现；工具自动出现在工具表，走权限确认。</li>
+      <li>风险默认 <code>exec</code>（每次询问）；作者可声明 <code>read</code>，经用户在安装时确认后才降级。</li>
+      <li>停用 / 卸载插件时批量摘除它的工具。</li>
+    </ul>
+    <p>飞书、Slack 都属于这一层。</p>
+  </div>
+  <div class="card">
+    <div class="lvl">第 3 层 · 介入流程</div>
+    <h3>钩子（Hook）</h3>
+    <ul>
+      <li>时机：<code>user_prompt_submit</code>、<code>pre_tool_use</code>、<code>post_tool_use</code>、<code>turn_end</code>。</li>
+      <li>协议：外部命令，stdin 收一段 JSON（即现有 <code>HookInput</code>），stdout 回 <code>HookDecision</code>（放行 / 拦截 / 改写）。</li>
+      <li>超时默认 5 秒；失败默认放行并提示，<code>pre_tool_use</code> 可声明失败即拦截。</li>
+    </ul>
+    <p>能力最强，风险最高，所以放最后，并要求安装时单独确认。</p>
+  </div>
+</div>
+<p><b>状态栏脚本</b>已经是现有能力（设置 → 状态栏），插件可以声明一个状态栏项，复用同一套实现，不属于单独的一期。</p>
+</section>
+
+<section id="core">
+<h2>6 与内核的接合点</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>能力</th><th>接入位置</th><th>改动</th></tr></thead>
+<tbody>
+<tr><td>技能</td><td><code>core/prompt.go</code> 追加技能清单；注册一个 <code>read_skill</code> 工具（<span class="tag read">read</span>）</td><td>小：约 80 行</td></tr>
+<tr><td>斜杠命令</td><td>前端输入框解析 <code>/xxx</code>，调用后端 <code>ExpandCommand</code>，展开后的文本再走 <code>Send</code></td><td>小：前端补全 + 一个绑定</td></tr>
+<tr><td>MCP 工具</td><td>把插件声明的服务合并进 <code>mcp.Manager.Apply</code>，配置带 <code>source: "plugin:feishu"</code></td><td>小：Manager 增加来源字段与按来源摘除</td></tr>
+<tr><td>钩子</td><td><code>runTool</code> 在 <code>Policy.Evaluate</code> <b>之前</b>调用 PreToolUse，工具执行后调用 PostToolUse；<code>Send</code> 开头调用 UserPromptSubmit；轮次结束调用 TurnEnd</td><td>中：<code>AgentConfig</code> 增加 <code>Hooks</code>，需要补竞态和取消的测试</td></tr>
+<tr><td>子 agent</td><td><code>Subagents().Register</code></td><td>无（调度器本身是另一项工作）</td></tr>
+<tr><td>设置与密钥</td><td><code>settings.json</code> 的 <code>plugins.&lt;id&gt;</code>；密钥项走 <code>internal/secret</code></td><td>小</td></tr>
+</tbody></table></div>
+<div class="callout warn">
+  <p><b>钩子放在权限裁决之前</b>是有意的：它可以改写工具输入或直接拦截，但<b>不能</b>把"需要询问"改成"允许"。放行与否仍由权限策略决定，钩子只能让流程更严格。</p>
+</div>
+</section>
+
+<section id="ui">
+<h2>7 界面扩展：只给声明式能力</h2>
+<p>Wails 的 WebView 能调用后端的全部绑定。如果允许插件往前端注入 JS，一个恶意插件就能直接调用 <code>InstallUpdate</code>、读设置、改权限。所以<b>不开放前端代码注入</b>，插件只能通过清单声明下面这些，由应用自己渲染：</p>
+<div class="tablewrap"><table>
+<thead><tr><th>声明</th><th>界面表现</th></tr></thead>
+<tbody>
+<tr><td><code>config</code></td><td>插件页里的设置表单。字段类型：<code>string</code>、<code>secret</code>（存钥匙串，界面只显示"已设置"）、<code>bool</code>、<code>select</code>、<code>path</code>。值通过 <code>${config.xxx}</code> 注入 MCP 的 env 和命令行。</td></tr>
+<tr><td><code>status</code></td><td>一个周期性执行的命令，输出 JSON；界面显示"已连接 / 未登录 / 缺少依赖"的状态点。</td></tr>
+<tr><td><code>actions</code></td><td>按钮。点击后运行声明的命令，把输出实时显示在面板里；输出里的 http(s) 链接可点击（例如登录授权页）。</td></tr>
+<tr><td><code>requires</code></td><td>检查本机是否有 <code>lark-cli</code> 等依赖，缺失时显示安装指引。</td></tr>
+<tr><td>斜杠命令 / 状态栏项</td><td>输入框补全列表、状态栏里的一项。</td></tr>
+</tbody></table></div>
+<p>这套够覆盖"配置 → 登录 → 看状态 → 使用"的完整流程。如果以后确实需要自定义界面，再单独评估（例如放进带 <code>sandbox</code> 的 iframe 并只暴露受限的消息通道），不在本方案范围内。</p>
+</section>
+
+<section id="security">
+<h2>8 安全模型</h2>
+<p><b>先说清楚边界：插件是在用户电脑上以用户权限运行的外部程序，无法真正沙箱。</b>方案的目标是让用户在"知情"的前提下授予信任，并把误用的代价降到最低，而不是假装能防住恶意插件。</p>
+<div class="tablewrap"><table>
+<thead><tr><th>风险</th><th>措施</th></tr></thead>
+<tbody>
+<tr><td>安装了恶意插件</td><td>安装前弹出确认，逐项展示：要启动的命令、提供的工具及风险等级、钩子、依赖的外部命令、声明访问的域名、需要的配置项。用户确认后才写入磁盘并启用。<b>不做静默安装，不做自动更新。</b></td></tr>
+<tr><td>插件工具悄悄做危险操作</td><td>MCP 工具默认 <span class="tag exec">exec</span>，每次询问；作者声明 <span class="tag read">read</span> 需用户在安装确认里勾选，且可以在权限规则里随时改回。现有的规则和工具开关对插件工具照常生效。</td></tr>
+<tr><td>密钥泄露</td><td><code>secret</code> 类配置只存系统钥匙串；注入子进程时只放进该插件声明的环境变量；不发给前端，不写入插件目录和日志。</td></tr>
+<tr><td>插件读取其他插件或应用的数据</td><td>子进程的环境变量只继承白名单（PATH、HOME 等）和插件声明的项，不继承应用自己的密钥；数据目录按插件隔离（约定，非强制）。</td></tr>
+<tr><td>钩子绕过权限</td><td>钩子只能让流程更严格（拦截、改写输入），不能把 Ask 改成 Allow（见第 6 节）。</td></tr>
+<tr><td>路径逃逸</td><td>清单里的所有路径必须落在插件目录内（解析符号链接后检查，沿用 <code>resolvePath</code> 的做法）；安装包解压时拒绝 <code>..</code> 和绝对路径（防 zip slip）。</td></tr>
+<tr><td>来源被篡改 / 更新后行为变化</td><td>从 Git 安装时记录提交哈希；更新是用户主动操作，并显示清单和脚本的变化；第一版不做插件签名，后续可复用自更新那套 ed25519 方案。</td></tr>
+<tr><td>失控的进程</td><td>统一的启动超时、调用超时、输出大小上限（沿用 100KB 截断）；应用退出时按进程组杀掉子进程（<code>mcp</code> 包已有）；Windows 上隐藏控制台窗口（<code>sysproc</code>）。</td></tr>
+<tr><td>数据流向第三方模型</td><td>插件读到的内容（如飞书文档、群消息）会作为工具结果发给当前选择的模型厂商。界面上在插件页和首次调用时明确提示；插件可声明 <code>sensitive: true</code> 要求每次调用都询问。</td></tr>
+</tbody></table></div>
+<p>清单里的 <code>network</code> 只用于安装确认，<b>不会强制拦截</b>，应该如实告诉用户这一点，避免给人虚假的安全感。</p>
+</section>
+
+<section id="lifecycle">
+<h2>9 生命周期与分发</h2>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> 已下载: 选择目录 / 填 Git 地址
+  已下载 --> 待确认: 校验清单
+  待确认 --> 已启用: 用户确认安装
+  待确认 --> [*]: 取消并清理
+  已启用 --> 已停用: 停用
+  已停用 --> 已启用: 启用
+  已启用 --> 已启用: 更新（再次确认）
+  已停用 --> [*]: 卸载
+</pre>
+<ul>
+  <li><b>安装来源（第一版）</b>：本地目录、Git 仓库地址（可指定标签或提交）、zip 文件。内部私有仓库的访问凭据走用户本机的 git 配置，应用不保存。</li>
+  <li><b>启用 / 停用</b>：停用时摘除它的技能、命令、工具、钩子，并停止子进程；配置和钥匙串里的密钥保留。卸载时询问是否一并清除。</li>
+  <li><b>兼容性</b>：清单的 <code>min_app_version</code> 和 <code>protocol</code> 不满足时，插件显示"需要升级应用"，不加载；应用升级后不兼容的插件被自动停用而不是报错崩溃。</li>
+  <li><b>冲突</b>：插件 id 全局唯一；斜杠命令重名时加插件前缀（<code>/feishu:summary</code>）；工具名天然带 <code>mcp__插件id__</code> 前缀。</li>
+  <li><b>分发（后续）</b>：先靠"填 Git 地址"。等有一批插件后，再做一个官方的索引仓库（一个 JSON 列表，含名称、地址、哈希），应用里可以浏览，仍然保留安装确认。</li>
+  <li><b>与自更新的关系</b>：应用更新不触碰插件目录；插件按自己的版本独立管理。</li>
+</ul>
+</section>
+
+<section id="feishu">
+<h2>10 示例：飞书插件怎么落地</h2>
+<p>飞书官方有开源的 <code>lark-cli</code>（<code>--as user</code> 以本人身份调用，OAuth 登录，令牌在系统钥匙串，输出 JSON）。插件只需要把它包成几个只读工具，令牌始终留在 <code>lark-cli</code> 手里，应用不经手。</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant U as 用户
+  participant A as 应用（插件页）
+  participant P as 飞书 MCP 服务
+  participant L as lark-cli
+  participant F as 飞书
+  U->>A: 点击「登录飞书」
+  A->>L: auth login --no-wait
+  L-->>A: 授权链接
+  A-->>U: 显示可点击的链接
+  U->>F: 浏览器里授权
+  A->>L: 周期性 auth status
+  L-->>A: 已登录
+  U->>A: 提问「总结这篇文档」
+  A->>P: feishu_read_doc(url)
+  P->>L: docs … --as user --format json
+  L->>F: 以用户身份读取
+  F-->>L: 文档内容
+  L-->>P: JSON
+  P-->>A: 文本（截断到 100KB）
+</pre>
+<div class="tablewrap"><table>
+<thead><tr><th>工具</th><th>风险</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>feishu_read_doc(url)</code></td><td><span class="tag read">read</span></td><td>读取云文档 / 知识库页面，转成 Markdown</td></tr>
+<tr><td><code>feishu_search(query)</code></td><td><span class="tag read">read</span></td><td>搜索文档或消息</td></tr>
+<tr><td><code>feishu_read_chat(chat, since)</code></td><td><span class="tag read">read</span> + <code>sensitive</code></td><td>读取指定群的最近消息；每次调用询问一次，因为内容会发给模型厂商</td></tr>
+<tr><td>发消息、改文档</td><td><span class="tag exec">exec</span></td><td>第一版不提供</td></tr>
+</tbody></table></div>
+<div class="callout warn">
+  <p><b>落地前要先验证（约半天）</b>：<code>lark-cli</code> 读取文档和群消息的确切子命令与所需权限，官方文档里没有给出；租户是否需要管理员批准自建应用。需要在你的电脑上登录后实际跑一遍，再定工具的实现。</p>
+</div>
+<p>Slack 同理：做成另一个插件，共用"IM 插件"的约定（只读工具集 + 登录动作 + 状态检查），不需要内核改动。</p>
+</section>
+
+<section id="plan">
+<h2>11 分期计划</h2>
+<p>工作量按"开发 + 单元测试 + 三平台的联调"粗估，单位是开发日，实际会随你对界面细节的要求浮动。</p>
+<div class="phase">
+  <div class="when">第 1 期<br>3–4 天</div>
+  <div>
+    <h3>声明式插件</h3>
+    <ul>
+      <li>清单解析与校验、<code>PluginHost</code>、安装 / 启停 / 卸载（本地目录与 zip）</li>
+      <li>技能（渐进加载 + <code>read_skill</code>）、斜杠命令、提示词片段</li>
+      <li>设置 → 插件页（列表、启停、详情）；安装确认弹窗</li>
+    </ul>
+    <p>验收：写一个纯 markdown 的插件，装上后模型能按需读取技能，输入 <code>/命令</code> 能展开；停用后立刻消失。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 2 期<br>4–5 天</div>
+  <div>
+    <h3>工具插件与声明式界面</h3>
+    <ul>
+      <li>MCP 服务由插件声明、按来源管理；风险声明与确认；环境变量白名单</li>
+      <li><code>config</code> 表单（含 secret 进钥匙串）、<code>status</code> 状态点、<code>actions</code> 按钮与输出面板、<code>requires</code> 依赖检查</li>
+      <li>Git 地址安装（记录提交哈希）</li>
+    </ul>
+    <p>验收：一个示例 MCP 插件能配置、登录、显示状态；停用时工具和子进程一并消失；密钥不出现在任何日志和前端。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 3 期<br>2–3 天</div>
+  <div>
+    <h3>飞书插件</h3>
+    <ul><li>先完成半天的验证；再做 3 个只读工具、登录动作和状态检查；文档里写清数据流向</li></ul>
+    <p>验收：在你的飞书租户里，用本人身份读取一篇文档和一个群的最近消息。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 4 期<br>3 天</div>
+  <div>
+    <h3>钩子</h3>
+    <ul>
+      <li><code>AgentConfig.Hooks</code>、<code>runTool</code> 调用点、超时与失败策略</li>
+      <li>"只能更严格"的约束测试；钩子的单独安装确认</li>
+    </ul>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">以后</div>
+  <div>
+    <h3>按需再做</h3>
+    <ul><li>子 agent 调度器；插件索引仓库；插件签名；Slack 插件；是否开放受限的自定义界面</li></ul>
+  </div>
+</div>
+</section>
+
+<section id="test">
+<h2>12 测试策略</h2>
+<ul>
+  <li><b>清单与路径</b>：非法 id、路径逃逸、符号链接、zip slip、版本不兼容，逐项有失败用例。</li>
+  <li><b>生命周期</b>：安装 → 启用 → 停用 → 卸载，每一步检查技能、命令、工具、子进程是否同步出现和消失（用现有的 <code>mcp</code> 测试桩）。</li>
+  <li><b>权限</b>：插件工具声明 <code>read</code> 但未经确认时仍按 <code>exec</code> 询问；规则和开关对插件工具生效；钩子无法把 Ask 变成 Allow。</li>
+  <li><b>密钥</b>：断言 secret 值不出现在前端绑定的返回值、事件和日志里。</li>
+  <li><b>跨平台</b>：Windows 上的路径、<code>cmd</code> 与 <code>sh</code> 差异、隐藏控制台；用现有的 Wine 流程覆盖。</li>
+  <li><b>端到端</b>：用 Playwright 在 <code>wails dev</code> 里装一个示例插件，走完"安装确认 → 配置 → 使用 → 停用"。</li>
+</ul>
+</section>
+
+<section id="questions">
+<h2>13 需要你决定的事</h2>
+<div class="q"><b>1. 谁会写插件？</b><p>只有你们团队内部，还是要对外开放？这决定第 8 节的安全投入：内部使用可以先不做签名和索引；对外开放则需要尽早做来源审核和签名。<span class="rec">我的倾向：先按内部使用做，接口按对外开放来设计。</span></p></div>
+<div class="q"><b>2. 界面扩展的边界</b><p>是否接受"只有声明式表单和按钮，不能注入前端代码"。<span class="rec">我的倾向：接受，理由见第 7 节。</span></p></div>
+<div class="q"><b>3. 钩子要不要做、什么时候做</b><p>钩子能力最强也最容易出问题。如果短期没有具体需求，可以推迟或砍掉第 4 期。<span class="rec">我的倾向：先不做，等有真实场景（比如合规审计）再做。</span></p></div>
+<div class="q"><b>4. 插件工具的默认风险</b><p>默认每次询问最安全，但读文档、搜索这类工具会被频繁打断。<span class="rec">我的倾向：默认 exec；作者可声明 read，安装时用户确认后降级，并提供"本会话总是允许"。</span></p></div>
+<div class="q"><b>5. 清单格式</b><p>JSON（推荐）还是 TOML（与 <code>config.toml</code> 一致）。</p></div>
+<div class="q"><b>6. 私有插件仓库</b><p>公司内部的 Git 仓库需要凭据。<span class="rec">我的倾向：使用本机已有的 git 配置，应用不保存任何凭据。</span></p></div>
+<div class="q"><b>7. 先做飞书还是 Slack</b><p>你们用飞书，我建议先做飞书，并且在第 3 期开始前先花半天验证 <code>lark-cli</code> 的能力和租户权限。</p></div>
+</section>
+
+<footer>本方案基于当前仓库代码（internal/plugin、internal/mcp、internal/core）整理，所列工作量为粗估。飞书 <code>lark-cli</code> 的能力来自其公开文档，具体命令和权限需要实际验证。</footer>
+
+</article>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"default"});</script>
+</body>
+</html>
