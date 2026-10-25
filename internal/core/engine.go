@@ -40,6 +40,9 @@ type EngineConfig struct {
 	DisabledTools []string
 	// TitleMode 决定会话标题怎么来：first_message（默认，截取第一句）或 model（第一轮结束后让模型生成）。
 	TitleMode string
+	// SkillsPrompt 返回追加到系统提示词后面的技能清单（参数是会话的工作区，技能随工作区变化）；为 nil 或返回空串表示没有技能。
+	// 用回调而不是直接依赖技能包：内核只依赖契约层（见 arch_test.go），技能的发现由装配层提供。
+	SkillsPrompt func(workspace string) string
 }
 
 // Engine 是内核对外的"命令接口"。
@@ -249,6 +252,9 @@ func (e *Engine) runtimeLocked() RuntimeConfig {
 		rt.SystemPrompt = DefaultSystemPrompt(rt.Workspace)
 	}
 	rt.SystemPrompt += ProjectContext(rt.Workspace)
+	if e.cfg.SkillsPrompt != nil {
+		rt.SystemPrompt += e.cfg.SkillsPrompt(rt.Workspace)
+	}
 	return rt
 }
 
