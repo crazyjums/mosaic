@@ -92,8 +92,26 @@ type apiError struct {
 	Param   string `json:"param"`
 }
 
+// usageReporter 是令牌来源的可选能力：想知道每次调用用掉了多少套餐额度（状态栏的"ChatGPT 额度"）。
+// OpenAI 没有提供查询剩余额度的接口，只能由我们自己记账。在适配器里记账而不是从事件里统计，
+// 是因为标题生成、测试连接这些调用也消耗额度，却不产生对话事件。
+type usageReporter interface {
+	ReportUsage(model string, input, output, cached int)
+	ReportLimit(message string)
+}
+
 // Stream 发起请求并把 Responses API 的事件流翻译成 Delta。
 func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) error {
+	err := p.stream(ctx, req, onDelta)
+	if errors.Is(err, ErrUsageLimit) {
+		if r, ok := p.auth.(usageReporter); ok {
+			r.ReportLimit(err.Error())
+		}
+	}
+	return err
+}
+
+func (p *Provider) stream(ctx context.Context, req provider.Request, onDelta func(provider.Delta)) error {
 	// 步骤 1：构造请求体。注意没有 max_output_tokens：套餐额度这条路不接受它（req.MaxTokens 因此被忽略）。
 	body := request{
 		Model:        req.Model,
@@ -172,6 +190,9 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 					usage.CacheReadTokens = u.InputTokensDetails.CachedTokens
 				}
 				onDelta(provider.Delta{Type: provider.DeltaUsage, Usage: &usage})
+				if r, ok := p.auth.(usageReporter); ok {
+					r.ReportUsage(req.Model, usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens)
+				}
 			}
 			stop := provider.StopEndTurn
 			switch {
@@ -206,10 +227,18 @@ func normalizeArgs(s string) json.RawMessage {
 	return json.RawMessage(s)
 }
 
+// ErrUsageLimit 表示 ChatGPT 套餐额度已用完（或达到了用户为本应用设置的上限）。
+var ErrUsageLimit = errors.New("ChatGPT 套餐额度已用完（或达到了你为本应用设置的上限），请稍后再试或改用 API Key")
+
 // explain 把套餐额度特有的错误码翻译成用户能理解的说明。原始信息附在后面，方便排查。
 func explain(e apiError) error {
+	if e.Code == "subscription_sharing_usage_limit_exceeded" {
+		if msg := strings.TrimSpace(e.Message); msg != "" {
+			return fmt.Errorf("%w（%s: %s）", ErrUsageLimit, e.Code, msg)
+		}
+		return ErrUsageLimit
+	}
 	hint := map[string]string{
-		"subscription_sharing_usage_limit_exceeded":   "ChatGPT 套餐额度已用完（或达到了你为本应用设置的上限），请稍后再试或改用 API Key",
 		"subscription_sharing_user_not_eligible":      "这个 ChatGPT 账号不能把套餐额度用于第三方应用（请检查套餐类型或工作区设置）",
 		"subscription_sharing_unsupported_capability": "套餐额度不支持这次请求用到的某项功能",
 		"subscription_sharing_route_not_supported":    "套餐额度不支持这个接口",

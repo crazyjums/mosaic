@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -66,6 +67,8 @@ type Manager struct {
 
 	refreshMu sync.Mutex // 串行化刷新（刷新令牌会轮换，并发刷新会互相作废）
 	disc      *discovery
+
+	usage *usageLedger // 本应用用掉的套餐额度，见 usage.go
 }
 
 type pendingLogin struct {
@@ -85,6 +88,10 @@ func NewManager(dir string, opts Options) *Manager {
 		opts.Now = time.Now
 	}
 	m := &Manager{store: store{dir: dir}, ep: opts.Endpoints, http: noRedirectClient(opts.HTTPClient), now: opts.Now}
+	m.usage = &usageLedger{path: m.store.path("usage.jsonl"), now: opts.Now}
+	if err := os.MkdirAll(dir, 0o700); err == nil {
+		m.usage.prune()
+	}
 	if c, err := m.store.credential(); err == nil {
 		m.cred = c
 	} else {
