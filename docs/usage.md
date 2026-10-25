@@ -80,7 +80,9 @@ agent 运行中（一轮还没结束）不能修改常规设置、系统提示�
 
 适合手写、版本管理或团队共享（密钥放环境变量）。
 
-不写任何配置也能运行：内置默认配置包含 fake（离线演示）以及 anthropic / openai / deepseek 三个配置档（从环境变量读密钥）。
+不写任何配置也能运行：内置默认配置包含 anthropic / openai / deepseek 三个配置档（从环境变量读密钥）。一个厂商都没配置时应用照常启动，界面会引导你在 设置 → 模型厂商 里添加。
+
+离线演示厂商 fake（按固定剧本回复、不调用真实模型）不再内置：想用的话在 `config.toml` 里加一个 `type = "fake"` 的厂商（见 `config.example.toml` 里被注释掉的示例），CLI 可以直接加 `-demo`。
 
 需要自定义时：
 
@@ -316,13 +318,13 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 CLI 和桌面端使用完全相同的内核，是调试 agent 行为最快的方式。
 
 ```bash
-# 交互模式（默认 fake 演示剧本，不需要密钥）
-go run ./cmd/cli
+# 交互模式（-demo：离线演示剧本，不需要密钥）
+go run ./cmd/cli -demo
 
 # 一次性演示：第一行是问题，后面两行回答两次权限确认（允许写文件、拒绝执行命令）
 make demo
 # 等价于
-printf '帮我做个演示\ny\nn\n' | go run ./cmd/cli -no-store -workspace "$(mktemp -d)"
+printf '帮我做个演示\ny\nn\n' | go run ./cmd/cli -demo -no-store -workspace "$(mktemp -d)"
 
 # 使用真实厂商
 go run ./cmd/cli -provider anthropic -model claude-opus-5-5
