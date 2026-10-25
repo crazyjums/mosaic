@@ -8,7 +8,8 @@ import ContextPanel from "./components/ContextPanel";
 import MessageList from "./components/MessageList";
 import PermissionDialog from "./components/PermissionDialog";
 import SettingsDialog from "./components/SettingsDialog";
-import UpdateBanner from "./components/UpdateBanner";
+import UpdateButton from "./components/UpdateButton";
+import UpdateDialog from "./components/UpdateDialog";
 import Sidebar from "./components/Sidebar";
 import EditableTitle from "./components/EditableTitle";
 import StatusBar from "./components/StatusBar";
@@ -41,6 +42,7 @@ export default function App() {
         <header className="flex h-12 shrink-0 items-center border-b border-line px-5 text-sm">
           <HeaderTitle title={title} />
           <div className="flex-1" />
+          <UpdateButton />
           {/* 上下文面板只在宽窗口（xl）显示，按钮也一样 */}
           <button
             className={`hidden rounded-md px-2 py-1 text-xs xl:block ${contextPanel ? "bg-panel-2 text-fg" : "text-muted hover:text-fg"}`}
@@ -51,7 +53,6 @@ export default function App() {
             {t("上下文")}
           </button>
         </header>
-        <UpdateBanner />
         {toast && (
           <div className="flex items-center justify-between border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">
             <span>{toast}</span>
@@ -69,6 +70,7 @@ export default function App() {
         <StatusBar />
       </main>
       <PermissionDialog />
+      <UpdateDialog />
       <SettingsDialog />
     </div>
   );

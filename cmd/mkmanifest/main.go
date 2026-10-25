@@ -71,7 +71,7 @@ func sign(args []string) {
 	if *notesFile != "" {
 		b, err := os.ReadFile(*notesFile)
 		check(err)
-		m.Notes = strings.TrimSpace(string(b))
+		m.Notes = update.Clean(string(b))
 	}
 	for _, a := range assets {
 		platform, path, ok := strings.Cut(a, "=")
