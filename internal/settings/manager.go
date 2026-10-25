@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/crazyjums/myllmapp/internal/codexquota"
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
@@ -77,6 +78,7 @@ type Manager struct {
 	// ChatGPT 账号登录，见 chatgpt.go。
 	chatgpt          *siwc.Manager
 	chatgptModelsErr string
+	codexQuota       *codexquota.Client // 剩余额度查询（可选，见 chatgpt.go）
 }
 
 // NewManager 读取设置文件。path 为 settings.json 的路径；base 为配置文件中的配置档。不使用钥匙串。

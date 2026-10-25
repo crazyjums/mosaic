@@ -187,9 +187,12 @@ func (a *App) LoginChatGPT(newAccount bool) (string, error) {
 
 func (a *App) CancelChatGPTLogin() { a.settings.CancelChatGPTLogin() }
 
-// GetChatGPTUsage 返回本应用最近 5 小时 / 7 天用掉的 ChatGPT 套餐额度，以及是否遇到过额度用完。
-// OpenAI 目前没有提供查询剩余额度的接口，所以这里是本应用自己记的账。
-func (a *App) GetChatGPTUsage() settings.ChatGPTUsage { return a.settings.ChatGPTUsage() }
+// GetChatGPTUsage 返回本应用最近 5 小时 / 7 天用掉的 ChatGPT 套餐额度、是否遇到过额度用完，
+// 以及（开启后）从 Codex 登录查到的剩余额度。
+func (a *App) GetChatGPTUsage() settings.ChatGPTUsage { return a.settings.ChatGPTUsage(a.context()) }
+
+// SetCodexQuota 开启或关闭"读取本机 Codex 登录查询剩余额度"（未公开接口，默认关闭）。
+func (a *App) SetCodexQuota(on bool) error { return a.settings.SetCodexQuota(on) }
 
 // OpenChatGPTUsage 在浏览器中打开 ChatGPT 的用量页面。地址是固定的，前端不能借此打开任意网址。
 func (a *App) OpenChatGPTUsage() {

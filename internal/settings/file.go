@@ -66,6 +66,10 @@ type File struct {
 	// MCPServers 是 MCP server 的连接配置（设置 → MCP）。
 	MCPServers []mcp.ServerConfig `json:"mcp_servers,omitempty"`
 
+	// CodexQuota 为 true 时，读取本机 Codex CLI 的登录信息查询 ChatGPT 套餐的剩余额度（见 internal/codexquota）。
+	// 用的是未公开的接口，所以默认关闭，由用户在 ChatGPT 账号设置里开启。
+	CodexQuota bool `json:"codex_quota,omitempty"`
+
 	// UseKeychain 为 true 时，厂商的 API Key 保存在系统钥匙串里，而不是本文件中。
 	UseKeychain bool `json:"use_keychain,omitempty"`
 

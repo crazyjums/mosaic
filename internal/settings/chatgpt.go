@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/crazyjums/myllmapp/internal/codexquota"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/siwc"
 )
@@ -36,22 +37,56 @@ type ChatGPTStatus struct {
 // ChatGPTUsageURL 是 ChatGPT 的用量页面。OpenAI 目前没有提供查询剩余额度的接口，只能让用户在这里查看。
 const ChatGPTUsageURL = "https://chatgpt.com/settings/usage"
 
-// ChatGPTUsage 是状态栏"ChatGPT 额度"显示的数据：本应用用掉的套餐额度（不是剩余额度，见 siwc/usage.go）。
+// ChatGPTUsage 是状态栏"ChatGPT 额度"显示的数据。
+//   - 本应用用掉的套餐额度（总是有，见 siwc/usage.go）；
+//   - 剩余额度（可选，开启"读取 Codex 登录查询剩余额度"后才有，见 internal/codexquota）。
 type ChatGPTUsage struct {
 	LoggedIn bool `json:"logged_in"`
 	siwc.UsageSummary
 	UsageURL string `json:"usage_url"`
+
+	QuotaEnabled bool              `json:"quota_enabled"`
+	Quota        *codexquota.Quota `json:"quota,omitempty"`
+	QuotaError   string            `json:"quota_error,omitempty"`
 }
 
-// ChatGPTUsage 返回本应用最近 5 小时 / 7 天用掉的套餐额度。
-func (m *Manager) ChatGPTUsage() ChatGPTUsage {
+// ChatGPTUsage 返回本应用用掉的套餐额度；开启了剩余额度查询时一并返回（有一分钟缓存）。
+func (m *Manager) ChatGPTUsage(ctx context.Context) ChatGPTUsage {
 	m.mu.Lock()
-	c := m.chatgpt
-	m.mu.Unlock()
-	if c == nil {
-		return ChatGPTUsage{UsageURL: ChatGPTUsageURL}
+	c, enabled := m.chatgpt, m.file.CodexQuota
+	if m.codexQuota == nil {
+		m.codexQuota = &codexquota.Client{}
 	}
-	return ChatGPTUsage{LoggedIn: c.LoggedIn(), UsageSummary: c.Usage(), UsageURL: ChatGPTUsageURL}
+	q := m.codexQuota
+	m.mu.Unlock()
+	out := ChatGPTUsage{UsageURL: ChatGPTUsageURL, QuotaEnabled: enabled}
+	if c != nil {
+		out.LoggedIn, out.UsageSummary = c.LoggedIn(), c.Usage()
+	}
+	if enabled {
+		if quota, err := q.Get(ctx); err != nil {
+			out.QuotaError = err.Error()
+		} else {
+			out.Quota = quota
+		}
+	}
+	return out
+}
+
+// SetCodexQuota 开启或关闭"读取 Codex 登录查询剩余额度"。
+func (m *Manager) SetCodexQuota(on bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	next := cloneFile(m.file)
+	next.CodexQuota = on
+	if err := m.persist(next); err != nil {
+		return err
+	}
+	m.file = next
+	if m.codexQuota != nil {
+		m.codexQuota.Invalidate()
+	}
+	return nil
 }
 
 // AttachChatGPT 关联登录管理器。必须在创建厂商目录（Catalog）之前调用，这样启动时就能选中已登录的 chatgpt。
