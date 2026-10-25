@@ -1,14 +1,13 @@
 import type { AssistantItem } from "../store/reducer";
 import { useChat } from "../store/chatStore";
 import ImageBlock from "./ImageBlock";
-import ScholarThinking from "./ScholarThinking";
 import Markdown from "./Markdown";
 import ThinkingCard from "./ThinkingCard";
 import ToolCallCard from "./ToolCallCard";
-import { t } from "../i18n";
 
 // 一条 assistant 消息 = 一次模型调用（一个 step）。按块的顺序渲染：思考、正文、图片、工具调用。
-export default function AssistantMessage({ item }: { item: AssistantItem }) {
+// omitAnswer：这条消息的正文已经作为"最终回答"显示在折叠区外面（见 TurnView），这里不再重复。
+export default function AssistantMessage({ item, omitAnswer = false }: { item: AssistantItem; omitAnswer?: boolean }) {
   const tools = useChat((s) => s.tools);
   const lastIndex = item.blocks.length - 1;
 
@@ -24,8 +23,10 @@ export default function AssistantMessage({ item }: { item: AssistantItem }) {
           case "thinking":
             return <ThinkingCard key={i} text={b.text} redacted={b.redacted} streaming={live} />;
           case "text":
+            if (omitAnswer) return null;
             return <Markdown key={i} text={b.text} streaming={live} />;
           case "image":
+            if (omitAnswer) return null;
             return <ImageBlock key={i} mediaType={b.mediaType} data={b.data} url={b.url} />;
           case "tool": {
             const t = tools[b.callId];
@@ -33,10 +34,6 @@ export default function AssistantMessage({ item }: { item: AssistantItem }) {
           }
         }
       })}
-      {/* 还没收到任何内容时显示思考动画；第一个内容到达后自动消失 */}
-      {item.streaming && item.blocks.length === 0 && <ScholarThinking since={item.startedAt} />}
-      {item.stopReason === "max_tokens" && <div className="text-xs text-warn">{t("输出达到 max_tokens 上限，被截断。")}</div>}
-      {item.stopReason === "refusal" && <div className="text-xs text-danger">{t("厂商拒绝了这次请求。")}</div>}
     </div>
   );
 }

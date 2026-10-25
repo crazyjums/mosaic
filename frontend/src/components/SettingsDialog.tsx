@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from
 import type { ModelMeta, ProviderInput, ProviderView, TestResult } from "../bridge";
 import { PRESETS, type Preset } from "../store/presets";
 import { useSettings } from "../store/settingsStore";
+import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
 import AppearanceSettings from "./AppearanceSettings";
 import ChatGPTAccount from "./ChatGPTAccount";
@@ -41,6 +42,7 @@ const CHATGPT_ENTRY = "\u0000chatgpt";
 
 export default function SettingsDialog() {
   const { open, tab, setTab, providers, error, hide } = useSettings();
+  const running = useChat((s) => s.running);
   // selected：正在编辑的配置档名称；null 表示"新建"
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -83,6 +85,12 @@ export default function SettingsDialog() {
             ✕
           </button>
         </div>
+        {/* 运行中也能打开设置：外观、状态栏等立即生效；改厂商、工作区、最大步数这类要等这一轮结束才能保存 */}
+        {running && (
+          <div className="border-b border-warn/40 bg-warn/10 px-6 py-1.5 text-xs text-warn">
+            {t("agent 正在运行：外观等设置可以照常修改；厂商、工作区、最大步数等运行参数要等这一轮结束（或点“停止”）后才能保存。")}
+          </div>
+        )}
         {/* 厂商页在自己的表单区域显示错误；其他页的错误显示在这里 */}
         {error && tab !== "providers" && <div className="border-b border-danger/40 bg-danger/10 px-6 py-2 text-sm text-danger">{error}</div>}
         {tab === "general" ? (

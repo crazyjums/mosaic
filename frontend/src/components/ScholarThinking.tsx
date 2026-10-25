@@ -1,20 +1,24 @@
 import { useEffect, useState } from "react";
 import { t } from "../i18n";
 
-// 等待模型响应时的动画：一位戴金丝眼镜、博士帽的学者，托着下巴思考，头顶冒出思考泡泡。
-// 收到第一个内容（思考、文本或工具调用）后，AssistantMessage 就不再渲染它。
+// 模型思考时的动画：一位戴金丝眼镜、博士帽的学者，托着下巴思考，头顶冒出思考泡泡。
+//
+// 四个阶段循环（每段 1.6 秒）：① 思考中（泡泡里三个点）→ ② 眨眼、身子轻微下沉 → ③ 冒出问号 → ④ 灵感灯泡。
+// 默认不展示思考过程的文字，模型在思考、调用工具期间一直显示这个动画（见 TurnView），开始输出最终回答后消失。
 //
 // 纯 SVG + CSS 动画（样式在 index.css 的 .scholar-*），不引入图片或动画库；
 // 泡泡等界面元素的颜色用 CSS 变量，跟随皮肤；系统开启"减少动态效果"时动画停止。
 
-const SYMBOLS = ["∑", "?", "π", "∫", "λ"];
+/** 四个阶段：dots 思考中、doze 眨眼下沉、question 问号、idea 灯泡。 */
+const PHASES = ["dots", "doze", "question", "idea"] as const;
 
-export default function ScholarThinking({ since }: { since?: number }) {
+export default function ScholarThinking({ since, label }: { since?: number; label?: string }) {
   const [now, setNow] = useState(Date.now());
-  const [symbol, setSymbol] = useState(0);
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const phase = PHASES[phaseIdx];
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
-    const sym = setInterval(() => setSymbol((i) => (i + 1) % SYMBOLS.length), 1600);
+    const sym = setInterval(() => setPhaseIdx((i) => (i + 1) % PHASES.length), 1600);
     return () => {
       clearInterval(timer);
       clearInterval(sym);
@@ -24,16 +28,32 @@ export default function ScholarThinking({ since }: { since?: number }) {
 
   return (
     <div className="flex items-center gap-3" role="status" aria-live="polite">
-      <svg className="scholar h-24 w-24 shrink-0" viewBox="0 0 120 112" aria-hidden="true">
-        {/* 思考泡泡：从小到大依次浮现，最大的里面轮换公式符号 */}
+      <svg className={`scholar scholar-phase-${phase} h-24 w-24 shrink-0`} viewBox="0 0 120 112" aria-hidden="true" data-phase={phase}>
+        {/* 思考泡泡：从小到大依次浮现；最大的泡泡里按阶段显示 三个点 / 问号 / 灯泡 */}
         <g className="scholar-bubbles">
           <circle className="scholar-bubble b1" cx="88" cy="40" r="2.2" />
           <circle className="scholar-bubble b2" cx="95" cy="30" r="3.4" />
           <g className="scholar-bubble b3">
             <ellipse cx="104" cy="15" rx="13" ry="10" />
-            <text x="104" y="19.5" textAnchor="middle" className="scholar-symbol">
-              {SYMBOLS[symbol]}
-            </text>
+            {(phase === "dots" || phase === "doze") && (
+              <g className="scholar-dots">
+                <circle cx="98" cy="15" r="1.8" />
+                <circle cx="104" cy="15" r="1.8" />
+                <circle cx="110" cy="15" r="1.8" />
+              </g>
+            )}
+            {phase === "question" && (
+              <text x="104" y="20" textAnchor="middle" className="scholar-symbol scholar-pop">
+                ?
+              </text>
+            )}
+            {phase === "idea" && (
+              <g className="scholar-pop">
+                <path d="M104 8.5 a4.6 4.6 0 0 1 2.8 8.2 v2 h-5.6 v-2 a4.6 4.6 0 0 1 2.8 -8.2 Z" fill="#facc15" stroke="#ca8a04" strokeWidth="0.6" />
+                <rect x="101.6" y="19.2" width="4.8" height="1.6" rx="0.6" fill="#a8a29e" />
+                <path d="M96.5 9 l-1.8 -1.2 M111.5 9 l1.8 -1.2 M104 5.5 v-2" stroke="#facc15" strokeWidth="0.9" strokeLinecap="round" />
+              </g>
+            )}
           </g>
         </g>
 
@@ -53,11 +73,18 @@ export default function ScholarThinking({ since }: { since?: number }) {
           {/* 眉毛：一边挑起，像在琢磨 */}
           <path d="M47.5 44.5 Q52 42 56 44" stroke="#8a8f98" strokeWidth="1.6" fill="none" strokeLinecap="round" />
           <path className="scholar-brow" d="M64 43 Q68.5 40 72.5 42.5" stroke="#8a8f98" strokeWidth="1.6" fill="none" strokeLinecap="round" />
-          {/* 眼睛（会眨） */}
-          <g className="scholar-eyes">
-            <circle cx="52" cy="51.5" r="1.7" fill="#2b2b2b" />
-            <circle cx="68" cy="51.5" r="1.7" fill="#2b2b2b" />
-          </g>
+          {/* 眼睛（会眨）；doze 阶段闭眼，画成两道弧线 */}
+          {phase === "doze" ? (
+            <g stroke="#2b2b2b" strokeWidth="1.4" fill="none" strokeLinecap="round">
+              <path d="M49.5 52 Q52 54 54.5 52" />
+              <path d="M65.5 52 Q68 54 70.5 52" />
+            </g>
+          ) : (
+            <g className="scholar-eyes">
+              <circle cx="52" cy="51.5" r="1.7" fill="#2b2b2b" />
+              <circle cx="68" cy="51.5" r="1.7" fill="#2b2b2b" />
+            </g>
+          )}
           {/* 金丝眼镜 */}
           <g fill="rgba(255,255,255,0.12)" stroke="#c9a227" strokeWidth="1.5">
             <circle cx="52" cy="51.5" r="6.3" />
@@ -87,7 +114,7 @@ export default function ScholarThinking({ since }: { since?: number }) {
         </g>
       </svg>
       <div className="text-sm text-muted">
-        <div className="font-medium text-fg">{t("正在思考…")}</div>
+        <div className="font-medium text-fg">{label ?? t("正在思考…")}</div>
         {secs !== null && secs >= 1 && <div className="text-xs tabular-nums">{t("已等待 {n} 秒", { n: secs })}</div>}
       </div>
     </div>

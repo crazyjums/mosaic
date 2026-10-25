@@ -25,6 +25,8 @@ export interface UIPrefs {
   customSkins: Skin[];
   /** 是否显示右侧的上下文明细面板（窗口足够宽时） */
   contextPanel: boolean;
+  /** 思考和工具调用的过程：collapsed = 默认折叠成一行摘要，只显示动画和最终回答；expanded = 全部展开 */
+  process: "collapsed" | "expanded";
   /** 左侧会话栏是否收起（收起后只剩一列图标） */
   sidebarCollapsed: boolean;
 }
@@ -41,6 +43,7 @@ export const DEFAULT_PREFS: UIPrefs = {
   customSkins: [],
   contextPanel: true,
   sidebarCollapsed: false,
+  process: "collapsed",
 };
 
 /** 字号作用在根元素上：Tailwind 的尺寸都是 rem，整个界面会等比缩放。 */
@@ -71,6 +74,7 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     skin: pick(r.skin, ids, d.skin),
     customSkins,
     contextPanel: typeof r.contextPanel === "boolean" ? r.contextPanel : d.contextPanel,
+    process: pick(r.process, ["collapsed", "expanded"], d.process),
     sidebarCollapsed: typeof r.sidebarCollapsed === "boolean" ? r.sidebarCollapsed : d.sidebarCollapsed,
   };
 }

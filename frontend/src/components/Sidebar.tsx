@@ -34,11 +34,11 @@ export default function Sidebar() {
         <button className="rail-btn" onClick={toggle} title={t("展开会话栏（Ctrl/⌘+B）")} aria-label={t("展开会话栏（Ctrl/⌘+B）")}>
           »
         </button>
-        <button className="rail-btn" onClick={() => void newSession()} disabled={running} title={t("＋ 新会话")} aria-label={t("＋ 新会话")}>
+        <button className="rail-btn" onClick={() => void newSession()} title={t("＋ 新会话")} aria-label={t("＋ 新会话")}>
           ＋
         </button>
         <div className="flex-1" />
-        <button className="rail-btn" onClick={() => void openSettings()} disabled={running} title={t("⚙ 设置")} aria-label={t("⚙ 设置")}>
+        <button className="rail-btn" onClick={() => void openSettings()} title={t("⚙ 设置")} aria-label={t("⚙ 设置")}>
           ⚙
         </button>
       </aside>
@@ -59,7 +59,6 @@ export default function Sidebar() {
         <button
           className="w-full rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-panel-2 disabled:opacity-50"
           onClick={() => void newSession()}
-          disabled={running}
         >
           {t("＋ 新会话")}
         </button>
@@ -71,7 +70,7 @@ export default function Sidebar() {
           <div
             key={s.id}
             className={`group flex cursor-pointer items-center rounded-md px-2 py-1.5 text-sm ${s.id === sessionId ? "bg-panel-2" : "hover:bg-panel-2/60"}`}
-            onClick={() => editing !== s.id && s.id !== sessionId && !running && void loadSession(s.id)}
+            onClick={() => editing !== s.id && s.id !== sessionId && void loadSession(s.id)}
           >
             <div className="min-w-0 flex-1">
               <div className="flex">
@@ -121,8 +120,6 @@ export default function Sidebar() {
         <button
           className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50"
           onClick={() => void openSettings()}
-          disabled={running}
-          title={running ? t("运行中不能修改设置") : undefined}
         >
           {t("⚙ 设置")}
         </button>

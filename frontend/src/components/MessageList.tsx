@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
-import AssistantMessage from "./AssistantMessage";
+import type { AssistantItem, TimelineItem } from "../store/reducer";
+import TurnView from "./TurnView";
+import ScholarThinking from "./ScholarThinking";
 import WorkspacePicker from "./WorkspacePicker";
 import { t } from "../i18n";
 
@@ -17,6 +19,7 @@ const REASON: Record<string, string> = {
 // 否则用户往上翻看历史时会被新内容不停地拽回底部。
 export default function MessageList() {
   const timeline = useChat((s) => s.timeline);
+  const running = useChat((s) => s.running);
   const backendKind = useChat((s) => s.backendKind);
   const isDemoModel = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "fake");
   const ref = useRef<HTMLDivElement>(null);
@@ -36,7 +39,12 @@ export default function MessageList() {
     <div ref={ref} onScroll={onScroll} className="min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-6 py-6">
         {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} />}
-        {timeline.map((it) => {
+        {group(timeline).map((it, idx, all) => {
+          if (Array.isArray(it)) {
+            // 只有最后一组、且这一轮还在运行时算"进行中"
+            const live = running && idx === all.length - 1;
+            return <TurnView key={it[0].id} items={it} live={live} />;
+          }
           switch (it.kind) {
             case "user":
               return (
@@ -44,8 +52,6 @@ export default function MessageList() {
                   <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent/15 px-4 py-2 text-[15px]">{it.text}</div>
                 </div>
               );
-            case "assistant":
-              return <AssistantMessage key={it.id} item={it} />;
             case "error":
               return (
                 <div key={it.id} className={`rounded-lg border px-3 py-2 text-sm ${it.fatal ? "border-danger/40 bg-danger/10 text-danger" : "border-warn/40 bg-warn/10 text-warn"}`}>
@@ -75,9 +81,24 @@ export default function MessageList() {
               );
           }
         })}
+        {/* 刚发出消息、模型还没开始响应 */}
+        {running && timeline[timeline.length - 1]?.kind === "user" && <ScholarThinking />}
       </div>
     </div>
   );
+}
+
+/** 把连续的 assistant 消息合成一组（一轮里模型的全部输出），其他条目原样保留。 */
+function group(timeline: TimelineItem[]): (TimelineItem | AssistantItem[])[] {
+  const out: (TimelineItem | AssistantItem[])[] = [];
+  for (const it of timeline) {
+    const prev = out[out.length - 1];
+    if (it.kind === "assistant") {
+      if (Array.isArray(prev)) prev.push(it);
+      else out.push([it]);
+    } else out.push(it);
+  }
+  return out;
 }
 
 function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {

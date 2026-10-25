@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { backend, type PermissionMode, type ProfileInfo, type SessionSummary, type Status, type WorkspaceInfo } from "../bridge";
 import type { Decision } from "../protocol/events";
 import { applyEvent, initialState, type ChatState } from "./reducer";
+import { t } from "../i18n";
 
 interface Store extends ChatState {
   backendKind: "wails" | "demo";
@@ -68,6 +69,22 @@ export const useChat = create<Store>((set, get) => {
     } catch (e) {
       set({ toast: String(e instanceof Error ? e.message : e) });
     }
+  };
+
+  // 运行中切换会话 / 新建会话：后端一次只跑一轮（运行中会返回 busy），所以先确认、停止当前这一轮，
+  // 等后端真正停下来（最多几秒）再继续。返回 false 表示用户取消了。
+  const stopRunning = async (): Promise<boolean> => {
+    if (!get().running) return true;
+    if (!confirm(t("当前会话还在运行。停止它并继续？"))) return false;
+    await backend().cancel();
+    for (let i = 0; i < 50; i++) {
+      if (!(await backend().getStatus()).running) {
+        set({ running: false });
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(t("停止超时，请稍后再试"));
   };
 
   const refreshMeta = async () => {
@@ -137,6 +154,7 @@ export const useChat = create<Store>((set, get) => {
 
     newSession: () =>
       guard(async () => {
+        if (!(await stopRunning())) return;
         const st = await backend().newSession();
         set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", ...wsFrom(st) });
         void get().refreshWorkspace();
@@ -144,7 +162,7 @@ export const useChat = create<Store>((set, get) => {
 
     loadSession: (id) =>
       guard(async () => {
-        if (get().running) throw new Error("当前一轮还在运行，请先停止");
+        if (!(await stopRunning())) return;
         // 先切换到目标会话再调用后端：后端会在调用返回之前就开始推送重放事件，
         // 提前设置 sessionId 才能让 reducer 接收它们、同时丢弃旧会话的残留事件。
         const prev = get();

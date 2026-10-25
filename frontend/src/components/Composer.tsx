@@ -21,6 +21,15 @@ export default function Composer() {
     if (!running && (!active || active === document.body)) ref.current?.focus();
   }, [running]);
 
+  // 高度跟着内容变化：按行数算不准（长句自动换行也会占多行），所以按 scrollHeight 算。
+  // 先清掉高度再量，内容变少时才能缩回去；上限由 CSS 的 max-h 控制，超出后出现滚动条。
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
+
   const submit = () => {
     const t = text.trim();
     if (!t || running) return;
@@ -41,8 +50,8 @@ export default function Composer() {
         <textarea
           ref={ref}
           autoFocus
-          className="max-h-48 min-h-[24px] flex-1 resize-none bg-transparent py-1 text-[15px] outline-none placeholder:text-muted"
-          rows={Math.min(8, Math.max(1, text.split("\n").length))}
+          className="max-h-60 min-h-[24px] flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[15px] outline-none placeholder:text-muted"
+          rows={1}
           placeholder={
             running
               ? waiting
