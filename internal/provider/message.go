@@ -1,6 +1,9 @@
 package provider
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Role 是消息角色。中立模型只有两种角色：工具结果作为 user 消息里的 tool_result 块存在。
 //
@@ -91,7 +94,25 @@ func (m Message) HasAttachment() bool {
 // IsUserInput 判断这是不是用户的一次发言（开启新的一轮）：user 消息里有文字或附件。
 // 只含 tool_result 的 user 消息是工具结果，不算。
 func (m Message) IsUserInput() bool {
-	return m.Role == RoleUser && (m.Text() != "" || m.HasAttachment())
+	return m.Role == RoleUser && !m.IsSummary() && (m.Text() != "" || m.HasAttachment())
+}
+
+// SummaryHeader 是上下文压缩生成的"前情摘要"消息的开头。它是一条 user 消息，
+// 但不是用户说的话：不开启新的一轮、不进标题、回放时显示成"上下文已压缩"的提示。
+const SummaryHeader = "[Summary of the earlier conversation — the original messages were compacted to save context]\n"
+
+// IsSummary 判断这是不是压缩产生的摘要消息。
+func (m Message) IsSummary() bool {
+	return m.Role == RoleUser && len(m.Content) == 1 && m.Content[0].Type == BlockText &&
+		m.Content[0].Attachment == "" && strings.HasPrefix(m.Content[0].Text, SummaryHeader)
+}
+
+// SummaryText 返回摘要消息里去掉开头标记后的正文。
+func (m Message) SummaryText() string {
+	if !m.IsSummary() {
+		return ""
+	}
+	return strings.TrimPrefix(m.Content[0].Text, SummaryHeader)
 }
 
 // ToolCalls 返回消息中的所有工具调用块。

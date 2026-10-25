@@ -186,6 +186,8 @@ type ContextCompacted struct {
 	AfterTokens     int    `json:"after_tokens"`
 	RemovedMessages int    `json:"removed_messages"`
 	Summary         string `json:"summary,omitempty"`
+	// Replay 为 true 表示这是恢复会话时从历史里的摘要消息重放出来的，token 数未知（为 0）。
+	Replay bool `json:"replay,omitempty"`
 }
 
 // ---- 错误 ----
