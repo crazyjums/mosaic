@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, UpdateInfo, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -54,6 +54,10 @@ interface GoApp {
   GetChatGPTUsage(): Promise<ChatGPTUsage>;
   SetCodexQuota(on: boolean): Promise<void>;
   OpenChatGPTUsage(): Promise<void>;
+  GetVersion(): Promise<string>;
+  CheckUpdate(): Promise<UpdateInfo>;
+  InstallUpdate(): Promise<void>;
+  GetUpdateStatus(): Promise<UpdateStatus>;
   GetContextBreakdown(): Promise<ContextBreakdown>;
   ListTools(): Promise<ToolInfo[] | null>;
   SetDisabledTools(names: string[]): Promise<void>;
@@ -129,6 +133,10 @@ export function createWailsBackend(): Backend {
     getChatGPTUsage: () => app.GetChatGPTUsage(),
     setCodexQuota: (on) => app.SetCodexQuota(on),
     openChatGPTUsage: () => app.OpenChatGPTUsage(),
+    getVersion: () => app.GetVersion(),
+    checkUpdate: () => app.CheckUpdate(),
+    installUpdate: () => app.InstallUpdate(),
+    getUpdateStatus: () => app.GetUpdateStatus(),
     getContextBreakdown: () => app.GetContextBreakdown(),
     listTools: async () => (await app.ListTools()) ?? [],
     setDisabledTools: (names) => app.SetDisabledTools(names),

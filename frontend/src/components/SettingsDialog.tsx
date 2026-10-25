@@ -4,6 +4,7 @@ import { PRESETS, type Preset } from "../store/presets";
 import { useSettings } from "../store/settingsStore";
 import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
+import AboutSettings from "./AboutSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import ChatGPTAccount from "./ChatGPTAccount";
 import DataSettings from "./DataSettings";
@@ -23,6 +24,7 @@ const TABS = [
   ["appearance", "外观"],
   ["statusline", "状态栏"],
   ["data", "数据"],
+  ["about", "关于"],
 ] as const;
 
 // 设置：模型厂商。左侧是配置档列表，右侧是编辑表单。
@@ -97,6 +99,8 @@ export default function SettingsDialog() {
           <GeneralSettings />
         ) : tab === "prompt" ? (
           <PromptSettings />
+        ) : tab === "about" ? (
+          <AboutSettings />
         ) : tab === "data" ? (
           <DataSettings />
         ) : tab === "statusline" ? (

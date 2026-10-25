@@ -1,0 +1,127 @@
+# 发布流水线：推送形如 v1.2.3 的 tag 时，在三个平台分别打包，生成并签名更新清单，创建 GitHub Release。
+#
+# 一次性准备（见 docs/design/auto-update.md）：
+#   1. go run ./cmd/mkmanifest genkey
+#   2. 公钥写进 internal/update/pubkey.txt 并提交
+#   3. 私钥保存为仓库的加密变量 UPDATE_SIGNING_KEY（Settings → Secrets and variables → Actions）
+# 发布：git tag v1.2.3 && git push origin v1.2.3
+#
+# 带连字符的 tag（v1.2.3-beta.1）会标成预发布，不会成为"最新版本"，所以正式版用户不会收到它。
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  # 第一步：确认签名密钥配置正确。没配好就在这里失败，而不是发布出一个谁都更新不了的版本。
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: 检查签名密钥
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: go run ./cmd/mkmanifest check-key
+
+  build:
+    needs: preflight
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows/amd64
+            tags: ""
+            src: build/bin/myllmapp.exe
+            out: myllmapp-windows-amd64.exe
+          - os: ubuntu-latest
+            platform: linux/amd64
+            tags: webkit2_41
+            src: build/bin/myllmapp
+            out: myllmapp-linux-amd64
+          - os: macos-latest
+            platform: darwin/universal
+            tags: ""
+            src: build/bin/myllmapp.app
+            out: myllmapp-darwin-universal.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Linux 系统依赖
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: 安装 Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+      - name: 测试
+        run: |
+          go test ./...
+          cd frontend && npm ci --no-audit --no-fund && npx tsc --noEmit -p . && npx vitest run
+      - name: 打包
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          args=(build -platform "${{ matrix.platform }}" -clean -trimpath -ldflags "-X github.com/crazyjums/myllmapp/internal/update.Version=${VERSION}")
+          if [ -n "${{ matrix.tags }}" ]; then args+=(-tags "${{ matrix.tags }}"); fi
+          wails "${args[@]}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ditto -c -k --keepParent "${{ matrix.src }}" "dist/${{ matrix.out }}"
+          else
+            cp "${{ matrix.src }}" "dist/${{ matrix.out }}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: dist/${{ matrix.out }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: 生成并签名更新清单
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$UPDATE_SIGNING_KEY" || { echo "缺少加密变量 UPDATE_SIGNING_KEY"; exit 1; }
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          range=${prev:+$prev..}${GITHUB_REF_NAME}
+          git log --no-merges --pretty='- %s' "$range" > notes.md
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          go run ./cmd/mkmanifest sign -version "${GITHUB_REF_NAME}" -base-url "$base" \
+            -notes-file notes.md -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" -out dist \
+            -asset windows-amd64=dist/myllmapp-windows-amd64.exe \
+            -asset linux-amd64=dist/myllmapp-linux-amd64
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" $flags --title "$GITHUB_REF_NAME" --notes-file notes.md dist/*

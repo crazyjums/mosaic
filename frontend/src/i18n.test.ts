@@ -5,8 +5,8 @@ import { EN, setLanguage, t } from "./i18n";
 const sources = import.meta.glob(
   [
     "./App.tsx",
-    "./components/{Sidebar,WorkspacePicker,ScholarThinking,ChatGPTQuota,ContextPanel,MessageList,PermissionDialog,ToolCallCard,ThinkingCard,AssistantMessage,Composer,StatusBar,PermissionModeSelect}.tsx",
-    "./components/{SettingsDialog,ChatGPTAccount,AppearanceSettings,SkinSettings,PermissionsSettings,MCPSettings,GeneralSettings,StatusLineSettings}.tsx",
+    "./components/{Sidebar,WorkspacePicker,ScholarThinking,ChatGPTQuota,ContextPanel,MessageList,PermissionDialog,ToolCallCard,ThinkingCard,AssistantMessage,Composer,StatusBar,PermissionModeSelect,TurnView,EditableTitle,MediaView,UpdateBanner}.tsx",
+    "./components/{SettingsDialog,ChatGPTAccount,AppearanceSettings,SkinSettings,PermissionsSettings,MCPSettings,GeneralSettings,StatusLineSettings,AboutSettings}.tsx",
   ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;

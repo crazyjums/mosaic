@@ -8,11 +8,13 @@ import ContextPanel from "./components/ContextPanel";
 import MessageList from "./components/MessageList";
 import PermissionDialog from "./components/PermissionDialog";
 import SettingsDialog from "./components/SettingsDialog";
+import UpdateBanner from "./components/UpdateBanner";
 import Sidebar from "./components/Sidebar";
 import EditableTitle from "./components/EditableTitle";
 import StatusBar from "./components/StatusBar";
 import { t } from "./i18n";
 import { useChat } from "./store/chatStore";
+import { useUpdate } from "./store/updateStore";
 import { useUIPrefs } from "./store/uiPrefs";
 
 export default function App() {
@@ -29,6 +31,7 @@ export default function App() {
   useEffect(() => {
     void loadPrefs();
     void init();
+    void useUpdate.getState().init();
   }, [init, loadPrefs]);
 
   return (
@@ -48,6 +51,7 @@ export default function App() {
             {t("上下文")}
           </button>
         </header>
+        <UpdateBanner />
         {toast && (
           <div className="flex items-center justify-between border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">
             <span>{toast}</span>

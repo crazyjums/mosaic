@@ -14,6 +14,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/settings"
+	"github.com/crazyjums/myllmapp/internal/update"
 	"github.com/crazyjums/myllmapp/internal/workspace"
 )
 
@@ -35,6 +36,9 @@ type App struct {
 
 	ctx         context.Context
 	unsubscribe func()
+
+	upd *update.Updater
+	us  updateState
 }
 
 // New 创建绑定对象。emit 为 nil 时使用 Wails 的 runtime.EventsEmit。

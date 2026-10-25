@@ -366,6 +366,12 @@ export function createDemoBackend(): Backend {
     setCodexQuota: async () => {
       throw new Error(demoOnly);
     },
+    getVersion: async () => "dev",
+    checkUpdate: async () => ({ current: "dev", latest: "", available: false, manual: false, disabled: "浏览器演示模式不检查更新" }),
+    installUpdate: async () => {
+      throw new Error(demoOnly);
+    },
+    getUpdateStatus: async () => ({ state: "idle" as const, done: 0, total: 0 }),
     openChatGPTUsage: async () => {
       window.open("https://chatgpt.com/settings/usage", "_blank", "noopener");
     },
