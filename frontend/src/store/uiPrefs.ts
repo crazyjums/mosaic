@@ -27,6 +27,10 @@ export interface UIPrefs {
   contextPanel: boolean;
   /** 思考和工具调用的过程：collapsed = 默认折叠成一行摘要，只显示动画和最终回答；expanded = 全部展开 */
   process: "collapsed" | "expanded";
+  /** 检查更新：auto = 启动时和每隔几小时自动检查并提示；off = 只在"关于"里手动检查 */
+  updateCheck: "auto" | "off";
+  /** 用户选择"跳过此版本"的版本号：这个版本不再弹提示（有更新的版本时仍会提示） */
+  skippedVersion: string;
   /** 左侧会话栏是否收起（收起后只剩一列图标） */
   sidebarCollapsed: boolean;
 }
@@ -43,6 +47,8 @@ export const DEFAULT_PREFS: UIPrefs = {
   customSkins: [],
   contextPanel: true,
   sidebarCollapsed: false,
+  updateCheck: "auto",
+  skippedVersion: "",
   process: "collapsed",
 };
 
@@ -74,6 +80,8 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     skin: pick(r.skin, ids, d.skin),
     customSkins,
     contextPanel: typeof r.contextPanel === "boolean" ? r.contextPanel : d.contextPanel,
+    updateCheck: pick(r.updateCheck, ["auto", "off"], d.updateCheck),
+    skippedVersion: typeof r.skippedVersion === "string" ? r.skippedVersion.slice(0, 40) : d.skippedVersion,
     process: pick(r.process, ["collapsed", "expanded"], d.process),
     sidebarCollapsed: typeof r.sidebarCollapsed === "boolean" ? r.sidebarCollapsed : d.sidebarCollapsed,
   };

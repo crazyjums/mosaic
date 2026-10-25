@@ -329,6 +329,13 @@ export interface Backend {
   setCodexQuota(on: boolean): Promise<void>;
   /** 在浏览器中打开 ChatGPT 的用量页面（地址由后端固定） */
   openChatGPTUsage(): Promise<void>;
+  /** 当前版本号；开发构建是 "dev" */
+  getVersion(): Promise<string>;
+  /** 检查更新：网络或签名错误以异常返回；disabled 非空表示更新功能不可用（开发版 / 没配置公钥） */
+  checkUpdate(): Promise<UpdateInfo>;
+  /** 下载并安装最近一次检查到的版本，然后重启；立即返回，进度用 getUpdateStatus 轮询 */
+  installUpdate(): Promise<void>;
+  getUpdateStatus(): Promise<UpdateStatus>;
   // ---- 上下文明细 ----
   getContextBreakdown(): Promise<ContextBreakdown>;
   // ---- 设置：权限与工具 ----
@@ -355,4 +362,24 @@ export interface Backend {
   setUseKeychain(on: boolean): Promise<KeychainStatus>;
   /** 订阅事件，返回取消订阅函数 */
   onEvent(cb: (ev: AgentEvent) => void): () => void;
+}
+
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  notes?: string;
+  pub_date?: string;
+  /** 这个平台不能自动更新（macOS），需要去 page 手动下载 */
+  manual: boolean;
+  page?: string;
+  size?: number;
+  disabled?: string;
+}
+
+export interface UpdateStatus {
+  state: "idle" | "downloading" | "installing" | "restarting" | "error";
+  done: number;
+  total: number;
+  error?: string;
 }
