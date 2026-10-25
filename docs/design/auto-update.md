@@ -75,7 +75,7 @@ sequenceDiagram
 
 ### 日志从哪来
 
-1. `CHANGELOG.md`：**手写，面向用户**，不要写内部实现细节。发布前把 `[Unreleased]` 的内容挪到新版本的小节下，再打 tag。
+1. `CHANGELOG.md`：**手写，面向用户**，不要写内部实现细节。发布前把 `[Unreleased]` 的内容挪到新版本的小节下，再打 tag。程序会把 `CHANGELOG.md` 打包进自己，设置 → 关于里的"版本历史"只显示已经有小节的版本（`[Unreleased]` 不显示），而已发布的程序里改不了；所以发布流水线的 preflight 会在正式版的 tag 缺少对应小节时直接失败（预发布 tag 不检查），`internal/update` 里还有一条测试检查 CHANGELOG 格式。
 2. CI 里 `mkmanifest sign -changelog CHANGELOG.md -commits-file commits.txt` 解析它，取最近 10 个版本写进清单的 `releases`，同时生成 GitHub Release 的正文。
 3. 如果 `CHANGELOG.md` 里没有本版本的小节，自动退回用提交标题生成，并在 Actions 里输出警告 `CHANGELOG.md 里没有 x.y.z 的小节`。能发布，但自动生成的日志远不如人写的好读，建议补写。
 
