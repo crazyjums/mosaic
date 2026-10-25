@@ -34,7 +34,8 @@ jobs:
   build:
     needs: preflight
     strategy:
-      fail-fast: true
+      # 不要因为一个平台失败就取消其他平台：一次跑完才能看到所有平台的问题。
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest

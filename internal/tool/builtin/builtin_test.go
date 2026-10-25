@@ -156,7 +156,11 @@ func TestShell(t *testing.T) {
 	if !r.IsError || !strings.Contains(r.Output, "exit code 3") {
 		t.Fatalf("exit 3: %+v", r)
 	}
-	r = run(t, reg, ws, "shell", `{"command":"pwd"}`)
+	// pwd 的输出要用足够大的输出上限：macOS 的临时目录路径很长（/var/folders/…），
+	// 默认测试注册表的 64 字节上限会把末尾的目录名截掉，导致误判。
+	big := tool.NewRegistry()
+	Register(big, Options{ShellTimeout: 2 * time.Second})
+	r = run(t, big, ws, "shell", `{"command":"pwd"}`)
 	if !strings.Contains(r.Output, filepath.Base(ws)) {
 		t.Fatalf("应在工作区执行: %+v", r)
 	}
