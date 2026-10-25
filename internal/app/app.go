@@ -322,13 +322,17 @@ func (a *App) SetUseKeychain(on bool) (settings.KeychainStatus, error) {
 //
 // 为什么不阻塞到本轮结束：Wails 的方法调用对前端来说是一个 Promise，一轮对话可能持续几分钟，
 // 期间还需要调用 RespondPermission；异步返回让前端的调用模型保持简单（"发出去，然后听事件"）。
-func (a *App) Send(text string) error {
+func (a *App) Send(text string) error { return a.SendMessage(text, nil) }
+
+// SendMessage 发送一条带附件的消息（图片、文本文件）。附件的校验在内核里（core.buildUserMessage）：
+// 不合格时发一个 attachment_error 事件，这一轮不会开始。
+func (a *App) SendMessage(text string, attachments []core.Attachment) error {
 	if a.engine.Status().Running {
 		return core.ErrBusy
 	}
 	go func() {
 		// 极少数情况下两次 Send 几乎同时到达，第二次会在这里拿到 ErrBusy，通过错误事件告知前端。
-		if _, err := a.engine.Send(a.context(), text); err != nil {
+		if _, err := a.engine.SendInput(a.context(), core.UserInput{Text: text, Attachments: attachments}); err != nil {
 			code := "send_failed"
 			if errors.Is(err, core.ErrBusy) {
 				code = "busy"

@@ -66,6 +66,13 @@ func (s *Session) appendMessage(m provider.Message) {
 	if s.Title == "" && m.Role == provider.RoleUser {
 		if t := m.Text(); t != "" {
 			s.Title = truncateRunes(t, 40)
+		} else {
+			for _, b := range m.Content {
+				if b.Attachment != "" { // 只发了附件：用第一个附件的文件名做标题
+					s.Title = truncateRunes(b.Attachment, 40)
+					break
+				}
+			}
 		}
 	}
 }

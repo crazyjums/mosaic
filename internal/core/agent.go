@@ -111,6 +111,11 @@ func (e emitter) emit(messageID string, p event.Payload) {
 //
 // Run 会修改 sess（追加消息、累计用量）。调用方需保证同一会话同一时间只有一个 Run。
 func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult {
+	return a.RunInput(ctx, sess, UserInput{Text: input})
+}
+
+// RunInput 和 Run 一样，但用户的发言可以带附件。
+func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnResult {
 	em := emitter{pub: a.cfg.Publisher, sessionID: sess.ID, agentID: a.cfg.ID, parentID: a.cfg.ParentID}
 	res := TurnResult{TurnID: event.NewID("turn")}
 
@@ -128,9 +133,15 @@ func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult
 		return res
 	}
 
+	// 附件在这里校验：不合格时这一轮还没开始，不留半截历史。
+	userMsg, err := buildUserMessage(in)
+	if err != nil {
+		em.emit("", event.Error{Code: "attachment_error", Message: err.Error(), Fatal: true})
+		return end(event.TurnError, err)
+	}
 	em.emit("", event.TurnStart{TurnID: res.TurnID, Provider: a.cfg.Provider.Name(), Model: a.cfg.Model})
-	sess.appendMessage(provider.UserText(input))
-	em.emit("", event.UserMessage{Text: input})
+	sess.appendMessage(userMsg)
+	em.emit("", event.UserMessage{Text: in.Text, Attachments: attachmentInfos(userMsg)})
 
 	for step := 1; ; step++ {
 		// 保险丝：超过最大步数直接停止。此时最后一条消息是工具结果，下次用户发言时模型能看到完整上下文。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/crazyjums/myllmapp/internal/core"
@@ -168,5 +169,36 @@ func TestSkillsPromptIsAppendedPerWorkspace(t *testing.T) {
 	}
 	if workspaces[0] != ws {
 		t.Fatalf("应按会话的工作区生成: %v", workspaces)
+	}
+}
+
+// 带附件发送：user_message 事件带附件摘要（文本不带内容），历史里保存完整附件块；附件不合格时这一轮不开始。
+func TestSendInputWithAttachments(t *testing.T) {
+	h := newHarness(t, fake.Script{}, 0, allow)
+	res, err := h.engine.SendInput(context.Background(), core.UserInput{Text: "看看", Attachments: []core.Attachment{{Name: "n.md", Text: "# 笔记"}}})
+	if err != nil || res.Reason != event.TurnCompleted {
+		t.Fatalf("send: %v %+v", err, res)
+	}
+	users := payloads[event.UserMessage](h.rec)
+	if len(users) != 1 || users[0].Text != "看看" || len(users[0].Attachments) != 1 || users[0].Attachments[0].Name != "n.md" || users[0].Attachments[0].Data != "" {
+		t.Fatalf("user_message: %+v", users)
+	}
+	saved, _ := h.store.LoadSession(context.Background(), h.engine.Status().SessionID)
+	if len(saved.Messages) == 0 || !strings.Contains(saved.Messages[0].Content[1].Text, "# 笔记") {
+		t.Fatalf("历史里要有完整的附件内容: %+v", saved.Messages)
+	}
+
+	before := len(saved.Messages)
+	res, err = h.engine.SendInput(context.Background(), core.UserInput{Text: "x", Attachments: []core.Attachment{{Name: "b.bin", Text: "a\x00b"}}})
+	if err != nil || res.Reason != event.TurnError || !errors.Is(res.Err, core.ErrAttachment) {
+		t.Fatalf("不合格的附件应让这一轮以错误结束: %v %+v", err, res)
+	}
+	errs := payloads[event.Error](h.rec)
+	if len(errs) == 0 || errs[len(errs)-1].Code != "attachment_error" {
+		t.Fatalf("应发 attachment_error 事件: %+v", errs)
+	}
+	saved, _ = h.store.LoadSession(context.Background(), h.engine.Status().SessionID)
+	if len(saved.Messages) != before {
+		t.Fatal("不合格的附件不应留下半截历史")
 	}
 }

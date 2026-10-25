@@ -54,6 +54,10 @@ type Block struct {
 	// image：媒体类型和 base64 数据。
 	MediaType string `json:"media_type,omitempty"`
 	ImageData string `json:"image_data,omitempty"`
+
+	// Attachment 非空表示这个 text / image 块来自用户添加的附件，值是原文件名。
+	// 发给模型时和普通块一样处理；区别只在于界面和标题：附件显示成"附件条"，而不是用户打的字。
+	Attachment string `json:"attachment,omitempty"`
 }
 
 // Message 是一条对话消息。
@@ -62,15 +66,32 @@ type Message struct {
 	Content []Block `json:"content"`
 }
 
-// Text 拼接消息中所有文本块，常用于标题生成、日志、测试断言。
+// Text 拼接消息中所有文本块（不含附件），常用于标题生成、日志、测试断言。
+// 附件的文字内容不算"用户说的话"：它可能是一整个文件，不应该出现在标题和用户气泡里。
 func (m Message) Text() string {
 	var s string
 	for _, b := range m.Content {
-		if b.Type == BlockText {
+		if b.Type == BlockText && b.Attachment == "" {
 			s += b.Text
 		}
 	}
 	return s
+}
+
+// HasAttachment 报告消息里有没有附件块。
+func (m Message) HasAttachment() bool {
+	for _, b := range m.Content {
+		if b.Attachment != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsUserInput 判断这是不是用户的一次发言（开启新的一轮）：user 消息里有文字或附件。
+// 只含 tool_result 的 user 消息是工具结果，不算。
+func (m Message) IsUserInput() bool {
+	return m.Role == RoleUser && (m.Text() != "" || m.HasAttachment())
 }
 
 // ToolCalls 返回消息中的所有工具调用块。
