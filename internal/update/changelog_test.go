@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -204,5 +205,28 @@ func TestCheckCleansPublishedManifest(t *testing.T) {
 	}
 	if strings.Contains(info.Notes, "claude.ai") || strings.Contains(info.Releases[0].Sections[0].Items[0], "claude.ai") {
 		t.Fatalf("不应带会话链接: %+v", info)
+	}
+}
+
+// 仓库里的 CHANGELOG.md 会被打包进程序，设置 → 关于里的版本历史靠它：
+// 每个已发布的小节都要能解析出内容，版本号从新到旧排列（发版时忘了把 [Unreleased] 挪过去，就会让这个版本在历史里消失）。
+func TestRepoChangelogIsWellFormed(t *testing.T) {
+	b, err := os.ReadFile("../../CHANGELOG.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs := ParseChangelog(string(b))
+	if len(rs) == 0 {
+		t.Fatal("CHANGELOG.md 里没有任何已发布的版本小节")
+	}
+	for i, r := range rs {
+		if len(r.Sections) == 0 {
+			t.Errorf("v%s 没有任何条目", r.Version)
+		}
+		if i > 0 {
+			if newer, err := Newer(r.Version, rs[i-1].Version); err != nil || newer {
+				t.Errorf("版本应从新到旧排列：v%s 排在 v%s 后面", r.Version, rs[i-1].Version)
+			}
+		}
 	}
 }

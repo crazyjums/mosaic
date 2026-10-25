@@ -30,6 +30,17 @@ jobs:
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: go run ./cmd/mkmanifest check-key
+      # 更新日志要在打 tag 之前写好：程序把 CHANGELOG.md 打包进自己，设置 → 关于里的"版本历史"和更新窗口都靠它。
+      # 没有本版本小节就发出去，这个版本的内容在历史里永远是空的（已发布的程序里改不了），所以在这里直接失败。
+      # 正式版必须有；预发布（带连字符的 tag）可以没有。
+      - name: 检查更新日志
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          case "$v" in *-*) echo "预发布版本，跳过更新日志检查"; exit 0;; esac
+          if ! grep -qE "^## \[${v//./\\.}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md 里没有 ${v} 的小节。请把 [Unreleased] 的内容挪到 \"## [${v}] - 日期\" 下面，合并后重新打 tag。"
+            exit 1
+          fi
 
   build:
     needs: preflight
