@@ -1,0 +1,103 @@
+import { useEffect, useRef } from "react";
+import { useChat } from "../store/chatStore";
+import { useSettings } from "../store/settingsStore";
+import AssistantMessage from "./AssistantMessage";
+import { t } from "../i18n";
+
+// 只存中文原文，渲染时再翻译：模块加载时语言还没确定。
+const REASON: Record<string, string> = {
+  completed: "完成",
+  max_steps: "达到最大步数",
+  cancelled: "已取消",
+  error: "出错",
+};
+
+// 消息流。自动滚动策略：只有用户本来就在底部附近时才跟随滚动，
+// 否则用户往上翻看历史时会被新内容不停地拽回底部。
+export default function MessageList() {
+  const timeline = useChat((s) => s.timeline);
+  const backendKind = useChat((s) => s.backendKind);
+  const isDemoModel = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "fake");
+  const ref = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [timeline]);
+
+  const onScroll = () => {
+    const el = ref.current;
+    if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  return (
+    <div ref={ref} onScroll={onScroll} className="min-w-0 flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-6 py-6">
+        {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} />}
+        {timeline.map((it) => {
+          switch (it.kind) {
+            case "user":
+              return (
+                <div key={it.id} className="flex justify-end">
+                  <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent/15 px-4 py-2 text-[15px]">{it.text}</div>
+                </div>
+              );
+            case "assistant":
+              return <AssistantMessage key={it.id} item={it} />;
+            case "error":
+              return (
+                <div key={it.id} className={`rounded-lg border px-3 py-2 text-sm ${it.fatal ? "border-danger/40 bg-danger/10 text-danger" : "border-warn/40 bg-warn/10 text-warn"}`}>
+                  <span className="mr-2 font-mono text-xs opacity-70">{it.code}</span>
+                  {it.message}
+                </div>
+              );
+            case "notice":
+              return (
+                <div key={it.id} className="text-center text-xs text-muted">
+                  {it.text}
+                </div>
+              );
+            case "turn_end":
+              if (it.replay) return null;
+              return (
+                <div key={it.id} className="flex items-center gap-3 text-[11px] text-muted">
+                  <div className="h-px flex-1 bg-line" />
+                  {t("{reason} · {steps} 步 · 入 {input} / 出 {output} tokens", {
+                    reason: REASON[it.reason] ? t(REASON[it.reason]) : it.reason,
+                    steps: it.steps,
+                    input: it.usage.input_tokens,
+                    output: it.usage.output_tokens,
+                  })}
+                  <div className="h-px flex-1 bg-line" />
+                </div>
+              );
+          }
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
+  const openSettings = useSettings((s) => s.show);
+  return (
+    <div className="mt-24 text-center text-muted">
+      <div className="text-2xl font-semibold text-fg">myllmapp</div>
+      <p className="mt-2 text-sm">{t("自己实现的 agent harness · 思考、工具调用、权限确认全过程可视化")}</p>
+      {demo && (
+        <p className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
+          {t("当前是浏览器演示模式：没有连接 Go 后端，回放的是 fake provider 录制的事件流。随便输入一句话试试；在 Wails 桌面端中会连接真实内核。")}
+        </p>
+      )}
+      {!demo && demoModel && (
+        <div className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
+          {t("当前使用的是演示模型（按固定剧本回复，不调用真实模型）。")}
+          <button className="mt-2 block w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90" onClick={() => void openSettings("providers")}>
+            {t("配置真实模型（Base URL + API Key）")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,5 @@
+# 统一使用 LF 换行。Git for Windows 默认会把文本文件转成 CRLF，
+# 而 bash 脚本里的 \r 会导致 "$'\r': command not found"。
+* text=auto eol=lf
+*.png binary
+*.ico binary

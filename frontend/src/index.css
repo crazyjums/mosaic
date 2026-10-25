@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+/*
+ * 主题：用 CSS 变量定义颜色，Tailwind 的 @theme 把变量映射成工具类（bg-panel、text-muted……）。
+ * 组件里不需要写 dark: 前缀，切换主题只是换一组变量：
+ *   - 默认深色；系统为浅色时用浅色变量（"跟随系统"）；
+ *   - 设置 → 外观 选了固定主题时，根元素上有 data-theme="light|dark"，优先于系统设置。
+ * 浅色变量写了两遍（媒体查询里和 data-theme 里），因为 CSS 不能把两者合进一条规则。
+ *
+ * 这里是"默认"皮肤。其他皮肤（设置 → 外观 → 皮肤）由 store/skins.ts 生成同样结构的规则，
+ * 插入到 <head> 末尾的 <style id="skin"> 里，覆盖这里的变量。
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --panel: #161920;
+  --panel-2: #1d212a;
+  --border: #2a2f3a;
+  --fg: #e6e8ec;
+  --muted: #8b93a3;
+  --accent: #7c9cff;
+  --think: #a78bfa;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  /* 强调色背景上的文字（主按钮、选中的分段按钮）。深色主题的强调色偏浅，白字对比度不够（2.6:1），所以用深色字 */
+  --on-accent: #0b1330;
+  /* 消息区和输入框的最大宽度（设置 → 外观 → 消息区宽度） */
+  --content-width: 48rem;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f7f8fa;
+    --panel: #ffffff;
+    --panel-2: #f1f3f6;
+    --border: #e1e4ea;
+    --fg: #1b1f27;
+    --muted: #697186;
+    --accent: #3b5bdb;
+    --think: #7c3aed;
+    --ok: #16a34a;
+    --warn: #b45309;
+    --danger: #dc2626;
+    --on-accent: #ffffff;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --panel-2: #f1f3f6;
+  --border: #e1e4ea;
+  --fg: #1b1f27;
+  --muted: #697186;
+  --accent: #3b5bdb;
+  --think: #7c3aed;
+  --ok: #16a34a;
+  --warn: #b45309;
+  --danger: #dc2626;
+  --on-accent: #ffffff;
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-think: var(--think);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-on-accent: var(--on-accent);
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 表单控件的公共样式（设置页等） */
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-line bg-bg px-3 py-1.5 text-sm text-fg outline-none placeholder:text-muted focus:border-accent/60;
+  }
+  .btn {
+    @apply shrink-0 rounded-md border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50;
+  }
+}
+
+/* 状态栏：某一项此刻没有内容（组件返回 null）时整项隐藏；相邻两个有内容的项之间画一条竖线。
+   用 CSS 而不是在 JS 里判断，是因为每一项是否为空只有它自己的组件知道。 */
+.statusline-item { display: flex; align-items: center; }
+.statusline-item:empty { display: none; }
+.statusline-item:not(:empty) ~ .statusline-item:not(:empty)::before {
+  content: "";
+  width: 1px;
+  height: 0.75rem;
+  margin: 0 0.625rem;
+  background: var(--border);
+}
+
+/* Markdown 正文的最小样式（不引入 typography 插件，保持依赖精简）。 */
+.md > * + * { margin-top: 0.6em; }
+.md h1, .md h2, .md h3 { font-weight: 600; margin-top: 1em; }
+.md h1 { font-size: 1.25rem; }
+.md h2 { font-size: 1.1rem; }
+.md ul { list-style: disc; padding-left: 1.4em; }
+.md ol { list-style: decimal; padding-left: 1.4em; }
+.md code { font-family: var(--font-mono); font-size: 0.85em; background: var(--panel-2); padding: 0.1em 0.35em; border-radius: 4px; }
+.md pre { background: var(--panel-2); border: 1px solid var(--border); padding: 0.75em 1em; border-radius: 8px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md a { color: var(--accent); text-decoration: underline; }
+.md table { border-collapse: collapse; }
+.md th, .md td { border: 1px solid var(--border); padding: 0.25em 0.6em; }
+.md blockquote { border-left: 3px solid var(--border); padding-left: 0.8em; color: var(--muted); }
+
+/* 状态栏脚本输出中的 ANSI 颜色（见 store/ansi.ts） */
+.ansi-bold { font-weight: 600; }
+.ansi-dim { opacity: 0.7; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+
+/* 流式输出时末尾的闪烁光标 */
+.caret::after {
+  content: "▍";
+  margin-left: 1px;
+  color: var(--accent);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }

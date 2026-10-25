@@ -31,3 +31,25 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# ---- myllmapp ----
+# 本地配置（可能包含密钥），仓库只提交 config.example.toml
+config.toml
+*.local.toml
+.env.*
+# 本地数据
+.myllmapp/
+*.db
+*.db-wal
+*.db-shm
+# Wails 构建产物与自动生成的绑定
+build/bin/
+frontend/wailsjs/
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+# 演示时 fake provider 写出的文件
+agent-demo/
+# Wails 记录前端依赖是否变化的缓存文件
+frontend/package.json.md5
