@@ -17,6 +17,24 @@ import (
 // riskOf 用于给重放的 tool_call 补上风险等级（历史消息里不存这个信息），可以为 nil。
 func ReplayEvents(s *Session, riskOf func(toolName string) permission.Risk) []event.Event {
 	snap := s.Snapshot()
+	return replayRange(snap, riskOf, 0, len(snap.Messages))
+}
+
+// turnStarts 返回每一轮开头的消息下标：含文本的 user 消息开启新的一轮（只含 tool_result 的不算）。
+// 分页加载历史时按"轮"切分，保证每一页都从一次完整的用户发言开始。
+func turnStarts(msgs []provider.Message) []int {
+	var out []int
+	for i, m := range msgs {
+		if m.Role == provider.RoleUser && m.Text() != "" {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// replayRange 重放 snap.Messages[from:to]。from 必须是某一轮的开头（或 0），
+// 这样 tool_call / tool_result 总是成对出现在同一页里。
+func replayRange(snap *Session, riskOf func(toolName string) permission.Risk, from, to int) []event.Event {
 	var out []event.Event
 	add := func(msgID string, p event.Payload) {
 		out = append(out, event.New(snap.ID, event.RootAgentID, msgID, p))
@@ -33,7 +51,7 @@ func ReplayEvents(s *Session, riskOf func(toolName string) permission.Risk) []ev
 	}
 
 	step := 0
-	for _, m := range snap.Messages {
+	for _, m := range snap.Messages[from:to] {
 		switch m.Role {
 		case provider.RoleUser:
 			// 含文本的 user 消息是"用户发言"，开启新的一轮；只含 tool_result 的是工具结果。

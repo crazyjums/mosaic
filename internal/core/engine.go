@@ -59,6 +59,8 @@ type Engine struct {
 
 	mu      sync.Mutex
 	session *Session
+	// hist 记录界面已经加载了当前会话历史的哪一段，见 LoadSessionTail。
+	hist    histWindow
 	running bool
 	cancel  context.CancelFunc
 }
@@ -442,22 +444,35 @@ func (e *Engine) ListSessions(ctx context.Context) ([]SessionSummary, error) {
 }
 
 // LoadSession 加载一个历史会话作为当前会话，并把历史重放成事件发到总线上。
+// 一次性重放全部历史，给 CLI 用；桌面界面用 LoadSessionTail（只取最近几轮）。
 func (e *Engine) LoadSession(ctx context.Context, id string) (Status, error) {
+	s, err := e.openSession(ctx, id)
+	if err != nil {
+		return Status{}, err
+	}
+	for _, ev := range ReplayEvents(s, e.riskOf) {
+		e.bus.Publish(ev)
+	}
+	return e.Status(), nil
+}
+
+// openSession 把 id 对应的历史会话设为当前会话（不重放）。运行中返回 ErrBusy。
+func (e *Engine) openSession(ctx context.Context, id string) (*Session, error) {
 	if e.cfg.Store == nil {
-		return Status{}, fmt.Errorf("engine: no session store configured")
+		return nil, fmt.Errorf("engine: no session store configured")
 	}
 	// 先快速检查一次，运行中就不必去读数据库；下面替换会话前还会在锁内再检查一次。
 	if e.Status().Running {
-		return Status{}, ErrBusy
+		return nil, ErrBusy
 	}
 	s, err := e.cfg.Store.LoadSession(ctx, id)
 	if err != nil {
-		return Status{}, err
+		return nil, err
 	}
 	e.mu.Lock()
 	if e.running {
 		e.mu.Unlock()
-		return Status{}, ErrBusy
+		return nil, ErrBusy
 	}
 	// 会话里记录的厂商配置档可能已经被删掉了；此时回落到默认配置档，历史仍然可读。
 	if _, _, err := e.cfg.Catalog.Get(s.Provider); err != nil {
@@ -466,19 +481,17 @@ func (e *Engine) LoadSession(ctx context.Context, id string) (Status, error) {
 		}
 	}
 	e.session = s
+	e.hist = histWindow{}
 	e.mu.Unlock()
 	e.cfg.Policy.Reset()
+	return s, nil
+}
 
-	riskOf := func(name string) permission.Risk {
-		if t, ok := e.cfg.Tools.Get(name); ok {
-			return t.Spec().Risk
-		}
-		return ""
+func (e *Engine) riskOf(name string) permission.Risk {
+	if t, ok := e.cfg.Tools.Get(name); ok {
+		return t.Spec().Risk
 	}
-	for _, ev := range ReplayEvents(s, riskOf) {
-		e.bus.Publish(ev)
-	}
-	return e.Status(), nil
+	return ""
 }
 
 // DeleteSession 删除一个已保存的会话。
