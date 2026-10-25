@@ -11,18 +11,31 @@ import { t } from "../i18n";
 export default function AssistantMessage({ item, omitAnswer = false }: { item: AssistantItem; omitAnswer?: boolean }) {
   const tools = useChat((s) => s.tools);
   const lastIndex = item.blocks.length - 1;
+  const hasTool = item.blocks.some((b) => b.type === "tool");
+  const onlyThinking = !hasTool && item.blocks.every((b) => b.type === "thinking");
+  const kind = hasTool ? t("调用工具") : onlyThinking ? t("思考过程") : t("回答");
+  const time = item.startedAt ? new Date(item.startedAt).toLocaleTimeString([], { hour12: false }) : "";
 
+  // 一步 = 一张小卡片：左边是步骤编号，标题行显示这一步在做什么、用的模型和开始时间。
+  // 卡片有自己的底色，和下面的"最终回答"卡片一眼就能分开。
   return (
-    <div className="space-y-2">
-      <div className="text-[11px] uppercase tracking-wide text-muted">
-        step {item.step} · {item.provider}/{item.model}
-        {item.route && (
-          <span className="ml-2 normal-case text-muted" title={t("模型组「{g}」选中的成员", { g: item.route.group })}>
-            [{item.route.group}]
-          </span>
-        )}
+    <div className="space-y-2 rounded-ctl border border-line bg-panel/90 p-3">
+      <div className="flex items-center gap-2.5 text-[11px] text-muted">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-on-accent" aria-hidden="true">
+          {item.step}
+        </span>
+        <span className="min-w-0 truncate uppercase tracking-wide">
+          step {item.step} · {kind} · {item.provider}/{item.model}
+          {item.route && (
+            <span className="ml-2 normal-case" title={t("模型组「{g}」选中的成员", { g: item.route.group })}>
+              [{item.route.group}]
+            </span>
+          )}
+          {item.agentId !== "main" && <span className="ml-2 normal-case text-accent">agent {item.agentId}</span>}
+        </span>
         {item.route && item.route.handedOn.length > 0 && <HandoffMark route={item.route} />}
-        {item.agentId !== "main" && <span className="ml-2 text-accent">agent {item.agentId}</span>}
+        <div className="flex-1" />
+        {time && <span className="shrink-0 tabular-nums">{time}</span>}
       </div>
       {item.blocks.map((b, i) => {
         const live = item.streaming && i === lastIndex;
@@ -36,8 +49,8 @@ export default function AssistantMessage({ item, omitAnswer = false }: { item: A
             if (omitAnswer) return null;
             return <ImageBlock key={i} mediaType={b.mediaType} data={b.data} url={b.url} />;
           case "tool": {
-            const t = tools[b.callId];
-            return t ? <ToolCallCard key={b.callId} tool={t} /> : null;
+            const tv = tools[b.callId];
+            return tv ? <ToolCallCard key={b.callId} tool={tv} /> : null;
           }
         }
       })}

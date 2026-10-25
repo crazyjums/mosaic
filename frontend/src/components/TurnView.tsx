@@ -7,7 +7,8 @@ import { t } from "../i18n";
 import AssistantMessage, { HandoffMark } from "./AssistantMessage";
 import ImageBlock from "./ImageBlock";
 import MosaicMark from "./MosaicMark";
-import Markdown from "./Markdown";
+import Markdown, { copyText } from "./Markdown";
+import NavIcon from "./Icons";
 import ScholarThinking from "./ScholarThinking";
 import ToolCallCard from "./ToolCallCard";
 
@@ -40,25 +41,38 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
   const waiting = allTools.filter((x) => x.status === "awaiting_permission");
 
   const handoffs = items.reduce((n, it) => n + (it.route?.handedOn.length ?? 0), 0);
-  let summary: string;
-  if (allTools.length > 0) summary = t("思考与执行 · {n} 步 · {m} 次工具调用", { n: items.length, m: allTools.length });
-  else summary = t("思考过程 · {n} 步", { n: items.length });
-  if (handoffs > 0) summary += ` · ${t("转交 {n} 次", { n: handoffs })}`;
-  if (last.turnMs) summary += ` · ${fmtDuration(last.turnMs)}`;
+  let stats: string;
+  const title = allTools.length > 0 ? t("思考与执行") : t("思考过程");
+  if (allTools.length > 0) stats = t("{n} 步 · {m} 次工具调用", { n: items.length, m: allTools.length });
+  else stats = t("{n} 步", { n: items.length });
+  if (handoffs > 0) stats += ` · ${t("转交 {n} 次", { n: handoffs })}`;
+  if (last.turnMs) stats += ` · ${fmtDuration(last.turnMs)}`;
+  const summary = `${title} · ${stats}`;
 
   return (
     <div className="space-y-3">
       {hasProcess &&
         (open ? (
-          <div className="space-y-4">
-            <button className="flex items-center gap-1.5 text-xs text-muted hover:text-fg" onClick={() => setUserOpen(false)}>
-              <span>{summary}</span>
-              <span className="text-gold-ink">{t("收起")} ▴</span>
-            </button>
+          // 展开后的过程区：整块有浅色底和细边框，和下面的"最终回答"卡片分开
+          <section className="space-y-2.5 rounded-card border border-accent/25 bg-accent-soft/40 p-3" aria-label={title}>
+            <div className="flex items-center gap-2.5 px-1">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent" aria-hidden="true">
+                <NavIcon name="general" />
+              </span>
+              <span className="text-sm font-semibold">{title}</span>
+              <span className="min-w-0 truncate text-xs text-muted">· {stats}</span>
+              {failed > 0 && (
+                <span className="shrink-0 rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">{t("{n} 次失败", { n: failed })}</span>
+              )}
+              <div className="flex-1" />
+              <button className="shrink-0 rounded-full bg-accent px-3 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" onClick={() => setUserOpen(false)}>
+                {t("收起")} ▴
+              </button>
+            </div>
             {items.map((it, i) => (
               <AssistantMessage key={it.id} item={it} omitAnswer={i === items.length - 1 && answer.length > 0} />
             ))}
-          </div>
+          </section>
         ) : (
           <button
             className="flex w-full items-center gap-2.5 rounded-ctl border border-line bg-panel px-3 py-2 text-left text-xs text-muted shadow-card hover:border-accent/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -84,15 +98,57 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
       {live && answer.length === 0 && waiting.length === 0 && (
         <ScholarThinking since={last.startedAt} label={allTools.some((x) => x.status === "running") ? t("正在执行工具…") : undefined} />
       )}
+      {answer.length > 0 && (open && hasProcess ? <AnswerCard answer={answer} model={last.model} live={live && last.streaming} /> : <AnswerBody answer={answer} live={live && last.streaming} />)}
+      {last.stopReason === "max_tokens" && <div className="text-xs text-warn">{t("输出达到 max_tokens 上限，被截断。")}</div>}
+      {last.stopReason === "refusal" && <div className="text-xs text-danger">{t("厂商拒绝了这次请求。")}</div>}
+    </div>
+  );
+}
+
+type AnswerBlocks = AssistantItem["blocks"];
+
+function AnswerBody({ answer, live }: { answer: AnswerBlocks; live: boolean }) {
+  return (
+    <>
       {answer.map((b, i) =>
         b.type === "text" ? (
-          <Markdown key={i} text={b.text} streaming={live && last.streaming && i === answer.length - 1} />
+          <Markdown key={i} text={b.text} streaming={live && i === answer.length - 1} />
         ) : b.type === "image" ? (
           <ImageBlock key={i} mediaType={b.mediaType} data={b.data} url={b.url} />
         ) : null,
       )}
-      {last.stopReason === "max_tokens" && <div className="text-xs text-warn">{t("输出达到 max_tokens 上限，被截断。")}</div>}
-      {last.stopReason === "refusal" && <div className="text-xs text-danger">{t("厂商拒绝了这次请求。")}</div>}
-    </div>
+    </>
+  );
+}
+
+// 展开过程区时，最终回答单独放进一张白色卡片，标题行写明"最终回答"：
+// 过程区是浅色底的"草稿"，这里才是真正给用户的答案，两者不会再混在一起。
+function AnswerCard({ answer, model, live }: { answer: AnswerBlocks; model: string; live: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const text = answer.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n\n");
+  return (
+    <section className="card space-y-2 p-4" aria-label={t("最终回答")}>
+      <header className="flex items-center gap-2.5">
+        <span className="text-accent" aria-hidden="true">◆</span>
+        <h3 className="text-[15px] font-semibold">{t("最终回答")}</h3>
+        <div className="flex-1" />
+        <span className="truncate text-[11px] text-muted">{model}</span>
+        {text && (
+          <button
+            className="rounded-ctl px-2 py-1 text-xs text-muted hover:bg-panel-2 hover:text-fg"
+            onClick={async () => {
+              if (await copyText(text)) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }
+            }}
+            aria-label={t("复制回答")}
+          >
+            {copied ? t("已复制") : t("复制")}
+          </button>
+        )}
+      </header>
+      <AnswerBody answer={answer} live={live} />
+    </section>
   );
 }
