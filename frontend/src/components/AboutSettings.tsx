@@ -3,6 +3,7 @@ import { t } from "../i18n";
 import { useUIPrefs } from "../store/uiPrefs";
 import { useUpdate } from "../store/updateStore";
 import { Notice } from "./GeneralSettings";
+import ChangeLog, { ChangeSummary, LevelBadge } from "./ChangeLog";
 
 // 设置 → 关于：版本号、检查更新、自动检查开关。
 export default function AboutSettings() {
@@ -28,6 +29,7 @@ export default function AboutSettings() {
           {info?.available && !busy && (
             <>
               <span className="text-sm">{t("发现新版本 {v}", { v: info.latest })}</span>
+              <LevelBadge info={info} />
               {info.manual ? (
                 <button className="btn" onClick={() => void backend().openExternalURL(info.page || "")} disabled={!info.page}>
                   {t("前往下载页")}
@@ -42,7 +44,12 @@ export default function AboutSettings() {
         </div>
         {info?.disabled && <div className="mt-2"><Notice tone="info">{info.disabled}</Notice></div>}
         {error && <div className="mt-2 text-sm text-danger">{error}</div>}
-        {info?.available && info.notes && <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-panel p-3 text-xs text-muted">{info.notes}</pre>}
+        {info?.available && (
+          <div className="mt-3 space-y-2">
+            {info.releases && <ChangeSummary releases={info.releases} />}
+            <ChangeLog info={info} />
+          </div>
+        )}
         {info?.available && info.manual && <div className="mt-2 text-[11px] text-muted">{t("这个系统暂不支持自动安装，请到发布页下载新版本。")}</div>}
       </section>
 

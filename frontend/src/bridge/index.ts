@@ -6,7 +6,7 @@ import { createWailsBackend, isWails } from "./wails";
 
 export type {
   Backend, ChatGPTStatus, ChatGPTUsage, Quota, QuotaWindow, ContextBreakdown, ContextItem, ContextPart, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
-  ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, UpdateInfo, UpdateStatus, WorkspaceInfo,
+  ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, ReleaseNotes, ChangeKind, UpdateInfo, UpdateStatus, WorkspaceInfo,
 } from "./types";
 
 let instance: Backend | null = null;

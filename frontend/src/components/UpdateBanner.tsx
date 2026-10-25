@@ -4,6 +4,8 @@ import { t } from "../i18n";
 import { useChat } from "../store/chatStore";
 import { fmtMB, shouldShowBanner, useUpdate } from "../store/updateStore";
 import { useUIPrefs } from "../store/uiPrefs";
+import { hasReleases } from "../store/changelog";
+import ChangeLog, { ChangeSummary, LevelBadge } from "./ChangeLog";
 
 // 窗口顶部的"发现新版本"横幅。可以：立即更新 / 查看更新说明 / 稍后（本次运行不再提示）/ 跳过此版本。
 // 立即更新会下载安装并自动重启；agent 运行中时先提示，不打断当前任务。
@@ -22,9 +24,11 @@ export default function UpdateBanner() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-medium">{t("发现新版本 {v}", { v: info.latest })}</span>
         <span className="text-xs text-muted">{t("当前 {v}", { v: info.current })}</span>
-        {info.notes && !busy && (
+        <LevelBadge info={info} />
+        {info.releases && <ChangeSummary releases={info.releases} />}
+        {(info.notes || hasReleases(info)) && !busy && (
           <button className="text-xs text-accent hover:underline" onClick={() => setNotes(!notes)}>
-            {notes ? t("收起更新说明") : t("更新说明")}
+            {notes ? t("收起更新日志") : t("查看更新日志")}
           </button>
         )}
         <div className="flex-1" />
@@ -65,7 +69,11 @@ export default function UpdateBanner() {
           <div className="h-full bg-accent transition-all" style={{ width: `${Math.max(pct, 2)}%` }} />
         </div>
       )}
-      {notes && info.notes && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-panel p-2 text-xs text-muted">{info.notes}</pre>}
+      {notes && (
+        <div className="mt-2 max-h-72 overflow-y-auto">
+          <ChangeLog info={info} />
+        </div>
+      )}
     </div>
   );
 }
