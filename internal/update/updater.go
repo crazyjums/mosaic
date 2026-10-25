@@ -33,6 +33,12 @@ type Info struct {
 	Available bool   `json:"available"`
 	Notes     string `json:"notes,omitempty"`
 	PubDate   string `json:"pub_date,omitempty"`
+	// Releases 是当前版本之后到最新版本之间的全部更新日志（最新的在前）。
+	Releases []Release `json:"releases,omitempty"`
+	// Level 是更新建议：critical（含安全修复，建议尽快）/ recommended（含修复）/ optional（只有新功能）。
+	Level string `json:"level,omitempty"`
+	// Breaking 为 true 表示这些版本里有不兼容变更，更新前需要先看说明。
+	Breaking bool `json:"breaking,omitempty"`
 	// Manual 为 true 表示这个平台不能自动更新，需要用户去 Page 下载。
 	Manual bool   `json:"manual"`
 	Page   string `json:"page,omitempty"`
@@ -149,6 +155,11 @@ func (u *Updater) Check(ctx context.Context) (*Info, error) {
 		return info, nil
 	}
 	info.Available = true
+	info.Releases = newerReleases(m.Releases, u.Current, m.Version)
+	info.Level, info.Breaking = Advise(info.Releases)
+	if len(info.Releases) == 0 {
+		info.Level = "" // 清单没有结构化日志（旧格式）：不给建议，只显示 Notes
+	}
 	if u.GOOS == "darwin" {
 		info.Manual = true
 		return info, nil

@@ -364,12 +364,28 @@ export interface Backend {
   onEvent(cb: (ev: AgentEvent) => void): () => void;
 }
 
+export type ChangeKind = "breaking" | "security" | "added" | "changed" | "fixed" | "deprecated" | "removed";
+
+/** 一个版本的更新日志（Keep a Changelog 的分类） */
+export interface ReleaseNotes {
+  version: string;
+  date?: string;
+  summary?: string;
+  sections: { kind: ChangeKind; items: string[] }[];
+}
+
 export interface UpdateInfo {
   current: string;
   latest: string;
   available: boolean;
   notes?: string;
   pub_date?: string;
+  /** 当前版本之后到最新版本之间的全部更新日志，最新的在前 */
+  releases?: ReleaseNotes[];
+  /** 更新建议：critical 含安全修复 / recommended 含修复 / optional 只有新功能；旧格式清单没有 */
+  level?: "critical" | "recommended" | "optional";
+  /** 含不兼容变更，更新前需要先阅读 */
+  breaking?: boolean;
   /** 这个平台不能自动更新（macOS），需要去 page 手动下载 */
   manual: boolean;
   page?: string;

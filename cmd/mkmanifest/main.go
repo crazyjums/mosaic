@@ -46,9 +46,12 @@ func sign(args []string) {
 	fs := flag.NewFlagSet("sign", flag.ExitOnError)
 	version := fs.String("version", "", "版本号，例如 1.2.3")
 	baseURL := fs.String("base-url", "", "安装包的下载目录地址（不含文件名）")
-	notesFile := fs.String("notes-file", "", "更新说明文件（可选）")
+	notesFile := fs.String("notes-file", "", "纯文本更新说明（可选，覆盖自动生成的 notes；结构化日志不受影响）")
+	changelog := fs.String("changelog", "", "CHANGELOG.md（Keep a Changelog 格式）；有对应版本的小节就用它")
+	commitsFile := fs.String("commits-file", "", "提交标题列表（每行一条），CHANGELOG 里没有这个版本时按 Conventional Commits 前缀分类作为兜底")
 	page := fs.String("page", "", "发布页地址（可选）")
 	out := fs.String("out", ".", "输出目录")
+	notesOut := fs.String("notes-out", "", "把本版本的更新日志写成 markdown 到这个文件（用作 GitHub Release 的正文）")
 	var assets assetFlags
 	fs.Var(&assets, "asset", "<GOOS>-<GOARCH>=<文件路径>，可重复")
 	check(fs.Parse(args))
@@ -60,6 +63,11 @@ func sign(args []string) {
 		fail("环境变量 UPDATE_SIGNING_KEY 未设置")
 	}
 	m := update.Manifest{Version: strings.TrimPrefix(*version, "v"), Page: *page, PubDate: time.Now().UTC().Format(time.RFC3339), Platforms: map[string]update.Asset{}}
+	m.Releases = buildReleases(m.Version, m.PubDate[:10], *changelog, *commitsFile)
+	if len(m.Releases) > 0 {
+		// 旧版本客户端只认 notes：放最新一版的纯文本。
+		m.Notes = update.Flatten(m.Releases[0], kindLabel)
+	}
 	if *notesFile != "" {
 		b, err := os.ReadFile(*notesFile)
 		check(err)
@@ -77,6 +85,9 @@ func sign(args []string) {
 	check(err)
 	sig, err := update.Sign(key, body)
 	check(err)
+	if *notesOut != "" && len(m.Releases) > 0 {
+		check(os.WriteFile(*notesOut, []byte(markdown(m.Releases[0])), 0o644))
+	}
 	check(os.MkdirAll(*out, 0o755))
 	check(os.WriteFile(filepath.Join(*out, "manifest.json"), body, 0o644))
 	check(os.WriteFile(filepath.Join(*out, "manifest.json.sig"), sig, 0o644))
@@ -127,4 +138,64 @@ func checkKey(args []string) {
 		fail("私钥与 " + *pubFile + " 里的公钥不是一对，客户端将无法验证更新")
 	}
 	fmt.Println("签名密钥检查通过")
+}
+
+// maxReleases 是清单里保留的版本数：用户可能隔了好几个版本才更新，要能看到中间的全部变更；
+// 但清单每次检查都会下载，不能无限增长。
+const maxReleases = 10
+
+var kindLabels = map[string]string{
+	update.KindBreaking: "不兼容变更", update.KindSecurity: "安全", update.KindAdded: "新增", update.KindChanged: "变更",
+	update.KindFixed: "修复", update.KindDeprecated: "弃用", update.KindRemoved: "移除",
+}
+
+func kindLabel(k string) string { return kindLabels[k] }
+
+// buildReleases 组装清单里的结构化更新日志：最新的一版在最前，最多 maxReleases 个。
+// 本版本在 CHANGELOG.md 里有小节就用手写的；没有就用提交标题兜底，并用 GitHub Actions 的警告提醒补写。
+func buildReleases(version, date, changelogPath, commitsPath string) []update.Release {
+	var all []update.Release
+	if changelogPath != "" {
+		b, err := os.ReadFile(changelogPath)
+		check(err)
+		all = update.ParseChangelog(string(b))
+	}
+	var out []update.Release
+	for _, r := range all {
+		if above, err := update.Newer(r.Version, version); err == nil && !above {
+			out = append(out, r)
+		}
+	}
+	if len(out) == 0 || out[0].Version != version {
+		fmt.Fprintf(os.Stderr, "::warning::CHANGELOG.md 里没有 %s 的小节，已用提交标题自动生成更新日志；建议补写后再发布\n", version)
+		var subjects []string
+		if commitsPath != "" {
+			b, err := os.ReadFile(commitsPath)
+			check(err)
+			subjects = strings.Split(string(b), "\n")
+		}
+		if r := update.FromCommits(subjects, version, date); len(r.Sections) > 0 {
+			out = append([]update.Release{r}, out...)
+		}
+	}
+	if len(out) > maxReleases {
+		out = out[:maxReleases]
+	}
+	return out
+}
+
+// markdown 把一个版本的日志渲染成 GitHub Release 的正文。
+func markdown(r update.Release) string {
+	var b strings.Builder
+	if r.Summary != "" {
+		b.WriteString(r.Summary + "\n\n")
+	}
+	for _, sec := range r.Sections {
+		b.WriteString("### " + kindLabel(sec.Kind) + "\n")
+		for _, it := range sec.Items {
+			b.WriteString("- " + it + "\n")
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimSpace(b.String()) + "\n"
 }

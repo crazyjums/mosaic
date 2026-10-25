@@ -10,9 +10,11 @@
 //	    私钥保存为 GitHub 仓库的加密变量 UPDATE_SIGNING_KEY，绝不能提交进仓库。
 //
 //	UPDATE_SIGNING_KEY=<私钥> mkmanifest sign -version 1.2.3 -base-url https://github.com/o/r/releases/download/v1.2.3 \
-//	    -notes-file notes.md -page https://github.com/o/r/releases/tag/v1.2.3 -out dist \
+//	    -changelog CHANGELOG.md -commits-file commits.txt -page https://github.com/o/r/releases/tag/v1.2.3 -out dist \
 //	    -asset windows-amd64=dist/myllmapp-windows-amd64.exe -asset linux-amd64=dist/myllmapp-linux-amd64
 //
 //	    在 -out 目录写出 manifest.json 和 manifest.json.sig。-asset 的键是 <GOOS>-<GOARCH>，
-//	    下载地址 = base-url + "/" + 文件名。macOS 不能自动更新，不需要 -asset，清单里只放 -page。
+//	    下载地址 = base-url + "/" + 文件名。
+//	    更新日志：-changelog 指向 Keep a Changelog 格式的 CHANGELOG.md，取最近 10 个版本写进清单的 releases；
+//	    没有本版本的小节时用 -commits-file（提交标题）按 Conventional Commits 前缀兜底，并输出警告。macOS 不能自动更新，不需要 -asset，清单里只放 -page。
 package main
