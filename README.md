@@ -47,7 +47,7 @@ flowchart LR
     end
     BUS(("事件总线<br/>internal/event"))
     P["Provider 接口"] --> OAI["openai"] & ANT["anthropic"] & CG["chatgpt<br/>(ChatGPT 账号)"] & FAKE["fake"]
-    T["Tool 接口"] --> BI["read/write/list/shell"] & MCP["MCP 工具"]
+    T["Tool 接口"] --> BI["文件 / 搜索 / shell / git"] & MCP["MCP 工具"]
     PERM["权限<br/>档位 + 规则 + Broker"]
     ST["SQLite<br/>internal/store"]
 
@@ -135,7 +135,7 @@ wails build    # 打包到 build/bin/
 │   │   ├── fake/               剧本驱动的假厂商，用于测试与离线演示
 │   │   └── all/                空导入注册所有适配器
 │   ├── tool/                   Tool 接口与注册表
-│   │   └── builtin/            内置工具：read_file / write_file / list_dir / shell
+│   │   └── builtin/            内置工具：读写编辑、搜索、文件管理、shell、git、todo
 │   ├── permission/             风险等级、权限策略、等待用户确认的会合点
 │   ├── core/                   内核：agent 循环、Delta 累加、工具执行、会话、重放、Engine 命令接口
 │   ├── store/                  会话持久化（SQLite 纯 Go 驱动 / 内存）

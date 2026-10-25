@@ -37,6 +37,8 @@ type AgentConfig struct {
 
 	// Workspace 是工具的工作区根目录（绝对路径）。
 	Workspace string
+	// SessionID 传给工具（todo_write 等按会话保存状态的工具需要它）。
+	SessionID string
 	// Disabled 是被用户在设置里关掉的工具：不发给模型，模型硬要调用也会被拒绝。
 	Disabled map[string]bool
 }

@@ -23,12 +23,29 @@ type Tool interface {
 
 ### 内置工具
 
-| 工具 | 风险 | 说明 |
-| --- | --- | --- |
-| `read_file` | read | 拒绝二进制文件；输出超过 32KB 截断并注明 |
-| `list_dir` | read | 不递归（让模型按需逐层查看，节省上下文） |
-| `write_file` | write | 覆盖写入，自动创建父目录 |
-| `shell` | exec | `sh -c`（Windows 为 `cmd /C`），工作区为 cwd，默认 60 秒超时，取消时杀进程组 |
+| 工具 | 风险 | 免确认 | 说明 |
+| --- | --- | --- | --- |
+| `read_file` | read | ✅ | `offset`/`limit` 分段读，默认最多 2000 行 / 100KB，部分读取时注明总行数；拒绝二进制 |
+| `list_dir` | read | ✅ | 目录在前、按名称排序；`recursive` + `max_depth`（默认 2）；`include_hidden` |
+| `find_files` | read | ✅ | glob（`*.go`、`src/**/*.ts`），默认最多 200 个 |
+| `search_content` | read | ✅ | Go 正则，`path:行号: 内容`，`glob` 过滤、默认不区分大小写、最多 100 处，多核并行扫描；超出时注明"已截断，共 N 处" |
+| `git_status` / `git_diff` / `git_log` | read | ✅ | 结构化参数，不拼命令行，模型无法借机执行写操作 |
+| `todo_write` / `todo_read` | read | ✅ | 按会话保存在内存中的任务清单 |
+| `edit_file` | write | ❌ | 精确替换；0 处报"未找到"，多处要求加上下文或 `replace_all`；保留 CRLF；返回 +X/-Y 行和位置 |
+| `write_file` | write | ❌ | `mode=overwrite`（默认）/ `append`，自动创建父目录 |
+| `mkdir` / `move_file` | write | ❌ | 移动时目标已存在则拒绝 |
+| `delete_file` | write | ❌ | 移到 `.myllmapp/trash/<时间>/原路径`，可找回 |
+| `shell` | exec | ❌ | `sh -c`（Windows 为 `cmd /C`）；`cwd`（相对工作区）、`timeout_seconds`（默认 60，最大 600），超时返回已有输出；取消时杀进程组 |
+
+"免确认"指默认权限档位；`accept_edits` 档位下 write 风险也免确认，`readonly` 档位下 write/exec 一律拒绝。
+
+**公共约定**（`internal/tool/builtin`）：
+
+- **统一截断**：所有输出上限 100KB，超出时注明截断了多少。
+- **统一忽略规则**（`ignore.go`）：先看工作区根目录的 `.gitignore`（常用子集），再套内置黑名单（`.git`、`node_modules`、`dist`、`build`、`target`、`.venv`、`__pycache__`、`.myllmapp` 等）。search_content、find_files、递归 list_dir 共用。
+- **可操作的错误信息**：例如"未找到文件 X，建议先用 find_files 确认路径"，让模型知道下一步做什么。
+- **危险命令黑名单**（`danger.go`）：`rm -rf /`、mkfs / format、shutdown、`git push --force`、`curl | sh` 等在任何权限档位下都直接拒绝。这只是拦住"手滑"，不是安全边界。
+- **项目说明**：工作区里的 `.myllmapp/context.md` 每轮追加到系统提示词末尾（上限 16KB），用来写项目约定。
 
 所有路径通过 `resolvePath` 限制在工作区内（拒绝 `..`、工作区外的绝对路径，以及经符号链接指向工作区之外的路径）。**这只是防误操作，不是安全沙箱**——shell 工具可以做任何事，这正是它每次都需要确认的原因；检查与使用之间的竞态（TOCTOU）也没有处理。
 
@@ -109,7 +126,7 @@ policy := permission.NewRulePolicy(permission.NewModePolicy(mode), rules) // boo
 
 ## 执行顺序
 
-一条 assistant 消息里的多个工具调用**顺序执行**。并行更快，但多个确认弹窗同时出现会让人困惑；对四个内置工具也没有明显收益。以后可以只对 `read` 风险的工具并行。
+一条 assistant 消息里的多个工具调用**顺序执行**。并行更快，但多个确认弹窗同时出现会让人困惑；对内置工具也没有明显收益（search_content 自己在内部并行扫描文件）。以后可以只对 `read` 风险的工具并行。
 
 ## 考虑过的其他方案
 

@@ -1,9 +1,14 @@
-// Package builtin 提供第一阶段的四个内置工具：read_file、write_file、list_dir、shell。
+// Package builtin 提供内置工具：
+//
+//   - 只读（免确认）：read_file、list_dir、find_files、search_content、git_status、git_diff、git_log、todo_write、todo_read
+//   - 修改工作区：edit_file、write_file、mkdir、move_file、delete_file（移到 .myllmapp/trash/）
+//   - 执行命令：shell（危险命令黑名单见 danger.go）
 //
 // # 负责什么
 //
-//   - 每个工具一个文件，彼此独立，都实现 tool.Tool。
-//   - 公共的安全辅助函数（workspace.go）：把相对路径解析到工作区内，拒绝逃逸；截断过长输出。
+//   - 每个工具（或一组相关工具）一个文件，都实现 tool.Tool。
+//   - 公共的安全辅助函数（workspace.go）：把相对路径解析到工作区内，拒绝逃逸；统一截断过长输出（默认 100KB）。
+//   - 遍历类工具共用的忽略规则（ignore.go）：.gitignore + 内置黑名单，以及 glob 匹配。
 //
 // # 不负责什么
 //

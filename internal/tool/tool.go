@@ -27,6 +27,8 @@ type Call struct {
 	Input json.RawMessage
 	// Workspace 是工作区根目录的绝对路径。文件类工具必须把路径限制在它之内。
 	Workspace string
+	// SessionID 是发起调用的会话，可能为空（测试、子 agent）。按会话保存状态的工具（todo）用它区分会话。
+	SessionID string
 }
 
 // Result 是工具执行结果，会作为 tool_result 回传给模型，同时展示在界面的工具卡片上。

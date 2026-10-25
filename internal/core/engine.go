@@ -237,6 +237,7 @@ func (e *Engine) runtimeLocked() RuntimeConfig {
 	if rt.SystemPrompt == "" {
 		rt.SystemPrompt = DefaultSystemPrompt(rt.Workspace)
 	}
+	rt.SystemPrompt += ProjectContext(rt.Workspace)
 	return rt
 }
 
@@ -350,6 +351,7 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		return TurnResult{}, fmt.Errorf("工作区 %s 不存在（可能被移动或删除了），请在状态栏上重新选择工作区", rt.Workspace)
 	}
 	disabled := e.disabledLocked()
+	sid := e.session.ID
 	ctx, cancel := context.WithCancel(ctx)
 	e.running, e.cancel = true, cancel
 	e.mu.Unlock()
@@ -376,6 +378,7 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		Publisher: e.bus,
 		Compactor: e.cfg.Compactor,
 		Workspace: rt.Workspace,
+		SessionID: sid,
 		Disabled:  disabled,
 	})
 	res := agent.Run(ctx, sess, text)

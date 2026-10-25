@@ -582,7 +582,7 @@ func TestContextBreakdown(t *testing.T) {
 	}
 	h := newHarness(t, fake.DemoScript(), 0, allow)
 	before := h.engine.ContextBreakdown()
-	if before.Messages != 0 || before.ToolCount != 4 || len(before.Parts) != 2 {
+	if before.Messages != 0 || before.ToolCount != 15 || len(before.Parts) != 2 {
 		t.Fatalf("空会话只有系统提示词和工具定义: %+v", before)
 	}
 	h.engine.Send(context.Background(), "演示一下")
@@ -606,7 +606,7 @@ func TestContextBreakdown(t *testing.T) {
 	}
 	// 禁用工具后，工具定义的开销随之减少。
 	h.engine.SetDisabledTools([]string{"shell"})
-	if h.engine.ContextBreakdown().ToolCount != 3 {
+	if h.engine.ContextBreakdown().ToolCount != 14 {
 		t.Fatal("禁用的工具不计入")
 	}
 }

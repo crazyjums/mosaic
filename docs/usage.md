@@ -167,6 +167,24 @@ ChatGPT 网页、Codex 等其他地方的用量不在其中。剩余百分比和
 
 组成是按字符数估算的（英文约 4 个字符一个 token，中文约 1 个字一个 token，图片按 1000 计），用来看出"大头在哪"，和真实值有差距是正常的。
 
+## 2.5.2 内置工具与项目说明
+
+agent 可以使用这些内置工具（详见 [docs/design/tools-and-permissions.md](design/tools-and-permissions.md)）：
+
+| 类别 | 工具 | 是否需要确认（默认档位） |
+| --- | --- | --- |
+| 查看 | `read_file`（可分段）、`list_dir`（可递归）、`find_files`、`search_content` | 不需要 |
+| git（只读） | `git_status`、`git_diff`、`git_log` | 不需要 |
+| 任务清单 | `todo_write`、`todo_read` | 不需要 |
+| 修改 | `edit_file`、`write_file`、`mkdir`、`move_file`、`delete_file` | 需要 |
+| 命令 | `shell` | 需要 |
+
+- `delete_file` 不会真的删除，而是移到工作区的 `.myllmapp/trash/` 下，删错了可以从那里找回。
+- 搜索和递归列目录会跳过 `.gitignore` 里的文件以及 `node_modules`、`.git`、`dist`、`build` 等目录。
+- `rm -rf /`、格式化磁盘、关机、`git push --force`、`curl … | sh` 之类的命令总是被拒绝，即使在"自动"档位下。
+
+**项目说明**：在工作区里创建 `.myllmapp/context.md`，写下项目的约定（技术栈、怎么跑测试、代码风格……），每一轮都会自动附在系统提示词后面，不用每个会话都重新交代。
+
 ## 2.6 权限规则
 
 状态栏上的权限档位是"一刀切"的；**设置 → 权限与工具 → 权限规则** 可以更细：
