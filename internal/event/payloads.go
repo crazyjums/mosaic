@@ -59,6 +59,17 @@ type TurnEnd struct {
 
 type UserMessage struct {
 	Text string `json:"text"`
+	// Attachments 是随消息发出的附件（只有摘要）。没有附件时省略，旧版本的事件照常解析。
+	Attachments []AttachmentInfo `json:"attachments,omitempty"`
+}
+
+// AttachmentInfo 是一个附件的摘要：文本附件只有名字和大小，图片带 base64 数据用来显示缩略图。
+type AttachmentInfo struct {
+	Name      string `json:"name"`
+	Kind      string `json:"kind"` // image / text
+	MediaType string `json:"media_type,omitempty"`
+	Size      int    `json:"size"`
+	Data      string `json:"data,omitempty"`
 }
 
 // ---- 消息级事件 ----
@@ -175,6 +186,8 @@ type ContextCompacted struct {
 	AfterTokens     int    `json:"after_tokens"`
 	RemovedMessages int    `json:"removed_messages"`
 	Summary         string `json:"summary,omitempty"`
+	// Replay 为 true 表示这是恢复会话时从历史里的摘要消息重放出来的，token 数未知（为 0）。
+	Replay bool `json:"replay,omitempty"`
 }
 
 // ---- 错误 ----

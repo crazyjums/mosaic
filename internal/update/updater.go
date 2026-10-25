@@ -19,7 +19,7 @@ import (
 
 // DefaultManifestURL 是默认的清单地址：GitHub 最新正式发布里的 manifest.json。
 // 可以用环境变量 MYLLMAPP_UPDATE_URL 覆盖（测试、内网镜像）。
-const DefaultManifestURL = "https://github.com/crazyjums/myllmapp/releases/latest/download/manifest.json"
+const DefaultManifestURL = "https://github.com/crazyjums/mosaic/releases/latest/download/manifest.json"
 
 const (
 	maxManifestBytes = 1 << 20

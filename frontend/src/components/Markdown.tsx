@@ -77,7 +77,7 @@ function makeComponents(streaming: boolean): Components {
 const urlTransform = (url: string) => (/^[a-zA-Z]:[\\/]/.test(url) ? url : defaultUrlTransform(url));
 
 // 复制到剪贴板：优先用异步剪贴板接口；某些 WebView 里不可用时退回到选中文本再 execCommand。
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;

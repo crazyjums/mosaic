@@ -83,10 +83,22 @@
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `text` | string | 用户输入 |
+| `text` | string | 用户输入（不含附件内容） |
+| `attachments` | object[]? | 附件摘要，见下 |
+
+附件摘要（只用于显示，完整内容在会话历史里，不通过事件重复传输）：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | string | 文件名（路径已去掉，只留文件名） |
+| `kind` | string | `image` / `text` |
+| `media_type` | string? | 图片的 MIME 类型 |
+| `size` | int | 字节数 |
+| `data` | string? | 仅图片：base64，用于显示缩略图；文本附件没有这一项 |
 
 ```json
 {"text": "帮我做个演示"}
+{"text": "看看这个", "attachments": [{"name": "notes.md", "kind": "text", "size": 34}]}
 ```
 
 #### `turn_end`
@@ -271,7 +283,7 @@ tool_call ──(message_end)──┬──────────────
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `code` | string | `provider_error` / `max_steps` / `max_tokens` / `context_error` / `store_error` / `busy` / `send_failed` |
+| `code` | string | `provider_error` / `max_steps` / `max_tokens` / `compact_failed`（非致命）/ `store_error` / `busy` / `send_failed` / `attachment_error` |
 | `message` | string | 给人看的说明 |
 | `fatal` | bool | true 表示本轮因此结束（随后会有 `turn_end`）；false 为警告 |
 
@@ -332,6 +344,7 @@ tool_call ──(message_end)──┬──────────────
 | `after_tokens` | int | 压缩后 |
 | `removed_messages` | int | 被移除/替换的消息数 |
 | `summary` | string? | 生成的摘要 |
+| `replay` | bool? | 为 true 表示恢复会话时从历史里的摘要重放出来的（此时 token 数为 0） |
 
 ```json
 {"before_tokens": 182000, "after_tokens": 24000, "removed_messages": 37}

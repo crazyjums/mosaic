@@ -65,6 +65,18 @@ stateDiagram-v2
 
 历史作为返回值给出（只有最近几轮，见 `docs/event-protocol.md` §6），`foldEvents` 一次折叠后只 `set` 一次，界面只渲染一次。更早的历史由 `loadEarlier` 取回，`prependHistory` 把它放到时间线前面；`MessageList` 用 `prependTick` 和接入前的内容高度补偿滚动位置，让正在看的内容保持不动。等待期间如果切换了会话，这一页直接丢弃。
 
+## 发送队列
+
+引擎一次只跑一轮，所以“运行中发消息”由前端排队（`store/queue.ts` 是纯状态机，`chatStore` 负责接线）：
+
+- 队列按会话绑定，先进先出；条目状态 `queued → sending → (delivered 即移除 | failed)`；
+- `drain` 取队首时**同步**标记为 `sending`，再异步调用后端——连续触发两次 drain 也不会重复发送；
+- 只有真实事件才推进状态：`turn_start` 表示后端接收了（条目移除），`error`（`send_failed` / `busy` / `attachment_error`）表示失败（条目回到队首并标记失败），`turn_end` 触发下一次 drain；
+- 取消（`cancelled`）和出错会让队列“暂停”，只有用户点“继续发送”或发新消息才恢复；失败的队首条目挡住后面的，直到重试或删除；
+- 切换会话不丢队列（按会话 ID 分开存），只有当前会话的队列会被 drain。
+
+测试：`store/queue.test.ts`（状态机）、`store/chatStore.queue.test.ts`（用 mock 后端覆盖 FIFO、失败重试、停止后保留、会话隔离）。
+
 ## 组件交互约定
 
 | 组件 | 约定 |

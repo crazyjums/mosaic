@@ -117,7 +117,7 @@ func run(f flags) error {
 	signal.Notify(c.sig, os.Interrupt)
 
 	st := eng.Status()
-	fmt.Fprintf(info, "myllmapp CLI · %s/%s · 工作区 %s · 配置 %s\n", st.Provider, st.Model, built.Workspace, orDefault(cfg.Source, "（内置默认）"))
+	fmt.Fprintf(info, "Mosaic CLI · %s/%s · 工作区 %s · 配置 %s\n", st.Provider, st.Model, built.Workspace, orDefault(cfg.Source, "（内置默认）"))
 	if f.prompt != "" {
 		c.turn(f.prompt)
 		return nil

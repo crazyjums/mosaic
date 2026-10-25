@@ -21,8 +21,9 @@ const (
 
 // 调用来源。
 const (
-	SourceChat  = "chat"
-	SourceTitle = "title"
+	SourceChat    = "chat"
+	SourceTitle   = "title"
+	SourceCompact = "compact"
 )
 
 // UsageEvent 是一次调用（尝试）的用量记录。只有数字和名称，不含任何提示词或回答内容。

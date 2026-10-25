@@ -15,7 +15,7 @@ import (
 )
 
 // AppName 是登录时向用户显示的应用名（agent_name_hint）。条款要求使用应用自己的真实名字，并在各安装之间保持一致。
-const AppName = "myllmapp"
+const AppName = "Mosaic"
 
 // loginTimeout 是等待用户在浏览器里完成登录的时间。
 const loginTimeout = 10 * time.Minute
@@ -531,7 +531,7 @@ func (m *Manager) revoke(ctx context.Context, c *Credential) error {
 func writeResultPage(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	title, msg := "登录成功 · Signed in", "可以关闭这个页面，回到 myllmapp 了。<br>You can close this tab and return to myllmapp."
+	title, msg := "登录成功 · Signed in", "可以关闭这个页面，回到 Mosaic 了。<br>You can close this tab and return to Mosaic."
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		title, msg = "登录失败 · Sign-in failed", html.EscapeString(err.Error())

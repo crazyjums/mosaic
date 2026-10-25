@@ -5,9 +5,17 @@ import { useUIPrefs } from "../store/uiPrefs";
 import { useUpdate } from "../store/updateStore";
 import { Notice } from "./GeneralSettings";
 import MosaicMark from "./MosaicMark";
+import { ISSUES_URL, LICENSE_URL, RELEASES_URL, REPO_URL } from "../store/project";
 import ChangeLog, { ChangeSummary, LevelBadge, Release } from "./ChangeLog";
 
-// 设置 → 关于：版本号、检查更新、自动检查开关。
+// 设置 → 关于：项目介绍、开源地址、检查更新、版本历史、自动检查开关。
+const FEATURES: [string, string][] = [
+  ["多厂商，也能用 ChatGPT 账号", "OpenAI 兼容、Anthropic，或直接登录 ChatGPT 账号使用套餐额度；多个模型可以组成故障转移组。"],
+  ["看得见的 agent", "思考、工具调用、权限确认全过程可视化；写文件、执行命令前先问你。"],
+  ["技能与 MCP", "把常用做法写成技能，输入 / 调用；用 MCP 接入更多工具。"],
+  ["用量与上下文", "按天统计 token 和花费，上下文占用一目了然，附件和长会话都能处理。"],
+];
+
 export default function AboutSettings() {
   const { version, info, checking, error, status, check, install } = useUpdate();
   const prefs = useUIPrefs((s) => s.prefs);
@@ -20,12 +28,51 @@ export default function AboutSettings() {
 
   return (
     <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
-      <section className="flex items-center gap-4">
-        <MosaicMark size="lg" state="static" decorative={false} />
-        <div>
-          <div className="text-xl font-semibold tracking-tight">Mosaic</div>
-          <div className="mt-0.5 text-sm text-muted">{t("版本 {v}", { v: version || "—" })}</div>
+      {/* 名片：Logo、名称、版本、一句话介绍 */}
+      <section className="card flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
+        <MosaicMark size="lg" state="static" decorative={false} className="shrink-0" />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 className="text-2xl font-semibold tracking-tight">Mosaic</h3>
+            <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted">{t("版本 {v}", { v: version || "—" })}</span>
+          </div>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted">
+            {t("一个桌面端的 AI 编码工作台：连接你自己的大模型，让它在你选定的工作区里读代码、改文件、跑命令——每一步都看得见，危险操作先问你。")}
+          </p>
         </div>
+      </section>
+
+      {/* 它能做什么 */}
+      <section>
+        <div className="mb-2 text-sm font-medium">{t("它能做什么")}</div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {FEATURES.map(([title, desc]) => (
+            <div key={title} className="rounded-card border border-line bg-panel-2/60 px-4 py-3">
+              <div className="text-sm font-medium">{t(title)}</div>
+              <div className="mt-0.5 text-xs leading-relaxed text-muted">{t(desc)}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 链接：开源地址最显眼 */}
+      <section>
+        <div className="mb-2 text-sm font-medium">{t("开源与反馈")}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-primary" onClick={() => void backend().openExternalURL(REPO_URL)} title={REPO_URL}>
+            {t("GitHub 仓库")} ↗
+          </button>
+          <button className="btn" onClick={() => void backend().openExternalURL(ISSUES_URL)}>
+            {t("反馈问题")}
+          </button>
+          <button className="btn" onClick={() => void backend().openExternalURL(RELEASES_URL)}>
+            {t("发布页")}
+          </button>
+          <button className="btn" onClick={() => void backend().openExternalURL(LICENSE_URL)}>
+            {t("MIT 开源协议")}
+          </button>
+        </div>
+        <div className="mt-1.5 select-text font-mono text-[11px] text-muted">{REPO_URL}</div>
       </section>
 
       <section>

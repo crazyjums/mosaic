@@ -112,7 +112,7 @@ func (e *Engine) ContextBreakdown() ContextBreakdown {
 	for _, m := range msgs {
 		switch m.Role {
 		case provider.RoleUser:
-			if m.Text() != "" {
+			if m.IsUserInput() {
 				userN++
 			}
 		case provider.RoleAssistant:

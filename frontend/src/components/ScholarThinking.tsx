@@ -14,7 +14,7 @@ import MosaicMark from "./MosaicMark";
 /** 四个阶段：dots 思考中、doze 眨眼下沉、question 问号、idea 灯泡。 */
 const PHASES = ["dots", "doze", "question", "idea"] as const;
 
-export default function ScholarThinking({ since, label }: { since?: number; label?: string }) {
+export default function ScholarThinking({ since, label, thinking }: { since?: number; label?: string; thinking?: string | null }) {
   const [now, setNow] = useState(Date.now());
   const [phaseIdx, setPhaseIdx] = useState(0);
   const phase = PHASES[phaseIdx];
@@ -119,6 +119,13 @@ export default function ScholarThinking({ since, label }: { since?: number; labe
       <div className="min-w-0 flex-1 text-sm text-muted">
         <div className="font-medium text-fg">{label ?? t("正在思考…")}</div>
         {secs !== null && secs >= 1 && <div className="text-xs tabular-nums">{t("已等待 {n} 秒", { n: secs })}</div>}
+        {/* 过程折叠时，露出模型最近一段真实的思考文字（没有就不显示这一行） */}
+        {thinking && (
+          <div className="mt-1 line-clamp-2 break-words text-xs" title={thinking}>
+            <span className="mr-1.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">{t("思考摘要")}</span>
+            {thinking}
+          </div>
+        )}
       </div>
       {/* 金色拼块的动作由真实的 Agent 阶段决定（开始 / 工作中 / 需要处理），见 store/agentPhase.ts */}
       <MosaicMark size="md" state={phaseState === "static" ? "thinking" : phaseState} className="shrink-0" />

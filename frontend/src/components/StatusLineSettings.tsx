@@ -140,7 +140,7 @@ function ScriptEditor() {
             setDraft(e.target.value);
             setSavedMsg(false);
           }}
-          placeholder={`~/.config/myllmapp/statusline.sh   /   echo "$(date +%H:%M)"`}
+          placeholder={`~/.config/mosaic/statusline.sh   /   echo "$(date +%H:%M)"`}
           spellCheck={false}
         />
         <div className="flex items-center gap-2">

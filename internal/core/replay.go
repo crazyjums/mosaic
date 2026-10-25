@@ -25,7 +25,7 @@ func ReplayEvents(s *Session, riskOf func(toolName string) permission.Risk) []ev
 func turnStarts(msgs []provider.Message) []int {
 	var out []int
 	for i, m := range msgs {
-		if m.Role == provider.RoleUser && m.Text() != "" {
+		if m.IsUserInput() {
 			out = append(out, i)
 		}
 	}
@@ -54,14 +54,19 @@ func replayRange(snap *Session, riskOf func(toolName string) permission.Risk, fr
 	for _, m := range snap.Messages[from:to] {
 		switch m.Role {
 		case provider.RoleUser:
-			// 含文本的 user 消息是"用户发言"，开启新的一轮；只含 tool_result 的是工具结果。
-			if text := m.Text(); text != "" {
+			// 压缩产生的摘要：不是用户发言，回放成"上下文已压缩"的提示（只在第一页出现，因为它总在历史开头）。
+			if m.IsSummary() {
+				add("", event.ContextCompacted{Summary: m.SummaryText(), Replay: true})
+				continue
+			}
+			// 含文字或附件的 user 消息是"用户发言"，开启新的一轮；只含 tool_result 的是工具结果。
+			if m.IsUserInput() {
 				closeTurn()
 				turnID = event.NewID("turn")
 				turnOpen = true
 				step = 0
 				add("", event.TurnStart{TurnID: turnID, Provider: snap.Provider, Model: snap.Model, Replay: true})
-				add("", event.UserMessage{Text: text})
+				add("", event.UserMessage{Text: m.Text(), Attachments: attachmentInfos(m)})
 			}
 			for _, b := range m.Content {
 				if b.Type == provider.BlockToolResult {

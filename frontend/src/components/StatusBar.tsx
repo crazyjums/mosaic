@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { backend } from "../bridge";
 import { t } from "../i18n";
+import { useGit } from "../store/gitStore";
 import { parseAnsi } from "../store/ansi";
 import { remaining, remainingTone, windowShort } from "../store/quota";
 import { useChat } from "../store/chatStore";
 import type { ChatGPTUsage } from "../bridge";
 import { contextTokens, currentStep, fmtDuration, fmtLatency, fmtTokens, fmtUSD, modelMeta, sessionCost, ttft } from "../store/metrics";
+import { placeAbove } from "../store/popover";
 import { useSettings } from "../store/settingsStore";
 import { useStatusLine, type ItemId } from "../store/statusline";
 import PermissionModeSelect from "./PermissionModeSelect";
@@ -211,16 +213,19 @@ function GitItem() {
   const info = useChat((s) => s.workspaceInfo);
   if (!info?.is_repo) return null;
   return (
-    <Tip
-      tip={
+    <button
+      type="button"
+      className="whitespace-nowrap rounded-ctl px-1 hover:bg-accent-soft hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+      title={`${
         info.dirty
           ? t("分支 {branch}，{n} 个文件有未提交的改动", { branch: info.branch ?? "", n: info.changed_files })
           : t("分支 {branch}，没有未提交的改动", { branch: info.branch ?? "" })
-      }
+      }\n${t("点击打开 Git 窗口（分支图、提交历史、变更）")}`}
+      onClick={() => useGit.getState().show()}
     >
       ⎇ {info.branch}
       {info.dirty && <span className="text-warn"> ●{info.changed_files}</span>}
-    </Tip>
+    </button>
   );
 }
 
@@ -401,7 +406,8 @@ function ChatGPTQuotaItem() {
         {u.quota_enabled && u.quota_error && <span className="text-warn"> ⚠</span>}
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-lg border border-line bg-panel p-3 text-left shadow-xl">
+        // 额度项通常在状态栏最右边：卡片用 fixed 定位并限制在窗口内（左右各留 8px），高度超过可用空间时自己滚动，不再超出屏幕
+        <div className="shadow-pop fixed z-30 overflow-y-auto rounded-card border border-line bg-panel p-3 text-left" style={ref.current ? placeAbove(ref.current.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight }) : undefined}>
           <ChatGPTQuotaDetails usage={u} onChange={load} />
         </div>
       )}

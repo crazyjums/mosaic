@@ -129,7 +129,7 @@ provider.Provider  // Stream(ctx, req, onDelta) error
 tool.Tool          // Spec() / Summarize(input) / Execute(ctx, call)
 permission.Policy  // Evaluate / Remember / Reset
 core.SessionStore  // Save / Load / List / Delete
-core.Compactor     // 预留：上下文压缩
+core.Compactor     // 上下文压缩：SummaryCompactor（生产）/ NoopCompactor
 ```
 
 ## 4. 一次完整请求的时序

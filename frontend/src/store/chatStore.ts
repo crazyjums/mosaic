@@ -9,12 +9,13 @@
 // 组件用 selector 订阅局部状态，流式更新时只重渲染真正变化的部分。
 
 import { create } from "zustand";
-import { backend, type PermissionMode, type ProfileInfo, type SessionSummary, type Status, type WorkspaceInfo } from "../bridge";
+import { backend, type Attachment, type PermissionMode, type ProfileInfo, type SessionSummary, type Status, type WorkspaceInfo } from "../bridge";
 import type { Decision } from "../protocol/events";
 import { applyEvent, foldEvents, initialState, prependHistory, type ChatState } from "./reducer";
 import { t } from "../i18n";
+import * as Q from "./queue";
 
-interface Store extends ChatState {
+interface Store extends ChatState, Q.QueueState {
   backendKind: "wails" | "demo";
   profiles: ProfileInfo[];
   sessions: SessionSummary[];
@@ -36,7 +37,15 @@ interface Store extends ChatState {
   prependTick: number;
 
   init(): Promise<void>;
-  send(text: string): Promise<void>;
+  /** 发送一条消息（可带附件）。运行中或队列里还有待发送的消息时先排队，见 store/queue.ts */
+  send(text: string, attachments?: Attachment[]): Promise<void>;
+  /** 重试发送失败的排队消息 */
+  retryQueued(id: string): Promise<void>;
+  removeQueued(id: string): void;
+  /** 把一条待发送的消息移到队列最前面（只调整顺序，不会中断正在运行的这一轮） */
+  moveQueuedFirst(id: string): void;
+  /** 暂停之后继续发送队列 */
+  resumeQueue(): Promise<void>;
   cancel(): Promise<void>;
   respondPermission(requestId: string, decision: Decision): Promise<void>;
   newSession(): Promise<void>;
@@ -81,8 +90,11 @@ export const useChat = create<Store>((set, get) => {
   // 运行中切换会话 / 新建会话：后端一次只跑一轮（运行中会返回 busy），所以先确认、停止当前这一轮，
   // 等后端真正停下来（最多几秒）再继续。返回 false 表示用户取消了。
   const stopRunning = async (): Promise<boolean> => {
-    if (!get().running) return true;
-    if (!confirm(t("当前会话还在运行。停止它并继续？"))) return false;
+    if (!get().running && !Q.hasSending(get())) return true;
+    // 待发送的消息属于这个会话，会保留；说清楚，免得用户以为被丢了
+    const queued = Q.countFor(get(), get().sessionId ?? "");
+    const note = queued > 0 ? t("（待发送的 {n} 条消息会保留，回到这个会话后可以继续发送）", { n: queued }) : "";
+    if (!confirm(t("当前会话还在运行。停止它并继续？") + note)) return false;
     await backend().cancel();
     for (let i = 0; i < 50; i++) {
       if (!(await backend().getStatus()).running) {
@@ -92,6 +104,25 @@ export const useChat = create<Store>((set, get) => {
       await new Promise((r) => setTimeout(r, 100));
     }
     throw new Error(t("停止超时，请稍后再试"));
+  };
+
+  /**
+   * 发送队列的出口：取出当前会话该发的下一条，交给后端。
+   * 关键：先同步地把它标成"发送中"再 await，这样重复的 turn_end 事件、连续的入队调用再进来时，
+   * nextToSend 看到有"发送中"的就不会再发（不会重复发送、也不会乱序）。
+   */
+  const drain = async () => {
+    const s = get();
+    const sid = s.sessionId;
+    if (!sid) return;
+    const next = Q.nextToSend(s, sid, s.running);
+    if (!next) return;
+    set(Q.markSending(s, next.id));
+    try {
+      await backend().send(next.text, next.attachments.length ? next.attachments : undefined);
+    } catch (e) {
+      set((cur) => Q.markFailed(cur, next.id, String(e instanceof Error ? e.message : e)));
+    }
   };
 
   const refreshMeta = async () => {
@@ -116,6 +147,7 @@ export const useChat = create<Store>((set, get) => {
     workspaceInfo: null,
     permissionMode: "default",
     toast: null,
+    ...Q.emptyQueue(),
     earlier: 0,
     loadingEarlier: false,
     prependTick: 0,
@@ -128,6 +160,17 @@ export const useChat = create<Store>((set, get) => {
       // 所有事件都流经 reducer。一轮结束后刷新会话列表和状态栏数据。
       b.onEvent((ev) => {
         set((s) => applyEvent(s, ev));
+        // 发送队列跟着真实事件走：后端开始新一轮 = 那条消息送达；后端拒绝 = 标记失败；一轮结束 = 轮到下一条。
+        // 只处理当前会话的事件（队列里的消息都绑定了会话）。
+        const cur = get().sessionId;
+        if (cur && ev.session_id === cur) {
+          if (ev.type === "turn_start" && !ev.data.replay) set((s) => Q.onTurnStarted(s, cur));
+          else if (ev.type === "error" && ["send_failed", "busy", "attachment_error"].includes(ev.data.code)) set((s) => Q.onSendRejected(s, cur, ev.data.message));
+          else if (ev.type === "turn_end" && !ev.data.replay) {
+            set((s) => Q.onTurnEnded(s, cur, ev.data.reason));
+            void drain();
+          }
+        }
         if (ev.type === "session_updated") {
           if (ev.session_id === get().sessionId) set({ title: ev.data.title });
           void refreshMeta(); // 会话列表里的标题也要更新（历史会话改名时也一样）
@@ -158,7 +201,27 @@ export const useChat = create<Store>((set, get) => {
       });
     },
 
-    send: (text) => guard(() => backend().send(text)),
+    send: (text, attachments = []) =>
+      guard(async () => {
+        const sid = get().sessionId;
+        if (!sid) throw new Error(t("还没有可用的会话"));
+        // 统一走队列：空闲时马上发出，运行中先排队；这样失败重试、顺序、按会话隔离只有一套逻辑。
+        set((s) => Q.enqueue(s, { id: `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`, sessionId: sid, text, attachments }));
+        await drain();
+      }),
+    retryQueued: (id) =>
+      guard(async () => {
+        set((s) => Q.retry(s, id));
+        await drain();
+      }),
+    removeQueued: (id) => set((s) => Q.remove(s, id)),
+    moveQueuedFirst: (id) => set((s) => Q.moveFirst(s, id)),
+    resumeQueue: () =>
+      guard(async () => {
+        const sid = get().sessionId;
+        if (sid) set((s) => Q.resume(s, sid));
+        await drain();
+      }),
     cancel: () => guard(() => backend().cancel()),
     respondPermission: (id, decision) => guard(() => backend().respondPermission(id, decision)),
 
@@ -221,6 +284,7 @@ export const useChat = create<Store>((set, get) => {
     deleteSession: (id) =>
       guard(async () => {
         await backend().deleteSession(id);
+        set((s) => ({ queue: s.queue.filter((m) => m.sessionId !== id) })); // 会话没了，它的待发送消息也没有去处
         // 删除的是当前会话时，后端已切换到一个新的空会话，界面跟着切换。
         if (id === get().sessionId) {
           const st = await backend().getStatus();
@@ -264,7 +328,8 @@ export const useChat = create<Store>((set, get) => {
     resetToCurrentSession: () =>
       guard(async () => {
         const st = await backend().getStatus();
-        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, earlier: 0, loadingEarlier: false, ...wsFrom(st) });
+        // 清空历史之后所有旧会话都没了，待发送的消息一并丢弃
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, earlier: 0, loadingEarlier: false, ...wsFrom(st), ...Q.emptyQueue() });
         await refreshMeta();
       }),
 

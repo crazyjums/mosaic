@@ -9,6 +9,7 @@ import MessageList from "./components/MessageList";
 import PermissionDialog from "./components/PermissionDialog";
 import SettingsDialog from "./components/SettingsDialog";
 import UpdateButton from "./components/UpdateButton";
+import GitWindow from "./components/GitWindow";
 import UpdateDialog from "./components/UpdateDialog";
 import Sidebar from "./components/Sidebar";
 import EditableTitle from "./components/EditableTitle";
@@ -71,6 +72,7 @@ export default function App() {
       </main>
       <PermissionDialog />
       <UpdateDialog />
+      <GitWindow />
       <SettingsDialog />
     </div>
   );

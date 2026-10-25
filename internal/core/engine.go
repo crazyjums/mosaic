@@ -350,6 +350,20 @@ func (e *Engine) NewSession() (Status, error) {
 // 阻塞式 API 对 CLI 和测试最自然；Wails 绑定层会在 goroutine 里调用它，避免卡住界面线程。
 // ctx 用于外部取消；Cancel() 也能取消当前这一轮。
 func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
+	return e.SendInput(ctx, UserInput{Text: text})
+}
+
+// compactorFor 返回本轮使用的压缩器：配置里显式指定了就用它（测试用），
+// 否则用本轮的厂商和模型生成摘要，窗口取自该模型的 models_meta.context_window。
+func (e *Engine) compactorFor(p provider.Provider, cfg provider.ProfileConfig, model string) Compactor {
+	if e.cfg.Compactor != nil {
+		return e.cfg.Compactor
+	}
+	return &SummaryCompactor{Provider: p, Model: model, Window: provider.ParseModelMeta(cfg.Options)[model].ContextWindow}
+}
+
+// SendInput 和 Send 一样，但发言可以带附件（图片、文本文件），见 attachment.go。
+func (e *Engine) SendInput(ctx context.Context, in UserInput) (TurnResult, error) {
 	// 步骤 1：占用运行权，准备好本轮要用的依赖。
 	e.mu.Lock()
 	if e.running {
@@ -362,7 +376,7 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		e.mu.Unlock()
 		return TurnResult{}, ErrNoProvider
 	}
-	p, _, err := e.cfg.Catalog.Get(snap.Provider)
+	p, pcfg, err := e.cfg.Catalog.Get(snap.Provider)
 	if err != nil {
 		e.mu.Unlock()
 		return TurnResult{}, err
@@ -400,12 +414,12 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 		Policy:    e.cfg.Policy,
 		Broker:    e.broker,
 		Publisher: e.bus,
-		Compactor: e.cfg.Compactor,
+		Compactor: e.compactorFor(p, pcfg, snap.Model),
 		Workspace: rt.Workspace,
 		SessionID: sid,
 		Disabled:  disabled,
 	})
-	res := agent.Run(ctx, sess, text)
+	res := agent.RunInput(ctx, sess, in)
 
 	// 步骤 3：持久化。即使本轮出错/取消也要保存——用户已经看到的内容不应该丢。
 	// 用 context.Background()：本轮被取消时保存仍需完成。

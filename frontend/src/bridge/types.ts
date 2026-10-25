@@ -75,6 +75,16 @@ export interface LoadedSession extends HistoryPage {
   status: Status;
 }
 
+/** 要随消息发出的附件（对应 core.Attachment）：图片带 base64，文本带内容 */
+export interface Attachment {
+  name: string;
+  media_type?: string;
+  /** 图片的 base64（不带 data: 前缀） */
+  data?: string;
+  /** 文本附件的内容 */
+  text?: string;
+}
+
 /** 一个技能（对应 skill.Info）：输入框里键入 / 时的补全项 */
 export interface SkillInfo {
   name: string;
@@ -320,7 +330,8 @@ export interface Backend {
   openExternalURL(url: string): Promise<void>;
   setModel(profile: string, model: string): Promise<Status>;
   /** 立即返回；对话过程通过 onEvent 推送 */
-  send(text: string): Promise<void>;
+  /** 发送一条消息；可带附件（图片、文本文件）。后端同一时间只跑一轮，排队由界面的发送队列负责（store/queue.ts） */
+  send(text: string, attachments?: Attachment[]): Promise<void>;
   cancel(): Promise<void>;
   respondPermission(requestId: string, decision: Decision): Promise<void>;
   // ---- 设置：厂商配置 ----
@@ -331,6 +342,13 @@ export interface Backend {
   fetchModels(input: ProviderInput): Promise<string[]>;
   // ---- 状态栏 ----
   getWorkspaceInfo(): Promise<WorkspaceInfo>;
+  // ---- Git 窗口（全部只读）----
+  gitOverview(): Promise<GitOverview>;
+  /** 分页取所有分支上的提交（按时间倒序，含父提交，用来画分支图） */
+  gitLog(skip: number, limit: number): Promise<GitCommit[]>;
+  gitCommit(hash: string): Promise<GitCommitDetail>;
+  gitCommitDiff(hash: string, path: string): Promise<GitDiff>;
+  gitWorkingDiff(path: string, staged: boolean): Promise<GitDiff>;
   setPermissionMode(mode: PermissionMode): Promise<Status>;
   /** 从未保存过时返回 null */
   getStatusLineConfig(): Promise<unknown>;
@@ -543,4 +561,84 @@ export interface ProxyView {
   set: boolean;
   /** 密码已脱敏的地址 */
   display: string;
+}
+
+// ---- Git 窗口的数据（对应 internal/gitview）----
+
+export interface GitRef {
+  name: string;
+  kind: "branch" | "remote" | "tag";
+  head?: boolean;
+}
+
+export interface GitCommit {
+  hash: string;
+  short: string;
+  parents: string[];
+  refs?: GitRef[];
+  author: string;
+  /** unix 秒 */
+  time: number;
+  subject: string;
+}
+
+export interface GitBranch {
+  name: string;
+  kind: "branch" | "remote" | "tag";
+  hash: string;
+  current?: boolean;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+  time: number;
+  subject?: string;
+}
+
+export interface GitFileChange {
+  path: string;
+  orig_path?: string;
+  /** 暂存区状态字母：M A D R ? U，空格表示无变化 */
+  index: string;
+  /** 工作区状态字母 */
+  work: string;
+}
+
+export interface GitStatus {
+  branch: string;
+  detached: boolean;
+  head: string;
+  upstream?: string;
+  ahead?: number;
+  behind?: number;
+  files: GitFileChange[];
+}
+
+export interface GitOverview {
+  status: GitStatus;
+  branches: GitBranch[];
+}
+
+export interface GitChangedFile {
+  path: string;
+  orig_path?: string;
+  status: string;
+  /** 二进制文件为 -1 */
+  added: number;
+  deleted: number;
+}
+
+export interface GitCommitDetail extends GitCommit {
+  email: string;
+  body: string;
+  files: GitChangedFile[];
+  added: number;
+  deleted: number;
+}
+
+export interface GitDiff {
+  path: string;
+  text: string;
+  truncated?: boolean;
+  binary?: boolean;
+  note?: string;
 }

@@ -12,7 +12,7 @@ import (
 func isFirstTurn(s *Session) bool {
 	n := 0
 	for _, m := range s.messages() {
-		if m.Role == provider.RoleUser && m.Text() != "" {
+		if m.IsUserInput() {
 			n++
 		}
 	}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/crazyjums/myllmapp/internal/event"
@@ -111,6 +112,11 @@ func (e emitter) emit(messageID string, p event.Payload) {
 //
 // Run 会修改 sess（追加消息、累计用量）。调用方需保证同一会话同一时间只有一个 Run。
 func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult {
+	return a.RunInput(ctx, sess, UserInput{Text: input})
+}
+
+// RunInput 和 Run 一样，但用户的发言可以带附件。
+func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnResult {
 	em := emitter{pub: a.cfg.Publisher, sessionID: sess.ID, agentID: a.cfg.ID, parentID: a.cfg.ParentID}
 	res := TurnResult{TurnID: event.NewID("turn")}
 
@@ -128,10 +134,18 @@ func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult
 		return res
 	}
 
+	// 附件在这里校验：不合格时这一轮还没开始，不留半截历史。
+	userMsg, err := buildUserMessage(in)
+	if err != nil {
+		em.emit("", event.Error{Code: "attachment_error", Message: err.Error(), Fatal: true})
+		return end(event.TurnError, err)
+	}
 	em.emit("", event.TurnStart{TurnID: res.TurnID, Provider: a.cfg.Provider.Name(), Model: a.cfg.Model})
-	sess.appendMessage(provider.UserText(input))
-	em.emit("", event.UserMessage{Text: input})
+	sess.appendMessage(userMsg)
+	em.emit("", event.UserMessage{Text: in.Text, Attachments: attachmentInfos(userMsg)})
 
+	// 本轮里摘要失败过就不再重试：否则每一步都多花一次必然失败的请求。
+	compactFailed := false
 	for step := 1; ; step++ {
 		// 保险丝：超过最大步数直接停止。此时最后一条消息是工具结果，下次用户发言时模型能看到完整上下文。
 		if step > a.cfg.MaxSteps {
@@ -144,11 +158,11 @@ func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult
 		}
 		res.Steps = step
 
-		// ① 上下文准备：压缩钩子。第一阶段是 no-op，接口和事件已经接好，见 compact.go。
-		msgs, err := a.prepareContext(ctx, sess, em)
+		// ① 上下文准备：必要时压缩，见 compact.go。
+		msgs, err := a.prepareContext(ctx, sess, em, &compactFailed)
 		if err != nil {
-			em.emit("", event.Error{Code: "context_error", Message: err.Error(), Fatal: true})
-			return end(event.TurnError, err)
+			// 只有取消会走到这里（摘要失败是非致命的，见 prepareContext）。
+			return end(event.TurnCancelled, err)
 		}
 
 		// ② 调用模型。
@@ -187,16 +201,32 @@ func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult
 }
 
 // prepareContext 取出要发给模型的消息，并在需要时调用压缩器。
-func (a *Agent) prepareContext(ctx context.Context, sess *Session, em emitter) ([]provider.Message, error) {
+//
+// 返回错误只表示"被取消"。压缩失败不会终止本轮：历史保持原样，发一条非致命的 compact_failed 警告，
+// 照常请求模型——上下文可能还装得下，装不下时厂商会返回明确的错误，用户能看到真实原因。
+func (a *Agent) prepareContext(ctx context.Context, sess *Session, em emitter, failed *bool) ([]provider.Message, error) {
 	msgs := sess.messages()
-	r, err := a.cfg.Compactor.Compact(ctx, CompactRequest{Messages: msgs, Model: a.cfg.Model})
+	if *failed {
+		return msgs, nil
+	}
+	r, err := a.cfg.Compactor.Compact(ctx, CompactRequest{
+		Messages:  msgs,
+		Model:     a.cfg.Model,
+		SessionID: a.cfg.SessionID,
+		Overhead:  a.fixedOverhead(),
+	})
 	if err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		*failed = true
+		em.emit("", event.Error{Code: "compact_failed", Message: "上下文压缩失败，已保持原样继续：" + err.Error(), Fatal: false})
+		return msgs, nil
 	}
 	if !r.Changed {
 		return msgs, nil
 	}
-	// 压缩会改写历史：新的消息列表替换会话里的旧列表，并通知界面。
+	// 压缩会改写历史：新的消息列表替换会话里的旧列表（epoch 加一，使分页游标失效），并通知界面。
 	sess.replaceMessages(r.Messages)
 	em.emit("", event.ContextCompacted{
 		BeforeTokens:    r.BeforeTokens,
@@ -205,6 +235,16 @@ func (a *Agent) prepareContext(ctx context.Context, sess *Session, em emitter) (
 		Summary:         r.Summary,
 	})
 	return r.Messages, nil
+}
+
+// fixedOverhead 估算每次请求都带的固定开销：系统提示词和工具定义。
+func (a *Agent) fixedOverhead() int {
+	n := EstimateTokens(a.cfg.System)
+	for _, s := range a.toolSpecs() {
+		def, _ := json.Marshal(map[string]any{"name": s.Name, "description": s.Description, "input_schema": s.InputSchema})
+		n += EstimateTokens(string(def))
+	}
+	return n
 }
 
 // callModel 完成一次模型调用：message_start → 若干 delta 事件 → message_end。
