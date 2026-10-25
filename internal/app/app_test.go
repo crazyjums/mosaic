@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -144,5 +146,34 @@ func TestLoadSessionPagesHistory(t *testing.T) {
 	page, err := a.LoadEarlierHistory(id)
 	if err != nil || page.Earlier != 0 || len(page.Events) == 0 {
 		t.Fatalf("更早一页: %+v %v", page, err)
+	}
+}
+
+// 输入框里键入 / 的补全菜单：ListSkills 返回当前会话工作区里的技能；没有技能时是空数组而不是 null。
+func TestListSkills(t *testing.T) {
+	cfg := config.Default()
+	cfg.EnableDemo()
+	cfg.DataDir = t.TempDir()
+	ws := t.TempDir()
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: ws, NoStore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+	a := New(built.Engine, built.Settings, func(context.Context, string, ...any) {})
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+
+	if got := a.ListSkills(); got == nil || len(got) != 0 {
+		t.Fatalf("没有技能时应是空数组: %#v", got)
+	}
+	dir := filepath.Join(ws, ".myllmapp", "skills", "report")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\ndescription: 做报告\n---\n正文"), 0o644)
+	got := a.ListSkills()
+	if len(got) != 1 || got[0].Name != "report" || got[0].Description != "做报告" || got[0].Source != "project" {
+		t.Fatalf("应列出工作区里的技能: %+v", got)
 	}
 }
