@@ -1,4 +1,4 @@
-# myllmapp 配置示例
+# Mosaic 配置示例
 #
 # 使用方法：复制为 config.toml（当前目录）或 ~/.myllmapp/config.toml，按需修改。
 #   cp config.example.toml config.toml
