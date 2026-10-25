@@ -1,7 +1,7 @@
 // 浏览器演示桥接：没有 Go 后端时（例如单独运行 `npm run dev`）使用。
 //
 // 它回放 demo-events.jsonl —— 这份文件是用真实 CLI 录下来的事件流：
-//   go run ./cmd/cli -json -yes -no-store -p "帮我做个演示" > frontend/src/bridge/demo-events.jsonl
+//   go run ./cmd/cli -demo -json -yes -no-store -p "帮我做个演示" > frontend/src/bridge/demo-events.jsonl
 // （Makefile 里的 `make demo-events` 就是这条命令）。
 // 因为数据来自真实内核，前端在浏览器里看到的和在桌面端看到的是同一套协议、同一种节奏。
 //
