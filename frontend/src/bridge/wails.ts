@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -65,6 +65,7 @@ interface GoApp {
   SetProxy(raw: string): Promise<void>;
   GetVersion(): Promise<string>;
   CheckUpdate(): Promise<UpdateInfo>;
+  GetVersionHistory(): Promise<ReleaseNotes[] | null>;
   InstallUpdate(): Promise<void>;
   GetUpdateStatus(): Promise<UpdateStatus>;
   GetContextBreakdown(): Promise<ContextBreakdown>;
@@ -153,6 +154,7 @@ export function createWailsBackend(): Backend {
     setProxy: (raw) => app.SetProxy(raw),
     getVersion: () => app.GetVersion(),
     checkUpdate: () => app.CheckUpdate(),
+    getVersionHistory: async () => (await app.GetVersionHistory()) ?? [],
     installUpdate: () => app.InstallUpdate(),
     getUpdateStatus: () => app.GetUpdateStatus(),
     getContextBreakdown: () => app.GetContextBreakdown(),

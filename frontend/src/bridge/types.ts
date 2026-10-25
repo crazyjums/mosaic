@@ -348,6 +348,8 @@ export interface Backend {
   getVersion(): Promise<string>;
   /** 检查更新：网络或签名错误以异常返回；disabled 非空表示更新功能不可用（开发版 / 没配置公钥） */
   checkUpdate(): Promise<UpdateInfo>;
+  /** 随程序打包的全部历史版本更新日志，最新的在前；离线可用 */
+  getVersionHistory(): Promise<ReleaseNotes[]>;
   /** 下载并安装最近一次检查到的版本，然后重启；立即返回，进度用 getUpdateStatus 轮询 */
   installUpdate(): Promise<void>;
   getUpdateStatus(): Promise<UpdateStatus>;
@@ -397,8 +399,6 @@ export interface UpdateInfo {
   pub_date?: string;
   /** 当前版本之后到最新版本之间的全部更新日志，最新的在前 */
   releases?: ReleaseNotes[];
-  /** 当前版本自己的更新日志；已是最新版本时关于页用它显示"这个版本更新了什么" */
-  current_release?: ReleaseNotes;
   /** 更新建议：critical 含安全修复 / recommended 含修复 / optional 只有新功能；旧格式清单没有 */
   level?: "critical" | "recommended" | "optional";
   /** 含不兼容变更，更新前需要先阅读 */
