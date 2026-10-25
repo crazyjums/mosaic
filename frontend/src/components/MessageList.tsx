@@ -3,6 +3,7 @@ import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 import type { AssistantItem, TimelineItem } from "../store/reducer";
 import TurnView from "./TurnView";
+import UserBubble from "./UserBubble";
 import ScholarThinking from "./ScholarThinking";
 import WorkspacePicker from "./WorkspacePicker";
 import { t } from "../i18n";
@@ -66,7 +67,16 @@ export default function MessageList() {
   };
 
   return (
-    <div ref={ref} onScroll={onScroll} className="min-w-0 flex-1 overflow-y-auto">
+    // overflow-anchor: none —— 浏览器自己的"滚动锚定"会在上方插入内容时偷偷调整 scrollTop，
+    // 和下面手动补偿叠加就会多跳一次（WebView2 / Chromium 里会发生）；关掉它，位置只由我们的补偿决定。
+    // onWheel：已经在最顶部时继续向上滚不会再触发 scroll 事件，所以单独监听滚轮。
+    <div
+      ref={ref}
+      onScroll={onScroll}
+      onWheel={(e) => e.deltaY < 0 && earlier > 0 && (ref.current?.scrollTop ?? 1) <= 0 && more()}
+      style={{ overflowAnchor: "none" }}
+      className="min-w-0 flex-1 overflow-y-auto"
+    >
       <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-6 py-6">
         {earlier > 0 && (
           <div className="flex justify-center">
@@ -86,7 +96,7 @@ export default function MessageList() {
             case "user":
               return (
                 <div key={it.id} className="flex justify-end">
-                  <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed">{it.text}</div>
+                  <UserBubble text={it.text} />
                 </div>
               );
             case "error":
