@@ -84,7 +84,7 @@ func TestConfigExampleParses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Providers) < 3 || cfg.DefaultProvider != "fake" {
+	if len(cfg.Providers) < 3 {
 		t.Fatalf("config.example.toml 内容异常: %+v", cfg)
 	}
 	for _, p := range cfg.Providers {

@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -161,5 +162,47 @@ func TestCheckCarriesReleases(t *testing.T) {
 	info, _ = f.updater(t, "1.2.0", "linux").Check(context.Background())
 	if info.Level != "" || info.Notes == "" {
 		t.Fatalf("旧格式: %+v", info)
+	}
+}
+
+// 更新日志会公开发布，署名行和 Claude 会话链接（可能泄露隐私）不能进去。
+func TestCleanStripsTrailersAndSessionLinks(t *testing.T) {
+	cases := map[string]string{
+		// 提交标题和署名行之间少了空行时，git 的 %s 会把它们合成一行。
+		"docs: 更新日志记录版本历史 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com> Claude-Session: https://claude.ai/code/session_0167NzFcf9M43dWpVWyqKEdM": "docs: 更新日志记录版本历史",
+		"修复崩溃\n\nClaude-Session: https://claude.ai/code/session_abc":                                                                                         "修复崩溃",
+		"新增功能 🤖 Generated with [Claude Code](https://claude.com/claude-code) https://claude.ai/code/session_x":                                               "新增功能",
+		"见 [会话](https://claude.ai/code/session_x) 了解":                                                                                                        "见  了解",
+		"普通条目 https://github.com/o/r/pull/1":                                                                                                                 "普通条目 https://github.com/o/r/pull/1",
+	}
+	for in, want := range cases {
+		if got := Clean(in); got != want {
+			t.Errorf("Clean(%q)\n got %q\nwant %q", in, got, want)
+		}
+	}
+}
+
+func TestChangelogAndCommitsAreCleaned(t *testing.T) {
+	rs := ParseChangelog("## [1.0.0] - 2026-01-01\n\n### 新增\n- 好用的功能 Claude-Session: https://claude.ai/code/session_x\n- Claude-Session: https://claude.ai/code/session_y\n")
+	if len(rs) != 1 || !reflect.DeepEqual(rs[0].Sections[0].Items, []string{"好用的功能"}) {
+		t.Fatalf("日志条目应清掉署名并丢弃清空的条目: %+v", rs)
+	}
+	r := FromCommits([]string{"feat: 新功能 Co-Authored-By: X <x@y.z> Claude-Session: https://claude.ai/code/session_z"}, "1.0.0", "2026-01-01")
+	if len(r.Sections) != 1 || r.Sections[0].Items[0] != "新功能" {
+		t.Fatalf("提交标题应清掉署名: %+v", r)
+	}
+}
+
+// 已经发布的清单里如果带了会话链接，客户端显示前也要清掉。
+func TestCheckCleansPublishedManifest(t *testing.T) {
+	f := newFixture(t, "1.3.0")
+	f.manifest.Notes = "新功能\n- 好用 Claude-Session: https://claude.ai/code/session_x"
+	f.manifest.Releases = []Release{{Version: "1.3.0", Sections: []Section{{Kind: KindAdded, Items: []string{"新功能 Claude-Session: https://claude.ai/code/session_x"}}}}}
+	info, err := f.updater(t, "1.2.0", "linux").Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(info.Notes, "claude.ai") || strings.Contains(info.Releases[0].Sections[0].Items[0], "claude.ai") {
+		t.Fatalf("不应带会话链接: %+v", info)
 	}
 }

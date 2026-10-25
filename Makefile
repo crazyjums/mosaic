@@ -18,11 +18,11 @@ cli:
 
 ## CLI：非交互演示，自动回答两次权限确认（一次允许、一次拒绝）
 demo:
-	printf '帮我做个演示\ny\nn\n' | go run ./cmd/cli -no-store -workspace $$(mktemp -d)
+	printf '帮我做个演示\ny\nn\n' | go run ./cmd/cli -demo -no-store -workspace $$(mktemp -d)
 
 ## 重新录制前端浏览器演示模式使用的事件流
 demo-events:
-	go run ./cmd/cli -json -yes -no-store -workspace $$(mktemp -d) -p "帮我做个演示" 2>/dev/null > frontend/src/bridge/demo-events.jsonl
+	go run ./cmd/cli -demo -json -yes -no-store -workspace $$(mktemp -d) -p "帮我做个演示" 2>/dev/null > frontend/src/bridge/demo-events.jsonl
 
 ## 前端
 frontend-install:

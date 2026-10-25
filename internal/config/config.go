@@ -52,19 +52,13 @@ type ProviderConfig struct {
 // EnvConfigPath 是指定配置文件路径的环境变量。
 const EnvConfigPath = "MYLLMAPP_CONFIG"
 
-// Default 返回内置默认配置：没有配置文件也能直接用 fake 跑起来，
-// 设置了常见环境变量（OPENAI_API_KEY 等）的厂商也立即可用。
+// Default 返回内置默认配置：设置了常见环境变量（OPENAI_API_KEY 等）的厂商立即可用，
+// 一个都没有也能启动（界面引导用户去添加）。不含演示厂商，见 EnableDemo。
 func Default() *Config {
 	return &Config{
-		DefaultProvider: "fake",
-		Workspace:       ".",
-		PermissionMode:  "default",
+		Workspace:      ".",
+		PermissionMode: "default",
 		Providers: []ProviderConfig{
-			{Name: "fake", Type: "fake", Models: []string{"demo", "echo"}, DefaultModel: "demo",
-				// 给演示模型也配上上下文窗口和（假想的）单价，这样不配置真实厂商也能看到状态栏的全部效果。
-				Options: map[string]any{"scenario": "demo", "delay_ms": int64(25), "models_meta": map[string]any{
-					"demo": map[string]any{"context_window": 200000, "input_price": 3.0, "output_price": 15.0},
-				}}},
 			{Name: "anthropic", Type: "anthropic", APIKeyEnv: "ANTHROPIC_API_KEY",
 				Models: []string{"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}, DefaultModel: "claude-opus-5-5",
 				// 上下文窗口与单价（美元 / 百万 token）只用于状态栏显示，价格以官网为准。
@@ -79,6 +73,19 @@ func Default() *Config {
 				Models: []string{"deepseek-chat", "deepseek-reasoner"}},
 		},
 	}
+}
+
+// EnableDemo 把演示厂商（fake，按固定剧本回复、不调用真实模型）加到最前面并设为默认。
+// 内置配置不再带它：全新安装时界面会直接引导用户配置真实模型。
+// 测试、录制演示事件、写文档截图时用它；用户想要的话也可以在 config.toml 里自己加一个 type = "fake" 的厂商。
+func (c *Config) EnableDemo() {
+	demo := ProviderConfig{Name: "fake", Type: "fake", Models: []string{"demo", "echo"}, DefaultModel: "demo",
+		// 给演示模型配上上下文窗口和（假想的）单价，状态栏的全部效果都能看到。
+		Options: map[string]any{"scenario": "demo", "delay_ms": int64(25), "models_meta": map[string]any{
+			"demo": map[string]any{"context_window": 200000, "input_price": 3.0, "output_price": 15.0},
+		}}}
+	c.Providers = append([]ProviderConfig{demo}, c.Providers...)
+	c.DefaultProvider = "fake"
 }
 
 // Load 加载配置。explicit 为命令行指定的路径，可以为空。

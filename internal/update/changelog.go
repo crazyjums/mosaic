@@ -84,6 +84,46 @@ func hasKind(rs []Release, kind string) bool {
 	return false
 }
 
+// 更新日志是写给用户看的，而且会随清单和 GitHub Release 公开发布。提交信息里常带的"署名行"
+// （Co-Authored-By、Claude-Session: 会话链接……）对用户没有意义，会话链接还可能泄露隐私，
+// 所以任何进入更新日志的文本都先过 Clean。
+var (
+	// 署名行：从它开始到结尾都丢掉。提交标题和署名行之间少了空行时，git 会把它们合成一个"标题"（%s），
+	// 这里同样能截掉。
+	trailerCut = regexp.MustCompile(`(?i)\s*\b(co-authored-by|claude-session|signed-off-by|reviewed-by)\s*:.*$`)
+	// 自动生成的结尾："🤖 Generated with [Claude Code](…)" 以及后面的链接。
+	generatedCut = regexp.MustCompile(`(?s)\s*🤖.*$`)
+	// 漏网的 claude.ai / claude.com 链接（含 markdown 形式 [文字](链接)）。
+	claudeLink = regexp.MustCompile(`(?i)\[[^\]]*\]\(https?://[^)\s]*claude\.(?:ai|com)[^)\s]*\)|https?://[^\s)]*claude\.(?:ai|com)[^\s)]*`)
+)
+
+// Clean 去掉更新日志文本里的署名行、会话链接和自动生成的结尾，返回清理后的文本（可能为空）。
+func Clean(s string) string {
+	s = trailerCut.ReplaceAllString(s, "")
+	s = generatedCut.ReplaceAllString(s, "")
+	s = claudeLink.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
+}
+
+// cleanRelease 清理一个版本的所有文本；清理后为空的条目丢掉。
+func cleanRelease(r Release) Release {
+	r.Summary = Clean(r.Summary)
+	var secs []Section
+	for _, s := range r.Sections {
+		var items []string
+		for _, it := range s.Items {
+			if c := Clean(it); c != "" {
+				items = append(items, c)
+			}
+		}
+		if len(items) > 0 {
+			secs = append(secs, Section{Kind: s.Kind, Items: items})
+		}
+	}
+	r.Sections = secs
+	return r
+}
+
 // Flatten 把一个版本的日志拼成纯文本，写进清单的 notes 字段，给不认识 releases 的旧版本客户端显示。
 func Flatten(r Release, label func(kind string) string) string {
 	var b strings.Builder
@@ -131,7 +171,7 @@ func ParseChangelog(md string) []Release {
 		}
 		cur.Summary = strings.TrimSpace(strings.Join(summary, " "))
 		cur.Sections = orderSections(cur.Sections)
-		out = append(out, *cur)
+		out = append(out, cleanRelease(*cur))
 		cur, sec, summary = nil, nil, nil
 	}
 
@@ -204,7 +244,7 @@ var commitKinds = map[string]string{
 func FromCommits(subjects []string, version, date string) Release {
 	by := map[string][]string{}
 	for _, s := range subjects {
-		s = strings.TrimSpace(s)
+		s = Clean(s)
 		if s == "" || strings.HasPrefix(s, "Merge ") {
 			continue
 		}

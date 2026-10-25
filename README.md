@@ -82,8 +82,8 @@ go test ./...
 # 2. CLI 演示：思考 → 工具调用 → 权限确认 → 结果 → 回答
 make demo
 
-# 3. 交互式 CLI（默认 fake 厂商）
-go run ./cmd/cli
+# 3. 交互式 CLI（加 -demo 使用离线演示厂商 fake，不需要密钥）
+go run ./cmd/cli -demo
 
 # 4. 前端（浏览器演示模式）
 cd frontend && npm install && npm run dev

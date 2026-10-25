@@ -14,6 +14,7 @@ import (
 // 一次真实的对话（fake 演示厂商）会进账本，报表能读到；模型组和代理的绑定可用。
 func TestUsageGroupsAndProxyBindings(t *testing.T) {
 	cfg := config.Default()
+	cfg.EnableDemo()
 	cfg.DataDir = t.TempDir()
 	cfg.Providers[0].Options = map[string]any{}
 	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})

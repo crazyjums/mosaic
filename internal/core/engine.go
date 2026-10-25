@@ -87,12 +87,20 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 	e := &Engine{cfg: cfg, bus: event.NewBus(), broker: permission.NewBroker()}
 
 	profile, model, err := e.resolveModel(cfg.DefaultProfile, cfg.DefaultModel)
+	if errors.Is(err, ErrNoProvider) {
+		// 一个厂商都没配置（全新安装）是正常状态：界面会引导用户去添加。
+		// 会话先不绑定厂商，发送消息时才提示。
+		profile, model, err = "", "", nil
+	}
 	if err != nil {
 		return nil, err
 	}
 	e.session = NewSession(event.NewID("sess"), profile, model)
 	return e, nil
 }
+
+// ErrNoProvider 表示还没有任何可用的模型厂商（例如全新安装、还没填 API Key）。
+var ErrNoProvider = errors.New("还没有可用的模型厂商：请先在 设置 → 模型厂商 添加一个（填写 Base URL 和 API Key，或登录 ChatGPT 账号；命令行下编辑 config.toml，或加 -demo 体验）")
 
 // Bus 返回事件总线，界面通过它订阅事件。
 func (e *Engine) Bus() *event.Bus { return e.bus }
@@ -108,7 +116,7 @@ func (e *Engine) resolveModel(profile, model string) (string, string, error) {
 			}
 		}
 		if profile == "" {
-			return "", "", fmt.Errorf("engine: no available provider profile, check your config")
+			return "", "", ErrNoProvider
 		}
 	}
 	_, cfg, err := e.cfg.Catalog.Get(profile)
@@ -286,6 +294,9 @@ func (e *Engine) ReplaceCatalog(c *provider.Catalog) error {
 	snap := e.session.Snapshot()
 	if _, _, err := c.Get(snap.Provider); err != nil {
 		p, m, err := e.resolveModel("", "")
+		if errors.Is(err, ErrNoProvider) {
+			p, m, err = "", "", nil // 删光了所有厂商：会话回到"未配置"状态
+		}
 		if err != nil {
 			e.cfg.Catalog = old
 			return err
@@ -341,6 +352,10 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 	}
 	sess := e.session
 	snap := sess.Snapshot()
+	if snap.Provider == "" {
+		e.mu.Unlock()
+		return TurnResult{}, ErrNoProvider
+	}
 	p, _, err := e.cfg.Catalog.Get(snap.Provider)
 	if err != nil {
 		e.mu.Unlock()

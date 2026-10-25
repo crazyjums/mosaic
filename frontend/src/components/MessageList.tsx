@@ -27,6 +27,7 @@ export default function MessageList() {
   const loadingEarlier = useChat((s) => s.loadingEarlier);
   const prependTick = useChat((s) => s.prependTick);
   const loadEarlier = useChat((s) => s.loadEarlier);
+  const noProvider = useChat((s) => s.backendKind === "wails" && !s.provider);
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   // 接入更早的历史前的内容高度：接入后用它补偿滚动位置，避免用户正在看的内容被顶走。
@@ -74,7 +75,7 @@ export default function MessageList() {
             </button>
           </div>
         )}
-        {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} />}
+        {timeline.length === 0 && <Empty demo={backendKind === "demo"} demoModel={isDemoModel} noProvider={noProvider} />}
         {group(timeline).map((it, idx, all) => {
           if (Array.isArray(it)) {
             // 只有最后一组、且这一轮还在运行时算"进行中"
@@ -137,7 +138,7 @@ function group(timeline: TimelineItem[]): (TimelineItem | AssistantItem[])[] {
   return out;
 }
 
-function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
+function Empty({ demo, demoModel, noProvider }: { demo: boolean; demoModel: boolean; noProvider: boolean }) {
   const openSettings = useSettings((s) => s.show);
   return (
     <div className="mt-24 text-center text-muted">
@@ -149,6 +150,14 @@ function Empty({ demo, demoModel }: { demo: boolean; demoModel: boolean }) {
         <p className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
           {t("当前是浏览器演示模式：没有连接 Go 后端，回放的是 fake provider 录制的事件流。随便输入一句话试试；在 Wails 桌面端中会连接真实内核。")}
         </p>
+      )}
+      {noProvider && (
+        <div className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
+          {t("还没有配置模型厂商。添加一个（填写 Base URL 和 API Key），或登录 ChatGPT 账号后就可以开始对话。")}
+          <button className="mt-2 block w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90" onClick={() => void openSettings("providers")}>
+            {t("配置模型厂商")}
+          </button>
+        </div>
       )}
       {!demo && demoModel && (
         <div className="mx-auto mt-6 max-w-md rounded-lg border border-line bg-panel px-4 py-3 text-xs">
