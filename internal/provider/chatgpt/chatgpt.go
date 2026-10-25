@@ -122,7 +122,10 @@ func (p *Provider) stream(ctx context.Context, req provider.Request, onDelta fun
 		Stream:       true,
 	}
 	if p.thinking != "omit" {
-		body.Reasoning = &reasoningParam{Effort: p.effort, Summary: "auto"}
+		// detailed 而不是 auto：auto 下 GPT-5 系列经常只返回一行加粗的小标题
+		// （例如 "**Preparing an SVG mockup**"），思考卡片看起来像是空的。
+		// 注意 OpenAI 不公开原始思考过程，这里拿到的始终是摘要。
+		body.Reasoning = &reasoningParam{Effort: p.effort, Summary: "detailed"}
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {

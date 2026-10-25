@@ -21,7 +21,7 @@ type request struct {
 
 type reasoningParam struct {
 	Effort  string `json:"effort,omitempty"`
-	Summary string `json:"summary,omitempty"` // auto：返回思考摘要，界面显示在思考卡片里
+	Summary string `json:"summary,omitempty"` // detailed：返回较完整的思考摘要，界面显示在思考卡片里
 }
 
 // inputItem 是一个输入条目。用一个扁平结构覆盖三种条目（message / function_call / function_call_output），
