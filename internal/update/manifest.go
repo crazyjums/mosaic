@@ -21,8 +21,12 @@ type Asset struct {
 // Manifest 是发布清单。
 type Manifest struct {
 	Version string `json:"version"`
-	Notes   string `json:"notes,omitempty"`
-	PubDate string `json:"pub_date,omitempty"`
+	// Notes 是最新版本的纯文本更新说明，给不认识 Releases 的旧版本客户端显示。
+	Notes string `json:"notes,omitempty"`
+	// Releases 是最近若干个版本的结构化更新日志（最新的在前）。用户跳过了几个版本时，
+	// 客户端把当前版本之后的全部日志合并展示，而不是只看最新一版。
+	Releases []Release `json:"releases,omitempty"`
+	PubDate  string    `json:"pub_date,omitempty"`
 	// Page 是发布页地址：不能自动更新的平台（macOS）引导用户去这里下载。
 	Page string `json:"page,omitempty"`
 	// Platforms 的键是 "<GOOS>-<GOARCH>"，例如 windows-amd64、linux-amd64；macOS 用 darwin-universal。
