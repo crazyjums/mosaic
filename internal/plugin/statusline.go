@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/crazyjums/myllmapp/internal/sysproc"
 )
 
 // CommandStatusLine 是第一个真正实现的插件：运行用户配置的一条 shell 命令，把它的输出显示在状态栏上。
@@ -53,7 +55,7 @@ func (c CommandStatusLine) Render(ctx context.Context, info StatusInfo) (string,
 	} else {
 		cmd = exec.CommandContext(ctx, "sh", "-c", c.Command)
 	}
-	hideWindow(cmd)
+	sysproc.HideConsole(cmd) // 切换权限、用量变化时都会重新运行：在 Windows 上不能弹出控制台窗口
 	cmd.Dir = c.Dir
 	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer

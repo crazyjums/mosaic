@@ -306,6 +306,7 @@ make check     # go vet + go test + 前端类型检查/测试/构建
 
 | 现象 | 原因 / 处理 |
 | --- | --- |
+| Windows 上偶尔有黑色窗口闪一下（例如切换权限、每隔一段时间） | 旧版本启动 git、状态栏脚本等命令行程序时没有禁止创建控制台窗口，已修复（`internal/sysproc`）；请更新到最新版本重新打包 |
 | `go: downloading go1.26...` | 本机 Go 低于 1.26，自动下载工具链，正常现象 |
 | `pattern all:frontend/dist: no matching files found` | 手动 `go build -tags desktop,production` 时前端还没构建。用 `wails build` / `scripts/build.sh`，或先 `cd frontend && npm run build` |
 | Linux 虚拟机 / 远程桌面里窗口全黑 | WebKit 的硬件合成不可用，启动前设置 `WEBKIT_DISABLE_COMPOSITING_MODE=1` |

@@ -96,6 +96,7 @@ flowchart TB
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
 | | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |
 | | `secret` | 系统钥匙串（保存 API Key，可选） |
+| | `sysproc` | 启动命令行程序时的平台差异：Windows 上不创建控制台窗口（git、shell 工具、状态栏脚本、MCP 都经过它） |
 | | `siwc`、`provider/chatgpt` | 用 ChatGPT 账号登录（Sign in with ChatGPT）与对应的 Responses API 适配器，使用套餐额度 |
 | | `plugin` | 插件接口；已实现状态栏脚本（`CommandStatusLine`），技能 / 斜杠命令 / 钩子仍是预留 |
 | 装配 | `config`、`settings`、`bootstrap` | 读配置文件；管理界面上配置的厂商（持久化、合并、热更新）；把具体实现组装成 `Engine` |

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/crazyjums/myllmapp/internal/sysproc"
 )
 
 // Info 是状态栏需要的工作区信息。
@@ -51,6 +53,7 @@ func Inspect(ctx context.Context, dir string) Info {
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	sysproc.HideConsole(cmd) // 状态栏每 15 秒调用一次：在 Windows 上不隐藏会周期性地闪出黑色窗口
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {

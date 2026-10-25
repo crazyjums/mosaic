@@ -142,6 +142,7 @@ wails build    # 打包到 build/bin/
 │   ├── secret/                 系统钥匙串（macOS 钥匙串 / Windows 凭据管理器 / Linux Secret Service）
 │   ├── siwc/                   用 ChatGPT 账号登录：动态注册、PKCE、本地回调、令牌刷新与吊销
 │   ├── workspace/              工作区信息（git 分支、未提交改动），供状态栏显示
+│   ├── sysproc/                启动子进程的平台差异（Windows 上不弹出控制台窗口）
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
 │   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑
 │   ├── mcp/                    MCP 客户端（stdio / Streamable HTTP）与连接管理器
