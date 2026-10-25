@@ -113,16 +113,19 @@ jobs:
           test -n "$UPDATE_SIGNING_KEY" || { echo "缺少加密变量 UPDATE_SIGNING_KEY"; exit 1; }
           prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           range=${prev:+$prev..}${GITHUB_REF_NAME}
-          git log --no-merges --pretty='- %s' "$range" > notes.md
+          git log --no-merges --pretty='%s' "$range" > commits.txt
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          # 更新日志优先取 CHANGELOG.md 里本版本的小节；没有就用提交标题兜底（并输出警告）。
           go run ./cmd/mkmanifest sign -version "${GITHUB_REF_NAME}" -base-url "$base" \
-            -notes-file notes.md -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" -out dist \
+            -changelog CHANGELOG.md -commits-file commits.txt -notes-out notes.md \
+            -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" -out dist \
             -asset windows-amd64=dist/myllmapp-windows-amd64.exe \
             -asset linux-amd64=dist/myllmapp-linux-amd64
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          [ -f notes.md ] || echo "$GITHUB_REF_NAME" > notes.md
           flags=""
           case "$GITHUB_REF_NAME" in *-*) flags="--prerelease";; esac
           gh release create "$GITHUB_REF_NAME" $flags --title "$GITHUB_REF_NAME" --notes-file notes.md dist/*
