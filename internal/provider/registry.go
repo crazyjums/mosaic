@@ -2,9 +2,12 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 )
 
 // ProfileConfig 是一个"厂商配置档"：同一个适配器类型可以有多个配置档，
@@ -157,31 +160,152 @@ type Catalog struct {
 	order     []string
 	profiles  map[string]ProfileConfig
 	instances map[string]Provider
+	groups    map[string]*Group
 	errors    map[string]error
+	health    *Health
+}
+
+// CatalogOptions 是装配目录时可选的横切能力。
+type CatalogOptions struct {
+	// Recorder 非空时，每次模型调用都会记一条用量（见 usage.go）。
+	Recorder UsageRecorder
+	// Health 保存模型组成员的健康状态。厂商目录在每次保存设置时重建，状态要在重建之间保持，所以由调用方持有。
+	Health *Health
+	// TodayTokens 返回某个配置档今天用掉的 token，供模型组的 least_used 策略使用。可以为 nil。
+	TodayTokens func(profile string) int64
 }
 
 // NewCatalog 为每个配置档创建实例。单个配置档失败不影响其他配置档，
 // 失败原因记录下来展示给用户——"DeepSeek 没配密钥"不应该导致整个程序起不来。
 func NewCatalog(reg *Registry, cfgs []ProfileConfig) *Catalog {
+	return NewCatalogWith(reg, cfgs, CatalogOptions{})
+}
+
+// NewCatalogWith 同 NewCatalog，并装配用量计量和模型组。
+func NewCatalogWith(reg *Registry, cfgs []ProfileConfig, opts CatalogOptions) *Catalog {
 	c := &Catalog{
 		profiles:  map[string]ProfileConfig{},
 		instances: map[string]Provider{},
+		groups:    map[string]*Group{},
 		errors:    map[string]error{},
+		health:    opts.Health,
 	}
+	if c.health == nil {
+		c.health = NewHealth()
+	}
+	// 原始实例（没有计量包装）：模型组自己给每次尝试记账，才能标出哪些是"已转交"。
+	raw := map[string]Provider{}
+	var groupCfgs []ProfileConfig
 	for _, cfg := range cfgs {
 		if _, dup := c.profiles[cfg.Name]; dup {
 			continue
 		}
 		c.order = append(c.order, cfg.Name)
 		c.profiles[cfg.Name] = cfg
+		if cfg.Type == GroupType {
+			groupCfgs = append(groupCfgs, cfg)
+			continue
+		}
 		p, err := reg.New(cfg)
 		if err != nil {
 			c.errors[cfg.Name] = err
 			continue
 		}
+		raw[cfg.Name] = p
+		if opts.Recorder != nil {
+			p = &metered{inner: p, rec: opts.Recorder, profile: cfg.Name}
+		}
 		c.instances[cfg.Name] = p
 	}
+	for _, cfg := range groupCfgs {
+		g, err := c.buildGroup(cfg, raw, opts)
+		if err != nil {
+			c.errors[cfg.Name] = err
+			continue
+		}
+		c.groups[cfg.Name] = g
+		c.instances[cfg.Name] = g
+	}
 	return c
+}
+
+// ParseGroup 从配置档的 options 解析模型组配置。
+func ParseGroup(cfg ProfileConfig) (GroupConfig, error) {
+	gc := GroupConfig{Sticky: true, FirstByteTimeoutS: DefaultFirstByteTimeoutS}
+	b, err := json.Marshal(cfg.Options)
+	if err != nil {
+		return gc, err
+	}
+	if err := json.Unmarshal(b, &gc); err != nil {
+		return gc, fmt.Errorf("模型组配置格式不正确: %w", err)
+	}
+	gc.Name = cfg.Name
+	if gc.Strategy == "" {
+		gc.Strategy = StrategyOrder
+	}
+	return gc, gc.Validate()
+}
+
+// GroupOptions 把模型组配置转成配置档的 options（保存进设置文件的形式）。
+func GroupOptions(gc GroupConfig) map[string]any {
+	return map[string]any{
+		"members":              gc.Members,
+		"strategy":             gc.Strategy,
+		"sticky":               gc.Sticky,
+		"first_byte_timeout_s": gc.FirstByteTimeoutS,
+	}
+}
+
+func (c *Catalog) buildGroup(cfg ProfileConfig, raw map[string]Provider, opts CatalogOptions) (*Group, error) {
+	gc, err := ParseGroup(cfg)
+	if err != nil {
+		return nil, err
+	}
+	g := &Group{cfg: gc, health: c.health, rec: opts.Recorder, todayTokens: opts.TodayTokens, firstByte: time.Duration(gc.FirstByteTimeoutS) * time.Second}
+	usable := 0
+	for _, m := range gc.Members {
+		gm := &groupMember{GroupMember: m, key: MemberKey(m.Profile, m.Model)}
+		switch mc, ok := c.profiles[m.Profile]; {
+		case !ok:
+			gm.unavailable = "配置档不存在（可能被删除了）"
+		case mc.Type == GroupType:
+			gm.unavailable = "模型组不能嵌套"
+		case raw[m.Profile] == nil:
+			if e := c.errors[m.Profile]; e != nil {
+				gm.unavailable = e.Error()
+			} else {
+				gm.unavailable = "配置档不可用"
+			}
+		default:
+			gm.leaf = raw[m.Profile]
+			gm.ctxWindow = parseModelMeta(mc.Options)[m.Model].ContextWindow
+			usable++
+		}
+		g.members = append(g.members, gm)
+	}
+	if usable == 0 {
+		return nil, errors.New("模型组里没有可用的成员（引用的配置档不存在或缺少密钥）")
+	}
+	return g, nil
+}
+
+// Health 返回健康状态表。
+func (c *Catalog) Health() *Health { return c.health }
+
+// GroupStatuses 返回所有模型组的运行状态（包括因配置错误而不可用的组，此时 Members 为空）。
+func (c *Catalog) GroupStatuses() []GroupStatus {
+	var out []GroupStatus
+	for _, name := range c.order {
+		if c.profiles[name].Type != GroupType {
+			continue
+		}
+		if g := c.groups[name]; g != nil {
+			out = append(out, g.Status())
+		} else {
+			out = append(out, GroupStatus{Name: name})
+		}
+	}
+	return out
 }
 
 // Get 返回配置档对应的 Provider 和配置。

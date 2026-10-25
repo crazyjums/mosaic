@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,51 @@ func TestHTTPError(t *testing.T) {
 	err := p.Stream(context.Background(), provider.Request{}, func(provider.Delta) {})
 	if err == nil || !strings.Contains(err.Error(), "401") || !strings.Contains(err.Error(), "invalid api key") {
 		t.Fatalf("应返回可读错误: %v", err)
+	}
+}
+
+// 适配器把状态码和 Retry-After 带出来，模型组才能据此分类和决定冷却时间。
+func TestErrorsAreClassifiable(t *testing.T) {
+	cases := []struct {
+		status int
+		header string
+		body   string
+		want   provider.ErrorKind
+	}{
+		{429, "7", `{"error":{"message":"rate limit"}}`, provider.KindRateLimit},
+		{401, "", `{"error":{"message":"bad key"}}`, provider.KindAuth},
+		{503, "", `overloaded`, provider.KindServer},
+		{400, "", `{"error":{"message":"This model's maximum context length is 8192 tokens"}}`, provider.KindContext},
+		{400, "", `{"error":{"message":"bad tool schema"}}`, provider.KindOther},
+	}
+	for _, c := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if c.header != "" {
+				w.Header().Set("Retry-After", c.header)
+			}
+			w.WriteHeader(c.status)
+			io.WriteString(w, c.body)
+		}))
+		p, _ := New(provider.ProfileConfig{BaseURL: srv.URL, APIKey: "x"})
+		err := p.Stream(context.Background(), provider.Request{}, func(provider.Delta) {})
+		srv.Close()
+		if got := provider.Classify(err); got != c.want {
+			t.Errorf("HTTP %d: 分类 %q，期望 %q（%v）", c.status, got, c.want, err)
+		}
+		var he *provider.HTTPError
+		if c.header != "" && (!errors.As(err, &he) || he.RetryAfter.Seconds() != 7) {
+			t.Errorf("应带出 Retry-After: %v", err)
+		}
+	}
+	// 流被提前切断：网络类错误，可以转移。
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"半\"}}]}\n\n")
+	}))
+	defer srv.Close()
+	p, _ := New(provider.ProfileConfig{BaseURL: srv.URL, APIKey: "x"})
+	err := p.Stream(context.Background(), provider.Request{}, func(provider.Delta) {})
+	if provider.Classify(err) != provider.KindNetwork {
+		t.Fatalf("流中断应归为网络错误: %v", err)
 	}
 }
 

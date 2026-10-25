@@ -48,14 +48,18 @@ func New(cfg provider.ProfileConfig) (provider.Provider, error) {
 		base = defaultBaseURL
 	}
 	field, _ := cfg.Options["max_tokens_field"].(string)
+	// 代理和超时见 provider.NewHTTPClient；不设整体超时：流式响应可能持续好几分钟，超时与取消统一交给 ctx。
+	client, err := provider.NewHTTPClient(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return &Provider{
 		name:           cfg.Name,
 		baseURL:        base,
 		apiKey:         cfg.APIKey,
 		maxTokens:      cfg.MaxTokens,
 		maxTokensField: field,
-		// 不设置整体超时：流式响应可能持续好几分钟，超时与取消统一交给 ctx。
-		client: &http.Client{},
+		client:         client,
 	}, nil
 }
 
@@ -158,7 +162,7 @@ func (p *Provider) Stream(ctx context.Context, req provider.Request, onDelta fun
 		ev, err := r.Next()
 		if errors.Is(err, io.EOF) {
 			if !ended {
-				return errors.New("openai: stream ended before finish_reason / [DONE]")
+				return fmt.Errorf("openai: stream ended before finish_reason / [DONE]: %w", provider.ErrStreamInterrupted)
 			}
 			break
 		}
@@ -283,7 +287,7 @@ func httpError(resp *http.Response) error {
 		Error *apiError `json:"error"`
 	}
 	if json.Unmarshal(b, &e) == nil && e.Error != nil && e.Error.Message != "" {
-		return fmt.Errorf("openai: HTTP %d: %s", resp.StatusCode, e.Error.Message)
+		return provider.NewHTTPError(resp, fmt.Errorf("openai: HTTP %d: %s", resp.StatusCode, e.Error.Message))
 	}
-	return fmt.Errorf("openai: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	return provider.NewHTTPError(resp, fmt.Errorf("openai: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
 }

@@ -35,6 +35,7 @@ const (
 	DeltaImage             DeltaType = "image"              // 一张完整的图片
 	DeltaUsage             DeltaType = "usage"              // 本次调用的用量；可出现多次，以最后一次为准（值为累计值）
 	DeltaStop              DeltaType = "stop"               // 本次调用结束，带停止原因
+	DeltaRoute             DeltaType = "route"              // 模型组告诉上层"实际是哪个成员在应答"（含被转交的尝试）；在第一个内容之前发出
 )
 
 // Delta 是厂商流式输出被翻译后的最小单位。
@@ -51,6 +52,26 @@ type Delta struct {
 	Image      *Image
 	Usage      *Usage
 	StopReason StopReason
+	// Route 只用于 DeltaRoute。
+	Route *Route
+}
+
+// Route 描述一次调用最终由谁应答，以及前面有哪些尝试失败后被转交。
+type Route struct {
+	Group   string `json:"group"`
+	Profile string `json:"profile"`
+	Model   string `json:"model"`
+	// Try 是第几次尝试（1 表示第一个成员就成功了）。
+	Try      int       `json:"try"`
+	HandedOn []Attempt `json:"handed_on,omitempty"`
+}
+
+// Attempt 是一次失败后被转交的尝试。
+type Attempt struct {
+	Profile string    `json:"profile"`
+	Model   string    `json:"model"`
+	Kind    ErrorKind `json:"kind"`
+	Message string    `json:"message"`
 }
 
 // ToolCall 是一个完整的工具调用。
