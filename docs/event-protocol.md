@@ -258,7 +258,7 @@ tool_call ──(message_end)──┬──────────────
 | `fatal` | bool | true 表示本轮因此结束（随后会有 `turn_end`）；false 为警告 |
 
 ```json
-{"code": "max_steps", "message": "已达到最大步数 20，agent 循环被停止。可以发送“继续”让它接着做。", "fatal": true}
+{"code": "max_steps", "message": "已达到最大步数 50，agent 循环被停止。可以发送“继续”让它接着做，或在 设置 → 常规 → 最大步数 中调大（最多 500）。", "fatal": true}
 ```
 
 ### 4.5 会话

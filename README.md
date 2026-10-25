@@ -6,14 +6,16 @@
 - 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
   在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
 - 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐（Go / Plus / Pro）的额度调用 GPT 模型，不需要 API Key
+- 📁 **每个会话一个工作区**：一个会话对应一个代码仓库，在状态栏上切换，新会话沿用当前的；agent 只能读写这个目录
 - 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关
 - 🧩 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
-- 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、自定义脚本……）
+- 👀 **可视化**：思考过程、工具调用、权限确认、图片（模型生成的 SVG / PNG、Mermaid 流程图）；上下文明细面板（各部分占多少、哪几条最大）；
+  可自定义的状态栏（上下文占用、预估花费、首字延迟、ChatGPT 额度、git 分支、自定义脚本……）
 - 🎨 **皮肤**：7 套内置配色（深浅两用），可以新建、编辑自定义皮肤，导出成 JSON 分享
 - ⚙️ **设置都在界面上**：工作区、系统提示词、外观（深浅色 / 字号 / 宽度 / 发送键）、中英文界面、API Key 存系统钥匙串……修改即时生效
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
 
-![对话：思考过程、工具调用卡片、自定义状态栏](docs/images/chat-done-dark.png)
+![对话：思考过程、工具调用卡片、右侧的上下文明细、底部的状态栏](docs/images/chat-done-dark.png)
 
 ## 界面一览
 
@@ -24,7 +26,7 @@
 | ![权限确认弹窗](docs/images/chat-permission.png) | ![浅色主题](docs/images/chat-done-light.png) |
 | **权限确认**：写文件、执行命令前停下来等你确认；本会话总是允许、拒绝后模型会换个办法继续 | **浅色主题**：思考过程默认在输出结束后折叠 |
 | ![ChatGPT 账号登录](docs/images/settings-chatgpt.png) | ![MCP 服务器](docs/images/settings-mcp.png) |
-| **用 ChatGPT 账号登录**：登录后自动出现 chatgpt 厂商，模型列表可编辑 | **MCP**：显示连接状态和服务器提供的工具，进程退出时自动移除工具 |
+| **用 ChatGPT 账号登录**：登录后自动出现 chatgpt 厂商，显示本应用用掉的套餐额度 | **MCP**：显示连接状态和服务器提供的工具，进程退出时自动移除工具 |
 | ![权限规则与工具开关](docs/images/settings-permissions.png) | ![状态栏](docs/images/settings-statusline.png) |
 | **权限规则与工具开关**：规则优先于权限档位，MCP 工具也在这里 | **状态栏**：选择显示的项和顺序，支持自定义脚本（ANSI 颜色） |
 | ![皮肤](docs/images/settings-skins.png) | ![外观设置（英文界面）](docs/images/settings-appearance-en.png) |
@@ -45,7 +47,7 @@ flowchart LR
     end
     BUS(("事件总线<br/>internal/event"))
     P["Provider 接口"] --> OAI["openai"] & ANT["anthropic"] & CG["chatgpt<br/>(ChatGPT 账号)"] & FAKE["fake"]
-    T["Tool 接口"] --> BI["read/write/list/shell"] & MCP["MCP 工具"]
+    T["Tool 接口"] --> BI["文件 / 搜索 / shell / git"] & MCP["MCP 工具"]
     PERM["权限<br/>档位 + 规则 + Broker"]
     ST["SQLite<br/>internal/store"]
 
@@ -133,7 +135,7 @@ wails build    # 打包到 build/bin/
 │   │   ├── fake/               剧本驱动的假厂商，用于测试与离线演示
 │   │   └── all/                空导入注册所有适配器
 │   ├── tool/                   Tool 接口与注册表
-│   │   └── builtin/            内置工具：read_file / write_file / list_dir / shell
+│   │   └── builtin/            内置工具：读写编辑、搜索、文件管理、shell、git、todo
 │   ├── permission/             风险等级、权限策略、等待用户确认的会合点
 │   ├── core/                   内核：agent 循环、Delta 累加、工具执行、会话、重放、Engine 命令接口
 │   ├── store/                  会话持久化（SQLite 纯 Go 驱动 / 内存）
@@ -142,6 +144,7 @@ wails build    # 打包到 build/bin/
 │   ├── secret/                 系统钥匙串（macOS 钥匙串 / Windows 凭据管理器 / Linux Secret Service）
 │   ├── siwc/                   用 ChatGPT 账号登录：动态注册、PKCE、本地回调、令牌刷新与吊销
 │   ├── workspace/              工作区信息（git 分支、未提交改动），供状态栏显示
+│   ├── sysproc/                启动子进程的平台差异（Windows 上不弹出控制台窗口）
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
 │   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑
 │   ├── mcp/                    MCP 客户端（stdio / Streamable HTTP）与连接管理器

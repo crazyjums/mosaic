@@ -17,6 +17,18 @@ type staticToken string
 
 func (s staticToken) Token(context.Context) (string, error) { return string(s), nil }
 
+// recordingToken 同时实现 usageReporter，记录适配器上报的用量和额度错误。
+type recordingToken struct {
+	usage  []int
+	limits []string
+}
+
+func (r *recordingToken) Token(context.Context) (string, error) { return "t", nil }
+func (r *recordingToken) ReportUsage(_ string, in, out, cached int) {
+	r.usage = append(r.usage, in, out, cached)
+}
+func (r *recordingToken) ReportLimit(msg string) { r.limits = append(r.limits, msg) }
+
 func sseBody(events ...string) string {
 	var b strings.Builder
 	for _, e := range events {
@@ -188,5 +200,24 @@ func TestListModels(t *testing.T) {
 	got, err := p.ListModels(context.Background())
 	if err != nil || strings.Join(got, ",") != "gpt-a,gpt-b,gpt-c" {
 		t.Fatalf("%v %v", got, err)
+	}
+}
+
+func TestUsageReporting(t *testing.T) {
+	body := sseBody(`{"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":3,"input_tokens_details":{"cached_tokens":2}}}}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, body) }))
+	defer srv.Close()
+	rec := &recordingToken{}
+	p, _ := New(provider.ProfileConfig{BaseURL: srv.URL, Auth: rec})
+	if err := p.Stream(context.Background(), provider.Request{Model: "m"}, func(provider.Delta) {}); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(rec.usage) != "[7 3 2]" {
+		t.Fatalf("应上报用量: %v", rec.usage)
+	}
+	body = sseBody(`{"type":"error","code":"subscription_sharing_usage_limit_exceeded","message":"limit"}`)
+	_ = p.Stream(context.Background(), provider.Request{Model: "m"}, func(provider.Delta) {})
+	if len(rec.limits) != 1 {
+		t.Fatalf("应上报额度用完: %v", rec.limits)
 	}
 }

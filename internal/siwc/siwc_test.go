@@ -400,3 +400,48 @@ func TestParseTimeAndHostID(t *testing.T) {
 		t.Fatalf("host id 应稳定: %q %q", a, b)
 	}
 }
+
+func TestUsageLedger(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	m := NewManager(dir, Options{Endpoints: DefaultEndpoints, Now: clock})
+
+	m.ReportUsage("gpt-a", 100, 20, 30)
+	now = now.Add(-6 * time.Hour) // 6 小时前的一次（只算进 7 天）
+	m.ReportUsage("gpt-a", 1000, 200, 0)
+	now = now.Add(6 * time.Hour)
+	s := m.Usage()
+	if s.Last5h.Requests != 1 || s.Last5h.InputTokens != 100 || s.Last5h.CachedTokens != 30 {
+		t.Fatalf("5h: %+v", s.Last5h)
+	}
+	if s.Last7d.Requests != 2 || s.Last7d.InputTokens != 1100 || s.Last7d.OutputTokens != 220 {
+		t.Fatalf("7d: %+v", s.Last7d)
+	}
+
+	// 额度用完：记录下来，之后成功调用一次就清除。
+	now = now.Add(time.Minute)
+	m.ReportLimit("plan limit")
+	if s := m.Usage(); s.LimitHitAt.IsZero() || s.LimitMessage != "plan limit" {
+		t.Fatalf("应记录额度用完: %+v", s)
+	}
+	now = now.Add(time.Minute)
+	m.ReportUsage("gpt-a", 1, 1, 0)
+	if s := m.Usage(); !s.LimitHitAt.IsZero() {
+		t.Fatalf("成功调用后应清除: %+v", s)
+	}
+
+	// 另一个进程（新的 Manager）看到同一份记录；8 天后启动时过期记录被清理。
+	if other := NewManager(dir, Options{Endpoints: DefaultEndpoints, Now: clock}); other.Usage().Last7d.Requests != 3 {
+		t.Fatal("应读到同一份记录")
+	}
+	now = now.Add(8 * 24 * time.Hour)
+	later := NewManager(dir, Options{Endpoints: DefaultEndpoints, Now: clock})
+	if later.Usage().Last7d.Requests != 0 {
+		t.Fatal("过期记录应清理")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "usage.jsonl"))
+	if len(strings.TrimSpace(string(b))) != 0 {
+		t.Fatalf("文件中的过期记录应删除: %q", b)
+	}
+}

@@ -19,7 +19,14 @@ export interface Status {
   model: string;
   usage: Usage;
   running: boolean;
+  /** 当前会话实际使用的工作区 */
   workspace: string;
+  /** 当前会话没有单独选过工作区，跟随默认工作区 */
+  workspace_is_default?: boolean;
+  /** 工作区由启动参数指定，不能为会话单独选择 */
+  workspace_locked?: boolean;
+  /** 工作区目录不存在（被移动或删除了） */
+  workspace_missing?: boolean;
   pending_permissions: string[] | null;
   /** default / auto / readonly */
   permission_mode: PermissionMode;
@@ -91,6 +98,8 @@ export interface SessionSummary {
   title: string;
   provider: string;
   model: string;
+  /** 会话的工作区；为空表示跟随默认工作区 */
+  workspace?: string;
   message_count: number;
   created_at: string;
   updated_at: string;
@@ -199,6 +208,72 @@ export interface ChatGPTStatus {
   models_error?: string;
 }
 
+/** 对应 siwc.UsageWindow */
+export interface UsageWindow {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+}
+
+/** 对应 settings.ChatGPTUsage：本应用用掉的 ChatGPT 套餐额度（OpenAI 没有提供查询剩余额度的接口） */
+export interface ChatGPTUsage {
+  logged_in: boolean;
+  last_5h: UsageWindow;
+  last_7d: UsageWindow;
+  /** 最近一次遇到"额度已用完"的时间；之后成功调用过则为空 */
+  limit_hit_at?: string;
+  limit_message?: string;
+  usage_url: string;
+  /** 是否开启了"读取 Codex 登录查询剩余额度" */
+  quota_enabled: boolean;
+  quota?: Quota;
+  quota_error?: string;
+}
+
+/** 对应 codexquota.Window */
+export interface QuotaWindow {
+  /** 窗口长度：5 小时 = 18000，每周 = 604800 */
+  seconds: number;
+  used_percent: number;
+  reset_at?: string;
+}
+
+/** 对应 codexquota.Quota：ChatGPT 套餐的剩余额度（从 Codex 登录查询） */
+export interface Quota {
+  plan?: string;
+  windows: QuotaWindow[] | null;
+  credits?: number;
+  fetched_at: string;
+}
+
+/** 对应 core.ContextPart */
+export interface ContextPart {
+  kind: "system" | "tools" | "user" | "assistant" | "thinking" | "tool_call" | "tool_result" | "image";
+  count: number;
+  tokens: number;
+}
+
+/** 对应 core.ContextItem */
+export interface ContextItem {
+  kind: ContextPart["kind"];
+  /** user：第几条用户消息；assistant / thinking：第几次回答 */
+  index?: number;
+  /** tool_call / tool_result 的工具名 */
+  tool?: string;
+  detail: string;
+  tokens: number;
+}
+
+/** 对应 core.ContextBreakdown：按字符估算的上下文组成 */
+export interface ContextBreakdown {
+  parts: ContextPart[] | null;
+  largest: ContextItem[] | null;
+  total: number;
+  messages: number;
+  tool_count: number;
+}
+
 export interface Backend {
   /** 用于在界面上标明当前是"桌面端"还是"浏览器演示" */
   readonly kind: "wails" | "demo";
@@ -209,6 +284,12 @@ export interface Backend {
   newSession(): Promise<Status>;
   loadSession(id: string): Promise<Status>;
   deleteSession(id: string): Promise<void>;
+  /** 修改会话标题（当前会话或历史会话）；成功后后端会发 session_updated */
+  renameSession(id: string, title: string): Promise<void>;
+  /** 读取当前会话工作区内的图片，返回 data URL（聊天里显示模型生成的 SVG / PNG） */
+  readWorkspaceImage(path: string): Promise<string>;
+  /** 在系统浏览器中打开 http / https 链接 */
+  openExternalURL(url: string): Promise<void>;
   setModel(profile: string, model: string): Promise<Status>;
   /** 立即返回；对话过程通过 onEvent 推送 */
   send(text: string): Promise<void>;
@@ -229,6 +310,8 @@ export interface Backend {
   // ---- 设置：常规 / 系统提示词 / 数据 ----
   getGeneral(): Promise<GeneralView>;
   saveGeneral(g: General): Promise<GeneralView>;
+  /** 为当前会话选择工作区；传空字符串表示跟随默认工作区 */
+  setSessionWorkspace(dir: string): Promise<Status>;
   /** 弹出选择文件夹对话框；取消时返回空字符串 */
   chooseDirectory(start: string): Promise<string>;
   getDataInfo(): Promise<DataInfo>;
@@ -241,6 +324,13 @@ export interface Backend {
   loginChatGPT(newAccount: boolean): Promise<string>;
   cancelChatGPTLogin(): Promise<void>;
   logoutChatGPT(): Promise<void>;
+  getChatGPTUsage(): Promise<ChatGPTUsage>;
+  /** 开启或关闭"读取本机 Codex 登录查询剩余额度"（未公开接口） */
+  setCodexQuota(on: boolean): Promise<void>;
+  /** 在浏览器中打开 ChatGPT 的用量页面（地址由后端固定） */
+  openChatGPTUsage(): Promise<void>;
+  // ---- 上下文明细 ----
+  getContextBreakdown(): Promise<ContextBreakdown>;
   // ---- 设置：权限与工具 ----
   listTools(): Promise<ToolInfo[]>;
   setDisabledTools(names: string[]): Promise<void>;

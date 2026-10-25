@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/crazyjums/myllmapp/internal/codexquota"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/siwc"
 )
@@ -113,5 +114,30 @@ func TestChatGPTProfile(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("模型列表应保留")
+	}
+}
+
+func TestCodexQuotaToggle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":12,"limit_window_seconds":18000}}}`)
+	}))
+	defer srv.Close()
+	auth := filepath.Join(t.TempDir(), "auth.json")
+	os.WriteFile(auth, []byte(`{"tokens":{"access_token":"a","account_id":"b"}}`), 0o600)
+
+	m, _, path := newEnv(t)
+	m.codexQuota = &codexquota.Client{AuthPath: auth, URL: srv.URL}
+	if u := m.ChatGPTUsage(context.Background()); u.QuotaEnabled || u.Quota != nil {
+		t.Fatal("默认关闭，不应查询")
+	}
+	if err := m.SetCodexQuota(true); err != nil {
+		t.Fatal(err)
+	}
+	u := m.ChatGPTUsage(context.Background())
+	if !u.QuotaEnabled || u.Quota == nil || u.Quota.Plan != "plus" || u.Quota.Windows[0].UsedPercent != 12 {
+		t.Fatalf("开启后应返回剩余额度: %+v", u)
+	}
+	if m2, _ := NewManager(path, nil, provider.DefaultRegistry); !m2.file.CodexQuota {
+		t.Fatal("开关应持久化")
 	}
 }

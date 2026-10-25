@@ -4,13 +4,14 @@ package mcp
 
 import (
 	"os/exec"
-	"syscall"
+
+	"github.com/crazyjums/myllmapp/internal/sysproc"
 )
 
-// prepareProc 隐藏控制台窗口：桌面应用启动命令行程序时，Windows 默认会弹出一个黑色窗口。
+// prepareProc 不为 server 创建控制台窗口（见 internal/sysproc）。
 // 完整的进程树清理需要 Job Object，暂不做（与 shell 工具一致）。
 func prepareProc(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	sysproc.HideConsole(cmd)
 }
 
 func killProc(cmd *exec.Cmd) {

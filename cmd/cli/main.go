@@ -228,6 +228,7 @@ func (c *cli) command(line string) (quit bool) {
 /model <profile> [model]  切换厂商和模型（会记住，下次启动直接使用）
 /mode [mode]              查看或切换权限模式：readonly / default / accept_edits / auto
 /status                   当前状态
+/cd [dir]                 查看或切换当前会话的工作区（/cd - 改回默认工作区）
 /login [new]              用 ChatGPT 账号登录（使用套餐额度）；new 表示换一个账号
 /logout                   退出 ChatGPT 账号
 /quit                     退出`)
@@ -288,6 +289,26 @@ func (c *cli) command(line string) (quit bool) {
 		} else {
 			fmt.Fprintln(c.info, "已切换到权限模式", fields[1])
 		}
+	case "/cd":
+		if len(fields) < 2 {
+			st := c.eng.Status()
+			note := ""
+			if st.WorkspaceIsDefault {
+				note = "（默认工作区）"
+			}
+			fmt.Fprintf(c.info, "当前会话的工作区：%s%s\n", st.Workspace, note)
+			return false
+		}
+		dir := strings.TrimSpace(strings.TrimPrefix(line, "/cd"))
+		if dir == "-" {
+			dir = ""
+		}
+		st, err := c.settings.SetSessionWorkspace(ctx, dir)
+		if err != nil {
+			fmt.Fprintln(c.info, "错误:", err)
+			return false
+		}
+		fmt.Fprintln(c.info, "当前会话的工作区：", st.Workspace)
 	case "/login":
 		c.loginChatGPT(len(fields) > 1 && fields[1] == "new")
 	case "/logout":

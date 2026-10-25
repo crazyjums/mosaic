@@ -33,6 +33,8 @@ interface DemoSession {
   summary: SessionSummary;
   events: AgentEvent[];
   usage: Usage;
+  /** 会话的工作区；为空表示跟随默认工作区 */
+  workspace: string;
 }
 
 export function createDemoBackend(): Backend {
@@ -75,12 +77,14 @@ export function createDemoBackend(): Backend {
   let model = "demo";
   let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
 
-  function newSession(): DemoSession {
+  /** 新会话沿用传入的工作区（与真实后端一致：沿用当前会话的工作区）。 */
+  function newSession(workspace = ""): DemoSession {
     const now = new Date().toISOString();
     return {
-      summary: { id: rid("sess"), title: "", provider: "fake", model: "demo", message_count: 0, created_at: now, updated_at: now },
+      summary: { id: rid("sess"), title: "", provider: "fake", model: "demo", workspace, message_count: 0, created_at: now, updated_at: now },
       events: [],
       usage: zeroUsage(),
+      workspace,
     };
   }
 
@@ -98,7 +102,8 @@ export function createDemoBackend(): Backend {
       model,
       usage: current.usage,
       running,
-      workspace: general.workspace || demoWorkspace,
+      workspace: current.workspace || general.workspace || demoWorkspace,
+      workspace_is_default: !current.workspace,
       pending_permissions: pending ? [pending.requestId] : [],
       permission_mode: permissionMode,
     };
@@ -230,7 +235,7 @@ export function createDemoBackend(): Backend {
       [...sessions.values()].map((s) => s.summary).sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     newSession: async () => {
       if (running) throw new Error("engine: a turn is already running");
-      current = newSession();
+      current = newSession(current.workspace);
       return status();
     },
     loadSession: async (id) => {
@@ -245,9 +250,23 @@ export function createDemoBackend(): Backend {
       // 与真实后端一致：删除当前会话时切换到新的空会话，运行中不允许删除当前会话。
       if (id === current.summary.id) {
         if (running) throw new Error("engine: a turn is already running");
-        current = newSession();
+        current = newSession(current.workspace);
       }
       sessions.delete(id);
+    },
+    renameSession: async (id, title) => {
+      const s = sessions.get(id) ?? (id === current.summary.id ? current : undefined);
+      if (!s) throw new Error("session not found");
+      if (!title.trim()) throw new Error("标题不能为空");
+      s.summary.title = title.trim().slice(0, 100);
+      const ev = { type: "session_updated", data: { title: s.summary.title }, seq: ++seq, id: rid("ev"), session_id: id, agent_id: "main", ts: new Date().toISOString(), v: 1 } as unknown as AgentEvent;
+      listeners.forEach((cb) => cb(ev));
+    },
+    openExternalURL: async (url) => {
+      window.open(url, "_blank", "noopener");
+    },
+    readWorkspaceImage: async () => {
+      throw new Error("浏览器演示模式不能读取本地文件");
     },
     setModel: async (p, m) => {
       provider = p || "fake";
@@ -279,6 +298,12 @@ export function createDemoBackend(): Backend {
       general = g;
       return generalView();
     },
+    setSessionWorkspace: async (dir) => {
+      if (running) throw new Error("engine: a turn is already running");
+      current.workspace = dir;
+      current.summary.workspace = dir;
+      return status();
+    },
     chooseDirectory: async (start) => window.prompt("浏览器演示模式没有文件夹对话框，请直接输入路径：", start) ?? "",
     getDataInfo: async () => ({
       data_dir: "~/.myllmapp（演示）", settings_path: "~/.myllmapp/settings.json", db_path: "~/.myllmapp/sessions.db",
@@ -291,7 +316,7 @@ export function createDemoBackend(): Backend {
       if (running) throw new Error("engine: a turn is already running");
       const n = sessions.size;
       sessions.clear();
-      current = newSession();
+      current = newSession(current.workspace);
       return n;
     },
     getWorkspaceInfo: async () => ({
@@ -334,6 +359,39 @@ export function createDemoBackend(): Backend {
     },
     cancelChatGPTLogin: async () => {},
     logoutChatGPT: async () => {},
+    getChatGPTUsage: async () => {
+      const w = { requests: 0, input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
+      return { logged_in: false, last_5h: w, last_7d: w, usage_url: "https://chatgpt.com/settings/usage", quota_enabled: false };
+    },
+    setCodexQuota: async () => {
+      throw new Error(demoOnly);
+    },
+    openChatGPTUsage: async () => {
+      window.open("https://chatgpt.com/settings/usage", "_blank", "noopener");
+    },
+    // 演示模式没有真实的会话历史，按回放过的事件粗略统计。
+    getContextBreakdown: async () => {
+      const text = (t: string) => Math.ceil(t.length / 2);
+      let user = 0, assistant = 0, thinking = 0, calls = 0, results = 0, nUser = 0, nAssistant = 0, nThink = 0, nCalls = 0, nResults = 0;
+      for (const ev of current.events) {
+        if (ev.type === "user_message") (user += text(ev.data.text)), nUser++;
+        else if (ev.type === "text_delta") assistant += text(ev.data.text);
+        else if (ev.type === "thinking_delta") thinking += text(ev.data.text);
+        else if (ev.type === "message_start") nAssistant++, nThink++;
+        else if (ev.type === "tool_call") (calls += text(JSON.stringify(ev.data.input))), nCalls++;
+        else if (ev.type === "tool_result") (results += text(ev.data.output)), nResults++;
+      }
+      const parts = [
+        { kind: "system" as const, count: 1, tokens: 180 },
+        { kind: "tools" as const, count: demoTools.length, tokens: 420 },
+        { kind: "user" as const, count: nUser, tokens: user },
+        { kind: "assistant" as const, count: nAssistant, tokens: assistant },
+        { kind: "thinking" as const, count: nThink, tokens: thinking },
+        { kind: "tool_call" as const, count: nCalls, tokens: calls },
+        { kind: "tool_result" as const, count: nResults, tokens: results },
+      ].filter((p) => p.count > 0);
+      return { parts, largest: [], total: parts.reduce((a, p) => a + p.tokens, 0), messages: nUser + nAssistant, tool_count: demoTools.length };
+    },
     // ---- 权限与工具、状态栏脚本、MCP、外观：演示模式下只保存在内存里 ----
     listTools: async () => demoTools.map((t) => ({ ...t, disabled: disabledTools.includes(t.name) })),
     setDisabledTools: async (names) => {

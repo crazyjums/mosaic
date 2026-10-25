@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { t } from "../i18n";
 import { useUIPrefs } from "../store/uiPrefs";
+import Markdown from "./Markdown";
+
+/** 只有一行加粗小标题：GPT 的思考摘要偶尔就是这样（OpenAI 不公开原始思考过程）。 */
+export const isTitleOnly = (text: string) => /^\s*\*\*[^*\n]+\*\*\s*$/.test(text);
 
 // 可折叠的思考卡片。默认展开方式由 设置 → 外观 → 思考过程默认 决定：
 //   - 自动：正在流式输出时展开（让用户看到模型在想什么），结束后折叠（不喧宾夺主）；
@@ -27,8 +31,16 @@ export default function ThinkingCard({ text, redacted, streaming }: { text: stri
         {!streaming && !redacted && <span className="text-muted">{t("{n} 字", { n: text.length })}</span>}
       </button>
       {open && (
-        <div className={`whitespace-pre-wrap px-4 pb-3 text-[13px] leading-relaxed text-muted ${streaming ? "caret" : ""}`}>
-          {redacted ? t("（厂商返回了加密的思考内容，无法显示）") : text}
+        <div className="px-4 pb-3 text-muted">
+          {redacted ? (
+            <div className="text-[13px]">{t("（厂商返回了加密的思考内容，无法显示）")}</div>
+          ) : (
+            // 思考摘要里常有 **小标题** 和列表，按 Markdown 渲染，而不是把星号原样显示出来。
+            <Markdown text={text} streaming={streaming} size="sm" />
+          )}
+          {!streaming && !redacted && isTitleOnly(text) && (
+            <div className="mt-1 text-[11px] opacity-80">{t("模型只返回了思考的小标题：OpenAI 不公开完整的思考过程，只提供摘要，摘要有时很短。")}</div>
+          )}
         </div>
       )}
     </div>

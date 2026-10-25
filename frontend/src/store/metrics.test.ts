@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ProfileInfo } from "../bridge";
-import { contextTokens, currentStep, fmtDuration, fmtTokens, fmtUSD, sessionCost } from "./metrics";
-import { initialState, type AssistantItem, type ChatState } from "./reducer";
+import type { AgentEvent } from "../protocol/events";
+import { contextTokens, currentStep, fmtDuration, fmtLatency, fmtTokens, fmtUSD, sessionCost, ttft } from "./metrics";
+import { applyEvent, initialState, type AssistantItem, type ChatState } from "./reducer";
 
 const msg = (provider: string, model: string, input: number, output: number, step = 1): AssistantItem => ({
   kind: "assistant", id: `m${Math.random()}`, agentId: "main", step, provider, model, blocks: [], streaming: false,
@@ -55,6 +56,42 @@ describe("metrics", () => {
     expect(fmtUSD(1.234)).toBe("$1.23");
     expect(fmtDuration(8400)).toBe("8s");
     expect(fmtDuration(65000)).toBe("1m05s");
+  });
+});
+
+describe("ttft", () => {
+  // 用真实的事件序列驱动 reducer：时间取事件信封里的 ts。
+  let seq = 0;
+  const ev = (type: string, ms: number, data: object, message_id = "m1") =>
+    ({ v: 1, type, id: `e${++seq}`, seq, session_id: "s", agent_id: "main", message_id, ts: new Date(ms).toISOString(), data }) as unknown as AgentEvent;
+  const run = (events: AgentEvent[]) => events.reduce(applyEvent, initialState("s"));
+
+  it("从 message_start 到第一个内容的时间；等待中给出开始时间", () => {
+    let s = run([
+      ev("turn_start", 0, { turn_id: "t", provider: "p", model: "m" }),
+      ev("message_start", 1000, { provider: "p", model: "m", step: 1 }),
+    ]);
+    expect(ttft(s)).toEqual({ lastMs: null, avgMs: null, count: 0, waitingSince: 1000 });
+    s = [ev("thinking_delta", 1850, { text: "想" }), ev("text_delta", 2500, { text: "答" }), ev("message_end", 2600, { stop_reason: "tool_use", usage: { input_tokens: 1, output_tokens: 1 } })].reduce(applyEvent, s);
+    s = [ev("message_start", 3000, { provider: "p", model: "m", step: 2 }, "m2"), ev("tool_call", 3250, { call_id: "c", name: "x", input: {}, risk: "read" }, "m2")].reduce(applyEvent, s);
+    const r = ttft(s);
+    expect(r.lastMs).toBe(250);
+    expect(r.avgMs).toBe(550);
+    expect(r.count).toBe(2);
+  });
+
+  it("重放的历史没有首字延迟", () => {
+    const s = run([
+      ev("turn_start", 0, { turn_id: "t", provider: "p", model: "m", replay: true }),
+      ev("message_start", 0, { provider: "p", model: "m", step: 1 }),
+      ev("text_delta", 0, { text: "旧回答" }),
+    ]);
+    expect(ttft(s).count).toBe(0);
+  });
+
+  it("格式化", () => {
+    expect(fmtLatency(850)).toBe("850ms");
+    expect(fmtLatency(1234)).toBe("1.2s");
   });
 });
 

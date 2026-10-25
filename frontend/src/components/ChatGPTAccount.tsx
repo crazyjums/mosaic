@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { backend, type ChatGPTStatus } from "../bridge";
+import { backend, type ChatGPTStatus, type ChatGPTUsage } from "../bridge";
+import ChatGPTQuotaDetails from "./ChatGPTQuota";
 import { t } from "../i18n";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
@@ -140,8 +141,22 @@ export default function ChatGPTAccount({ onLoggedIn }: { onLoggedIn: () => void 
           {t("令牌只保存在本机的数据目录中，不会发给界面或其他程序。下面的模型列表可以编辑；额度用完时会提示错误，不会自动改用付费 API。")}
         </p>
       )}
+      {st.state === "logged_in" && <UsageSummary />}
       {st.state === "logged_in" && st.models_error && <div className="text-xs text-warn">{st.models_error}</div>}
       {(error || st.error) && <div className="text-xs text-danger">{error || st.error}</div>}
+    </div>
+  );
+}
+
+// 额度：剩余额度（可选）和本应用用量，与状态栏的弹出卡片相同。
+function UsageSummary() {
+  const [u, setU] = useState<ChatGPTUsage | null>(null);
+  const load = () => void backend().getChatGPTUsage().then(setU).catch(() => {});
+  useEffect(load, []);
+  if (!u) return null;
+  return (
+    <div className="border-t border-line pt-2">
+      <ChatGPTQuotaDetails usage={u} onChange={load} />
     </div>
   );
 }

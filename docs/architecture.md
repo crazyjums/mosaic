@@ -92,10 +92,12 @@ flowchart TB
 | | `permission` | 风险等级、权限策略、"等待用户确认"的会合点 |
 | 内核 | `core` | agent 循环、Delta 累加、工具执行、会话、重放、`Engine` 命令接口；预留压缩/子 agent/后台任务接口 |
 | 适配 | `provider/openai`、`provider/anthropic`、`provider/fake` | 各协议 ↔ 中立 Delta |
-| | `tool/builtin` | 四个内置工具 |
+| | `tool/builtin` | 内置工具（文件、搜索、shell、git、todo） |
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
 | | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |
 | | `secret` | 系统钥匙串（保存 API Key，可选） |
+| | `codexquota` | 可选：读取本机 Codex CLI 的登录，只读查询 ChatGPT 套餐的剩余额度（未公开接口） |
+| | `sysproc` | 启动命令行程序时的平台差异：Windows 上不创建控制台窗口（git、shell 工具、状态栏脚本、MCP 都经过它） |
 | | `siwc`、`provider/chatgpt` | 用 ChatGPT 账号登录（Sign in with ChatGPT）与对应的 Responses API 适配器，使用套餐额度 |
 | | `plugin` | 插件接口；已实现状态栏脚本（`CommandStatusLine`），技能 / 斜杠命令 / 钩子仍是预留 |
 | 装配 | `config`、`settings`、`bootstrap` | 读配置文件；管理界面上配置的厂商（持久化、合并、热更新）；把具体实现组装成 `Engine` |

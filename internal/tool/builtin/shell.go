@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"sync/atomic"
@@ -44,20 +45,24 @@ func (t *Shell) SetTimeout(d time.Duration) {
 func (t *Shell) Timeout() time.Duration { return time.Duration(t.timeout.Load()) }
 
 type shellInput struct {
-	Command string `json:"command"`
+	Command        string `json:"command"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+	Cwd            string `json:"cwd"`
 }
 
 func (t *Shell) Spec() tool.Spec {
 	return tool.Spec{
 		Name:        "shell",
-		Description: fmt.Sprintf("在工作区根目录执行一条 shell 命令（%s），返回输出和退出码。超时 %s。不要运行需要交互或长期不退出的命令。", shellName(), t.Timeout()),
-		InputSchema: json.RawMessage(`{
+		Description: fmt.Sprintf("执行一条 shell 命令（%s），返回输出和退出码。默认在工作区根目录执行、超时 %s；超时会返回已产生的输出。不要运行需要交互或长期不退出的命令。读文件、搜索、改文件请优先用专门的工具。", shellName(), t.Timeout()),
+		InputSchema: json.RawMessage(fmt.Sprintf(`{
   "type": "object",
   "properties": {
-    "command": {"type": "string", "description": "要执行的命令"}
+    "command": {"type": "string", "description": "要执行的命令"},
+    "timeout_seconds": {"type": "integer", "description": "超时秒数，默认 %d，最大 %d"},
+    "cwd": {"type": "string", "description": "执行目录，相对于工作区根目录，默认 ."}
   },
   "required": ["command"]
-}`),
+}`, int(t.Timeout().Seconds()), int(MaxShellTimeout.Seconds()))),
 		Risk: permission.RiskExec,
 	}
 }
@@ -76,9 +81,26 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 	if in.Command == "" {
 		return tool.Errorf("command is required")
 	}
+	if reason := dangerousCommand(in.Command); reason != "" {
+		return tool.Errorf("已拒绝执行：%s。这类命令影响面太大，不允许由模型执行；如确有需要，请让用户在终端里手动运行", reason)
+	}
+	dir := call.Workspace
+	if in.Cwd != "" {
+		d, err := resolvePath(call.Workspace, in.Cwd)
+		if err != nil {
+			return tool.Errorf("cwd: %v", err)
+		}
+		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
+			return tool.Errorf("cwd %s 不是存在的目录，建议先用 list_dir 确认", in.Cwd)
+		}
+		dir = d
+	}
 
 	// 超时与用户取消共用一个 ctx：任何一个触发，exec.CommandContext 都会杀掉进程。
 	timeout := t.Timeout()
+	if in.TimeoutSeconds > 0 {
+		timeout = min(time.Duration(in.TimeoutSeconds)*time.Second, MaxShellTimeout)
+	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -87,7 +109,7 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 		flag = "/C"
 	}
 	cmd := exec.CommandContext(ctx, name, flag, in.Command)
-	cmd.Dir = call.Workspace
+	cmd.Dir = dir
 	prepareCmd(cmd)
 	// 进程被杀后最多再等 1 秒收尾输出，防止子进程继承的管道让 Wait 永远不返回。
 	cmd.WaitDelay = time.Second
@@ -101,7 +123,8 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 	var exitErr *exec.ExitError
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return tool.Errorf("%s\n[timed out after %s]", output, timeout)
+		// 超时时仍然返回已经产生的输出：模型往往能从中看出卡在哪一步。
+		return tool.Errorf("%s\n[timed out after %s；以上是超时前的输出。需要更久可以调大 timeout_seconds（最大 %d），长期运行的服务请让用户自己启动]", output, timeout, int(MaxShellTimeout.Seconds()))
 	case ctx.Err() != nil:
 		return tool.Errorf("%s\n[cancelled]", output)
 	case errors.As(err, &exitErr):

@@ -1,4 +1,4 @@
-// 状态栏用到的派生数据：上下文占用、预估花费、当前步数。
+// 状态栏用到的派生数据：上下文占用、预估花费、当前步数、首字延迟。
 //
 // 全部是纯函数（输入状态，输出数字），不放进 reducer：它们依赖厂商配置（单价、上下文窗口），
 // 而 reducer 只认事件。写成纯函数也方便单独测试（metrics.test.ts）。
@@ -84,6 +84,35 @@ export function currentStep(s: Pick<ChatState, "timeline" | "running">): number 
 // ---- 格式化 ----
 
 /** 12345 → "12.3k"，200000 → "200k"，1234567 → "1.23M"（去掉多余的 .0） */
+export interface TTFT {
+  /** 最近一次已收到首字的调用的首字延迟（毫秒） */
+  lastMs: number | null;
+  /** 本会话所有实时调用的平均值 */
+  avgMs: number | null;
+  count: number;
+  /** 正在等待首字的调用开始的时间（还没收到任何内容）；没有则为 null */
+  waitingSince: number | null;
+}
+
+/**
+ * 首字延迟（Time To First Token）：从发出请求（message_start）到收到第一个内容（思考、文本、工具调用或图片）。
+ * 包含网络往返、厂商排队和模型开始生成的时间，是"感觉快不快"最直接的指标。重放的历史没有这个数据。
+ */
+export function ttft(s: Pick<ChatState, "timeline">): TTFT {
+  let last: number | null = null, sum = 0, count = 0, waitingSince: number | null = null;
+  for (const it of assistantItems(s)) {
+    if (it.startedAt === undefined) continue;
+    if (it.firstTokenAt !== undefined) {
+      last = Math.max(0, it.firstTokenAt - it.startedAt);
+      sum += last;
+      count++;
+    } else if (it.streaming) {
+      waitingSince = it.startedAt;
+    }
+  }
+  return { lastMs: last, avgMs: count ? sum / count : null, count, waitingSince };
+}
+
 export function fmtTokens(n: number): string {
   const trim = (x: string) => x.replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
   if (n >= 1e6) return `${trim((n / 1e6).toFixed(n >= 1e7 ? 1 : 2))}M`;
@@ -99,6 +128,13 @@ export function fmtUSD(usd: number): string {
 }
 
 /** 毫秒 → "8s"、"1m05s" */
+/** 毫秒级的延迟：不到 1 秒显示毫秒，否则保留一位小数。 */
+export function fmtLatency(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return fmtDuration(ms);
+}
+
 export function fmtDuration(ms: number): string {
   const sec = Math.max(0, Math.round(ms / 1000));
   if (sec < 60) return `${sec}s`;

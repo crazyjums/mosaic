@@ -56,6 +56,17 @@ export default function AppearanceSettings() {
           />
         </Row>
 
+        <Row label={t("思考与工具调用")} hint={t("折叠时，模型工作期间只显示思考动画，结束后显示最终回答；点摘要行可以展开查看每一步。")}>
+          <Segmented
+            value={prefs.process}
+            onChange={set("process")}
+            options={[
+              ["collapsed", t("默认折叠")],
+              ["expanded", t("全部展开")],
+            ]}
+          />
+        </Row>
+
         <Row label={t("思考过程默认")}>
           <Segmented
             value={prefs.thinking}

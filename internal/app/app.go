@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -82,6 +83,11 @@ func (a *App) LoadSession(id string) (core.Status, error) {
 
 func (a *App) DeleteSession(id string) error { return a.engine.DeleteSession(a.context(), id) }
 
+// RenameSession 修改会话标题（当前会话或历史会话）。
+func (a *App) RenameSession(id, title string) error {
+	return a.engine.RenameSession(a.context(), id, title)
+}
+
 // SetModel 切换厂商和模型，并记住选择（下次启动直接使用）。
 func (a *App) SetModel(profile, model string) (core.Status, error) {
 	if err := a.settings.Select(profile, model); err != nil {
@@ -145,6 +151,11 @@ func (a *App) SaveGeneral(g settings.General) (settings.GeneralView, error) {
 	return a.settings.General(), nil
 }
 
+// SetSessionWorkspace 为当前会话选择工作区；dir 为空表示跟随默认工作区。运行中会返回错误。
+func (a *App) SetSessionWorkspace(dir string) (core.Status, error) {
+	return a.settings.SetSessionWorkspace(a.context(), dir)
+}
+
 // ChooseDirectory 弹出系统的"选择文件夹"对话框；用户取消时返回空字符串。
 func (a *App) ChooseDirectory(start string) (string, error) {
 	return runtime.OpenDirectoryDialog(a.context(), runtime.OpenDialogOptions{
@@ -181,6 +192,35 @@ func (a *App) LoginChatGPT(newAccount bool) (string, error) {
 }
 
 func (a *App) CancelChatGPTLogin() { a.settings.CancelChatGPTLogin() }
+
+// GetChatGPTUsage 返回本应用最近 5 小时 / 7 天用掉的 ChatGPT 套餐额度、是否遇到过额度用完，
+// 以及（开启后）从 Codex 登录查到的剩余额度。
+func (a *App) GetChatGPTUsage() settings.ChatGPTUsage { return a.settings.ChatGPTUsage(a.context()) }
+
+// SetCodexQuota 开启或关闭"读取本机 Codex 登录查询剩余额度"（未公开接口，默认关闭）。
+func (a *App) SetCodexQuota(on bool) error { return a.settings.SetCodexQuota(on) }
+
+// OpenExternalURL 在系统浏览器中打开模型回答里的链接。只接受 http / https：
+// 不能让一段模型输出借此打开 file:// 或自定义协议。
+func (a *App) OpenExternalURL(raw string) error {
+	if !isWebURL(raw) {
+		return fmt.Errorf("只能打开 http / https 链接")
+	}
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, raw)
+	}
+	return nil
+}
+
+// OpenChatGPTUsage 在浏览器中打开 ChatGPT 的用量页面。地址是固定的，前端不能借此打开任意网址。
+func (a *App) OpenChatGPTUsage() {
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, settings.ChatGPTUsageURL)
+	}
+}
+
+// GetContextBreakdown 返回当前会话上下文的组成（按字符估算的 token 数），供右侧的上下文面板显示。
+func (a *App) GetContextBreakdown() core.ContextBreakdown { return a.engine.ContextBreakdown() }
 
 // LogoutChatGPT 退出登录：吊销令牌并删除本地保存的令牌。
 func (a *App) LogoutChatGPT() error { return a.settings.LogoutChatGPT(a.context()) }

@@ -102,6 +102,10 @@ body {
   .btn {
     @apply shrink-0 rounded-md border border-line px-3 py-1.5 text-sm hover:bg-panel-2 disabled:opacity-50;
   }
+  /* 收起后的会话栏里的图标按钮 */
+  .rail-btn {
+    @apply flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50;
+  }
 }
 
 /* 状态栏：某一项此刻没有内容（组件返回 null）时整项隐藏；相邻两个有内容的项之间画一条竖线。
@@ -136,6 +140,43 @@ body {
 .ansi-dim { opacity: 0.7; }
 .ansi-italic { font-style: italic; }
 .ansi-underline { text-decoration: underline; }
+
+/* 等待模型响应时的学者动画（components/ScholarThinking.tsx）。transform-box: fill-box 让每个部件绕自己的中心变换 */
+.scholar * { transform-box: fill-box; }
+.scholar-bubble { fill: var(--panel-2); stroke: var(--border); stroke-width: 1; opacity: 0; animation: scholar-bubble 2.4s ease-in-out infinite; }
+.scholar-bubble.b2 { animation-delay: 0.3s; }
+.scholar-bubble.b3 { animation-delay: 0.6s; }
+.scholar-symbol { fill: var(--think); stroke: none; font: 600 10px var(--font-sans); }
+.scholar-head { transform-origin: 50% 90%; animation: scholar-tilt 4.8s ease-in-out infinite; }
+.scholar-eyes { transform-origin: center; animation: scholar-blink 4s infinite; }
+.scholar-brow { transform-origin: center; animation: scholar-brow 4.8s ease-in-out infinite; }
+.scholar-glint { opacity: 0; animation: scholar-glint 3.2s ease-in-out infinite; }
+.scholar-tassel { transform-origin: 0% 0%; animation: scholar-tassel 2.4s ease-in-out infinite; }
+.scholar-hand { animation: scholar-tap 1.2s ease-in-out infinite; }
+.scholar-dots circle { fill: var(--think); animation: scholar-dot 1.2s ease-in-out infinite; }
+.scholar-dots circle:nth-child(2) { animation-delay: 0.2s; }
+.scholar-dots circle:nth-child(3) { animation-delay: 0.4s; }
+.scholar-pop { transform-origin: center; animation: scholar-pop 0.35s ease-out; }
+/* doze：整个人轻微下沉 */
+.scholar-phase-doze .scholar-head, .scholar-phase-doze .scholar-hand { translate: 0 1.5px; transition: translate 0.4s; }
+.scholar .scholar-head, .scholar .scholar-hand { transition: translate 0.4s; }
+@keyframes scholar-dot { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+@keyframes scholar-pop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes scholar-bubble {
+  0% { opacity: 0; transform: translateY(4px) scale(0.6); }
+  25%, 75% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-3px) scale(1.05); }
+}
+@keyframes scholar-tilt { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-4deg); } }
+@keyframes scholar-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes scholar-brow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.2px); } }
+@keyframes scholar-glint { 0%, 70%, 100% { opacity: 0; } 80% { opacity: 0.9; } }
+@keyframes scholar-tassel { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(6deg); } }
+@keyframes scholar-tap { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+@media (prefers-reduced-motion: reduce) {
+  .scholar *, .scholar-bubble { animation: none !important; }
+  .scholar-bubble { opacity: 1; }
+}
 
 /* 流式输出时末尾的闪烁光标 */
 .caret::after {

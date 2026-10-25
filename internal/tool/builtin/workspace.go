@@ -23,6 +23,12 @@ type Options struct {
 	MaxOutputBytes int
 }
 
+// DefaultMaxOutputBytes 是所有内置工具统一的输出上限（100KB），超出部分截断并注明。
+const DefaultMaxOutputBytes = 100 * 1024
+
+// MaxShellTimeout 是模型通过 timeout_seconds 能申请的最长超时。
+const MaxShellTimeout = 600 * time.Second
+
 // DefaultShellTimeout 是 shell 工具的默认超时。
 const DefaultShellTimeout = 60 * time.Second
 
@@ -31,7 +37,7 @@ func (o Options) withDefaults() Options {
 		o.ShellTimeout = DefaultShellTimeout
 	}
 	if o.MaxOutputBytes <= 0 {
-		o.MaxOutputBytes = 32 * 1024
+		o.MaxOutputBytes = DefaultMaxOutputBytes
 	}
 	return o
 }
@@ -39,10 +45,23 @@ func (o Options) withDefaults() Options {
 // Register 把所有内置工具注册到 reg。
 func Register(reg *tool.Registry, opts Options) {
 	opts = opts.withDefaults()
+	// 注册顺序就是发给模型的工具顺序：先读后写，最常用的在前。
 	reg.MustRegister(&ReadFile{maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(&ListDir{maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(&FindFiles{maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(&SearchContent{maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(&EditFile{})
 	reg.MustRegister(&WriteFile{})
-	reg.MustRegister(&ListDir{})
+	reg.MustRegister(&Mkdir{})
+	reg.MustRegister(&MoveFile{})
+	reg.MustRegister(&DeleteFile{})
 	reg.MustRegister(NewShell(opts.ShellTimeout, opts.MaxOutputBytes))
+	reg.MustRegister(&GitStatus{maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(&GitDiff{maxBytes: opts.MaxOutputBytes})
+	reg.MustRegister(&GitLog{maxBytes: opts.MaxOutputBytes})
+	todos := newTodoStore()
+	reg.MustRegister(&TodoWrite{store: todos})
+	reg.MustRegister(&TodoRead{store: todos})
 }
 
 // resolvePath 把模型给出的路径解析为工作区内的绝对路径。

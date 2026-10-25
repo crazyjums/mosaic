@@ -3,11 +3,15 @@ import { useShallow } from "zustand/react/shallow";
 import { backend } from "../bridge";
 import { t } from "../i18n";
 import { parseAnsi } from "../store/ansi";
+import { remaining, remainingTone, windowShort } from "../store/quota";
 import { useChat } from "../store/chatStore";
-import { contextTokens, currentStep, fmtDuration, fmtTokens, fmtUSD, modelMeta, sessionCost } from "../store/metrics";
+import type { ChatGPTUsage } from "../bridge";
+import { contextTokens, currentStep, fmtDuration, fmtLatency, fmtTokens, fmtUSD, modelMeta, sessionCost, ttft } from "../store/metrics";
 import { useSettings } from "../store/settingsStore";
 import { useStatusLine, type ItemId } from "../store/statusline";
 import PermissionModeSelect from "./PermissionModeSelect";
+import ChatGPTQuotaDetails from "./ChatGPTQuota";
+import WorkspacePicker from "./WorkspacePicker";
 
 // 输入框下方的状态栏。显示哪些项、按什么顺序由状态栏配置决定（设置 → 状态栏）。
 //
@@ -49,8 +53,12 @@ function Item({ id }: { id: ItemId }) {
       return <ContextItem />;
     case "cost":
       return <CostItem />;
+    case "chatgpt":
+      return <ChatGPTQuotaItem />;
     case "turn":
       return <TurnItem />;
+    case "ttft":
+      return <TTFTItem />;
     case "workspace":
       return <WorkspaceItem />;
     case "git":
@@ -188,16 +196,10 @@ function TurnItem() {
   return <Tip tip={t("上一轮的总耗时")}>{t("⏱ 上一轮 {d}", { d: fmtDuration(lastMs) })}</Tip>;
 }
 
+// 工作区：点击可以为当前会话选择工作区（见 WorkspacePicker）。
 function WorkspaceItem() {
-  const path = useChat((s) => s.workspace);
-  const name = useChat((s) => s.workspaceInfo?.name);
   const style = useStatusLine((s) => s.config.workspaceStyle);
-  if (!path) return null;
-  return (
-    <Tip tip={t("工作区：{path}", { path })} className="max-w-[20rem] truncate">
-      📁 {style === "full" ? path : name || path}
-    </Tip>
-  );
+  return <WorkspacePicker variant="statusbar" full={style === "full"} />;
 }
 
 function GitItem() {
@@ -300,6 +302,104 @@ function ScriptItem() {
           {seg.text}
         </span>
       ))}
+    </span>
+  );
+}
+
+// 首字延迟：最近一次调用从发出请求到收到第一个内容的时间。等待中实时计时（超过 1 秒才显示，避免闪烁）。
+function TTFTItem() {
+  const info = useChat(useShallow((s) => ttft(s)));
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (info.waitingSince === null) return;
+    const timer = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(timer);
+  }, [info.waitingSince]);
+
+  const tip = info.avgMs !== null ? t("首字延迟：最近一次 {last}，本会话平均 {avg}（{n} 次调用）", { last: fmtLatency(info.lastMs ?? 0), avg: fmtLatency(info.avgMs), n: info.count }) : t("首字延迟：从发出请求到收到第一个字（含思考）的时间");
+  if (info.waitingSince !== null && now - info.waitingSince > 1000) {
+    return (
+      <Tip tip={tip} className="text-accent">
+        {t("首字 等待 {d}…", { d: fmtLatency(now - info.waitingSince) })}
+      </Tip>
+    );
+  }
+  if (info.lastMs === null) return null;
+  const color = info.lastMs >= 10000 ? "text-danger" : info.lastMs >= 3000 ? "text-warn" : "";
+  return (
+    <Tip tip={tip} className={color}>
+      {t("首字 {d}", { d: fmtLatency(info.lastMs) })}
+    </Tip>
+  );
+}
+
+// ChatGPT 额度：只在当前使用 ChatGPT 账号（chatgpt 类型的厂商）时显示。点击弹出详细信息。
+//
+// 开启"读取 Codex 登录查询剩余额度"后显示剩余百分比（5 小时 / 每周）；
+// 没开启或查询失败时，显示本应用自己记的账（最近 5 小时 / 7 天用掉的 token）。
+function ChatGPTQuotaItem() {
+  const isChatGPT = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "chatgpt");
+  const refreshKey = useChat((s) => `${s.lastTurnMs}|${s.running}|${s.sessionId}`);
+  const [u, setU] = useState<ChatGPTUsage | null>(null);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const load = () => void backend().getChatGPTUsage().then(setU).catch(() => {});
+
+  useEffect(() => {
+    if (!isChatGPT) return;
+    load();
+    const timer = setInterval(load, 60000);
+    return () => clearInterval(timer);
+  }, [isChatGPT, refreshKey]);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (!isChatGPT || !u?.logged_in) return null;
+  const windows = u.quota?.windows ?? [];
+  let label: ReactNode;
+  if (u.limit_hit_at) {
+    label = <span className="text-danger">{t("⚠ GPT 额度已用完")}</span>;
+  } else if (windows.length > 0) {
+    label = (
+      <>
+        GPT{" "}
+        {windows.map((w, i) => {
+          const pct = remaining(w);
+          const tone = remainingTone(pct);
+          return (
+            <span key={w.seconds} className={tone === "danger" ? "text-danger" : tone === "warn" ? "text-warn" : ""}>
+              {i > 0 && " · "}
+              {t("{w} 剩 {p}%", { w: windowShort(w.seconds), p: pct })}
+            </span>
+          );
+        })}
+      </>
+    );
+  } else {
+    const total = (w: ChatGPTUsage["last_5h"]) => fmtTokens(w.input_tokens + w.output_tokens);
+    label = t("GPT 5h {h} · 7d {d}", { h: total(u.last_5h), d: total(u.last_7d) });
+  }
+
+  return (
+    <span ref={ref} className="relative">
+      <button className="whitespace-nowrap hover:text-fg" onClick={() => setOpen(!open)} title={t("ChatGPT 额度（点击查看详情）")}>
+        {label}
+        {u.quota_enabled && u.quota_error && <span className="text-warn"> ⚠</span>}
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-lg border border-line bg-panel p-3 text-left shadow-xl">
+          <ChatGPTQuotaDetails usage={u} onChange={load} />
+        </div>
+      )}
     </span>
   );
 }

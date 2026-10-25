@@ -575,3 +575,127 @@ func TestEnginePermissionRules(t *testing.T) {
 		t.Fatal("应无规则")
 	}
 }
+
+func TestContextBreakdown(t *testing.T) {
+	if core.EstimateTokens("abcdefgh") != 2 || core.EstimateTokens("你好") != 2 || core.EstimateTokens("") != 0 {
+		t.Fatal("EstimateTokens")
+	}
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	before := h.engine.ContextBreakdown()
+	if before.Messages != 0 || before.ToolCount != 15 || len(before.Parts) != 2 {
+		t.Fatalf("空会话只有系统提示词和工具定义: %+v", before)
+	}
+	h.engine.Send(context.Background(), "演示一下")
+	b := h.engine.ContextBreakdown()
+	kinds := map[string]core.ContextPart{}
+	sum := 0
+	for _, p := range b.Parts {
+		kinds[p.Kind] = p
+		sum += p.Tokens
+	}
+	for _, k := range []string{"system", "tools", "user", "assistant", "thinking", "tool_call", "tool_result", "image"} {
+		if kinds[k].Count == 0 {
+			t.Errorf("演示剧本应产生 %s", k)
+		}
+	}
+	if kinds["tool_call"].Count != 3 || kinds["tool_result"].Count != 3 || sum != b.Total || b.Messages == 0 {
+		t.Fatalf("明细: %+v", b)
+	}
+	if len(b.Largest) == 0 || b.Largest[0].Tokens < b.Largest[len(b.Largest)-1].Tokens {
+		t.Fatalf("最大项应按 token 数降序: %+v", b.Largest)
+	}
+	// 禁用工具后，工具定义的开销随之减少。
+	h.engine.SetDisabledTools([]string{"shell"})
+	if h.engine.ContextBreakdown().ToolCount != 14 {
+		t.Fatal("禁用的工具不计入")
+	}
+}
+
+func TestPerSessionWorkspace(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	ctx := context.Background()
+	if st := h.engine.Status(); !st.WorkspaceIsDefault || st.Workspace != h.workspace {
+		t.Fatalf("新会话默认跟随默认工作区: %+v", st)
+	}
+
+	// 为当前会话选择工作区：工具在这个目录里读写。
+	repoA := t.TempDir()
+	st, err := h.engine.SetSessionWorkspace(ctx, repoA)
+	if err != nil || st.Workspace != repoA || st.WorkspaceIsDefault {
+		t.Fatalf("set: %+v %v", st, err)
+	}
+	h.engine.Send(ctx, "演示")
+	if _, err := os.Stat(filepath.Join(repoA, "agent-demo", "hello.md")); err != nil {
+		t.Fatalf("文件应写进会话的工作区: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.workspace, "agent-demo")); err == nil {
+		t.Fatal("不应写进默认工作区")
+	}
+	idA := h.engine.Status().SessionID
+	if list, _ := h.engine.ListSessions(ctx); len(list) != 1 || list[0].Workspace != repoA {
+		t.Fatalf("会话列表应带上工作区: %+v", list)
+	}
+
+	// 新会话沿用当前会话的工作区；可以单独改。
+	st, _ = h.engine.NewSession()
+	if st.Workspace != repoA {
+		t.Fatalf("新会话应沿用工作区: %+v", st)
+	}
+	repoB := t.TempDir()
+	if _, err := h.engine.SetSessionWorkspace(ctx, repoB); err != nil {
+		t.Fatal(err)
+	}
+	h.engine.Send(ctx, "另一个仓库")
+
+	// 切回会话 A：工作区跟着会话恢复。
+	st, _ = h.engine.LoadSession(ctx, idA)
+	if st.Workspace != repoA {
+		t.Fatalf("加载会话应恢复它的工作区: %+v", st)
+	}
+	// 改回默认。
+	if st, _ := h.engine.SetSessionWorkspace(ctx, ""); !st.WorkspaceIsDefault || st.Workspace != h.workspace {
+		t.Fatalf("应回到默认工作区: %+v", st)
+	}
+
+	// 目录被删除：状态里标出来，发送时给出明确的错误。
+	gone := filepath.Join(t.TempDir(), "gone")
+	os.Mkdir(gone, 0o755)
+	h.engine.SetSessionWorkspace(ctx, gone)
+	os.Remove(gone)
+	if !h.engine.Status().WorkspaceMissing {
+		t.Fatal("应标记工作区不存在")
+	}
+	if _, err := h.engine.Send(ctx, "hi"); err == nil || !strings.Contains(err.Error(), "不存在") {
+		t.Fatalf("应拒绝在不存在的工作区运行: %v", err)
+	}
+}
+
+func TestRenameSession(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	if err := h.engine.RenameSession(ctx, h.engine.Status().SessionID, "  "); err == nil {
+		t.Fatal("空标题应报错")
+	}
+	h.engine.Send(ctx, "演示一下")
+	first := h.engine.Status().SessionID
+	if err := h.engine.RenameSession(ctx, first, "我的会话\n"); err != nil {
+		t.Fatal(err)
+	}
+	if ups := payloads[event.SessionUpdated](h.rec); len(ups) == 0 || ups[len(ups)-1].Title != "我的会话" {
+		t.Fatalf("应发 session_updated: %+v", ups)
+	}
+	// 历史会话（不是当前会话）也能改名。
+	if _, err := h.engine.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.engine.RenameSession(ctx, first, "改过两次"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := h.engine.ListSessions(ctx)
+	if len(list) != 1 || list[0].Title != "改过两次" {
+		t.Fatalf("list: %+v", list)
+	}
+	if err := h.engine.RenameSession(ctx, "nope", "x"); err == nil {
+		t.Fatal("不存在的会话应报错")
+	}
+}

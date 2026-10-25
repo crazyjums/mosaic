@@ -82,7 +82,7 @@ func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (resu
 			result = tool.Errorf("tool panicked: %v", p)
 		}
 	}()
-	return t.Execute(ctx, tool.Call{ID: c.ToolCallID, Input: c.ToolInput, Workspace: a.cfg.Workspace})
+	return t.Execute(ctx, tool.Call{ID: c.ToolCallID, Input: c.ToolInput, Workspace: a.cfg.Workspace, SessionID: a.cfg.SessionID})
 }
 
 // askPermission 发出确认请求并阻塞等待用户回答。返回是否允许，以及拒绝时的补充说明。

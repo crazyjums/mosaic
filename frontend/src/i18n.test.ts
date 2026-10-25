@@ -5,7 +5,7 @@ import { EN, setLanguage, t } from "./i18n";
 const sources = import.meta.glob(
   [
     "./App.tsx",
-    "./components/{Sidebar,MessageList,PermissionDialog,ToolCallCard,ThinkingCard,AssistantMessage,Composer,StatusBar,PermissionModeSelect}.tsx",
+    "./components/{Sidebar,WorkspacePicker,ScholarThinking,ChatGPTQuota,ContextPanel,MessageList,PermissionDialog,ToolCallCard,ThinkingCard,AssistantMessage,Composer,StatusBar,PermissionModeSelect}.tsx",
     "./components/{SettingsDialog,ChatGPTAccount,AppearanceSettings,SkinSettings,PermissionsSettings,MCPSettings,GeneralSettings,StatusLineSettings}.tsx",
   ],
   { query: "?raw", import: "default", eager: true },

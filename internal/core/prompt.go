@@ -2,7 +2,11 @@ package core
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
+	"unicode/utf8"
 )
 
 // DefaultSystemPrompt 生成默认系统提示词。
@@ -19,8 +23,51 @@ Environment:
 - Workspace root: %s (all file paths are relative to it)
 - OS: %s/%s
 
+Tools:
+- Explore: list_dir (recursive=true for a tree), find_files (by glob), search_content (regex, like grep), read_file (use offset/limit for large files).
+- Change: edit_file for targeted edits (old_string must match exactly and be unique; read the file first), write_file for new files or full rewrites (mode=append to append), mkdir, move_file, delete_file (moves to %s, recoverable).
+- Git (read-only): git_status, git_diff, git_log.
+- shell for builds, tests and anything else (timeout_seconds, cwd). Prefer the dedicated tools over shell for reading, searching and editing files.
+- todo_write / todo_read: for multi-step tasks, write a short plan first and update it as you go.
+
 Guidelines:
-- Use the provided tools to inspect and change files instead of guessing their contents.
-- Writing files and running shell commands require the user's approval; if a call is denied, adapt instead of retrying the same call.
-- Keep answers concise. Reply in the same language the user writes in.`, workspace, runtime.GOOS, runtime.GOARCH)
+- Use the tools to inspect files instead of guessing their contents; search before editing code you have not seen.
+- Read-only tools run without approval. Writing, editing, moving, deleting files and running shell commands require the user's approval; if a call is denied, adapt instead of retrying the same call.
+- Tool errors explain what went wrong and what to try next; follow the hint rather than repeating the call.
+- Keep answers concise. Reply in the same language the user writes in.`, workspace, runtime.GOOS, runtime.GOARCH, builtinTrash)
+}
+
+// builtinTrash 与 builtin.TrashDir 相同。内核不依赖 builtin 包（见 builtin/doc.go），所以这里重复一份。
+const builtinTrash = ".myllmapp/trash/"
+
+// ProjectContextFile 是工作区里的项目说明文件（相对工作区）。
+const ProjectContextFile = ".myllmapp/context.md"
+
+// maxProjectContext 是注入的项目说明的上限：它每轮都会发送，太长会挤占上下文。
+const maxProjectContext = 16 * 1024
+
+// ProjectContext 读取工作区的 .myllmapp/context.md，返回追加到系统提示词后面的一段；没有文件时返回空串。
+//
+// 用途：让用户写下项目的约定（技术栈、怎么跑测试、代码风格），不必每个会话都重复交代。
+// 每轮都重新读取：用户改了文件，下一轮立即生效。内容稳定时不影响提示缓存。
+func ProjectContext(workspace string) string {
+	if workspace == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(ProjectContextFile)))
+	if err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return ""
+	}
+	if len(text) > maxProjectContext {
+		cut := maxProjectContext
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		text = text[:cut] + "\n...[truncated]"
+	}
+	return "\n\nProject context (from " + ProjectContextFile + ", written by the user):\n" + text
 }

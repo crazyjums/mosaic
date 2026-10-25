@@ -132,18 +132,19 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	policy := permission.NewRulePolicy(permission.NewModePolicy(permission.Mode(mode)), settingsMgr.PermissionRules())
 
 	engine, err := core.NewEngine(core.EngineConfig{
-		Catalog:        catalog,
-		Tools:          tools,
-		Store:          st,
-		Policy:         policy,
-		Workspace:      workspace,
-		SystemPrompt:   eff.SystemPrompt, // 为空时 Engine 每轮用 core.DefaultSystemPrompt(当前工作区)
-		MaxSteps:       eff.MaxSteps,
-		MaxTokens:      eff.MaxTokens,
-		DefaultProfile: profile,
-		DefaultModel:   model,
-		DisabledTools:  settingsMgr.DisabledTools(),
-		TitleMode:      eff.TitleMode,
+		Catalog:         catalog,
+		Tools:           tools,
+		Store:           st,
+		Policy:          policy,
+		Workspace:       workspace,
+		WorkspaceLocked: override != "",
+		SystemPrompt:    eff.SystemPrompt, // 为空时 Engine 每轮用 core.DefaultSystemPrompt(当前工作区)
+		MaxSteps:        eff.MaxSteps,
+		MaxTokens:       eff.MaxTokens,
+		DefaultProfile:  profile,
+		DefaultModel:    model,
+		DisabledTools:   settingsMgr.DisabledTools(),
+		TitleMode:       eff.TitleMode,
 	})
 	if err != nil {
 		closeFn()

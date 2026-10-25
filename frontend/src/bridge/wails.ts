@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, ChatGPTStatus, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
 } from "./types";
 
@@ -24,6 +24,9 @@ interface GoApp {
   NewSession(): Promise<Status>;
   LoadSession(id: string): Promise<Status>;
   DeleteSession(id: string): Promise<void>;
+  RenameSession(id: string, title: string): Promise<void>;
+  ReadWorkspaceImage(path: string): Promise<string>;
+  OpenExternalURL(url: string): Promise<void>;
   SetModel(profile: string, model: string): Promise<Status>;
   Send(text: string): Promise<void>;
   Cancel(): Promise<void>;
@@ -40,6 +43,7 @@ interface GoApp {
   GetGeneral(): Promise<GeneralView>;
   SaveGeneral(g: General): Promise<GeneralView>;
   ChooseDirectory(start: string): Promise<string>;
+  SetSessionWorkspace(dir: string): Promise<Status>;
   GetDataInfo(): Promise<DataInfo>;
   OpenDataDir(): Promise<void>;
   ClearSessions(): Promise<number>;
@@ -47,6 +51,10 @@ interface GoApp {
   LoginChatGPT(newAccount: boolean): Promise<string>;
   CancelChatGPTLogin(): Promise<void>;
   LogoutChatGPT(): Promise<void>;
+  GetChatGPTUsage(): Promise<ChatGPTUsage>;
+  SetCodexQuota(on: boolean): Promise<void>;
+  OpenChatGPTUsage(): Promise<void>;
+  GetContextBreakdown(): Promise<ContextBreakdown>;
   ListTools(): Promise<ToolInfo[] | null>;
   SetDisabledTools(names: string[]): Promise<void>;
   GetPermissionRules(): Promise<PermissionRule[] | null>;
@@ -91,6 +99,9 @@ export function createWailsBackend(): Backend {
     newSession: () => app.NewSession(),
     loadSession: (id) => app.LoadSession(id),
     deleteSession: (id) => app.DeleteSession(id),
+    renameSession: (id, title) => app.RenameSession(id, title),
+    readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),
+    openExternalURL: (url) => app.OpenExternalURL(url),
     setModel: (p, m) => app.SetModel(p, m),
     send: (t) => app.Send(t),
     cancel: () => app.Cancel(),
@@ -107,6 +118,7 @@ export function createWailsBackend(): Backend {
     getGeneral: () => app.GetGeneral(),
     saveGeneral: (g) => app.SaveGeneral(g),
     chooseDirectory: (start) => app.ChooseDirectory(start),
+    setSessionWorkspace: (dir) => app.SetSessionWorkspace(dir),
     getDataInfo: () => app.GetDataInfo(),
     openDataDir: () => app.OpenDataDir(),
     clearSessions: () => app.ClearSessions(),
@@ -114,6 +126,10 @@ export function createWailsBackend(): Backend {
     loginChatGPT: (newAccount) => app.LoginChatGPT(newAccount),
     cancelChatGPTLogin: () => app.CancelChatGPTLogin(),
     logoutChatGPT: () => app.LogoutChatGPT(),
+    getChatGPTUsage: () => app.GetChatGPTUsage(),
+    setCodexQuota: (on) => app.SetCodexQuota(on),
+    openChatGPTUsage: () => app.OpenChatGPTUsage(),
+    getContextBreakdown: () => app.GetContextBreakdown(),
     listTools: async () => (await app.ListTools()) ?? [],
     setDisabledTools: (names) => app.SetDisabledTools(names),
     getPermissionRules: async () => (await app.GetPermissionRules()) ?? [],
