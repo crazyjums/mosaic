@@ -9,6 +9,7 @@ import ImageBlock from "./ImageBlock";
 import MosaicMark from "./MosaicMark";
 import Markdown, { copyText } from "./Markdown";
 import NavIcon from "./Icons";
+import { thinkingSummary } from "../store/thinkingSummary";
 import ScholarThinking from "./ScholarThinking";
 import ToolCallCard from "./ToolCallCard";
 
@@ -96,7 +97,7 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
       {!open && waiting.map((x) => <ToolCallCard key={x.callId} tool={x} />)}
       {/* 工作中、还没开始输出最终回答：显示动画 */}
       {live && answer.length === 0 && waiting.length === 0 && (
-        <ScholarThinking since={last.startedAt} label={allTools.some((x) => x.status === "running") ? t("正在执行工具…") : undefined} />
+        <ScholarThinking since={last.startedAt} thinking={open ? null : thinkingSummary(items)} label={allTools.some((x) => x.status === "running") ? t("正在执行工具…") : undefined} />
       )}
       {answer.length > 0 && (open && hasProcess ? <AnswerCard answer={answer} model={last.model} live={live && last.streaming} /> : <AnswerBody answer={answer} live={live && last.streaming} />)}
       {last.stopReason === "max_tokens" && <div className="text-xs text-warn">{t("输出达到 max_tokens 上限，被截断。")}</div>}

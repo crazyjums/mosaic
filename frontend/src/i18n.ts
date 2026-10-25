@@ -340,6 +340,7 @@ export const EN: Record<string, string> = {
   "输入消息，Enter 发送，Shift+Enter 换行": "Type a message · Enter to send, Shift+Enter for a new line",
   "输入消息，{key}+Enter 发送，Enter 换行": "Type a message · {key}+Enter to send, Enter for a new line",
   "停止": "Stop",
+  "思考摘要": "Thinking summary",
   "更早的对话已压缩为摘要": "Earlier conversation was compacted into a summary",
   "查看摘要": "View summary",
   "上下文压缩失败，已保持原样继续：": "Context compaction failed; continuing unchanged: ",
