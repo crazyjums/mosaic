@@ -436,22 +436,23 @@ func assertToolPairs(t *testing.T, h *harness) {
 	}
 }
 
-// 新目录里没有可用的配置档时，ReplaceCatalog 失败，且引擎保持原来的目录。
-func TestReplaceCatalogFailureKeepsOldCatalog(t *testing.T) {
+// 新目录里没有任何可用的配置档（例如删光了所有厂商）：目录照常替换，会话回到"未配置"状态，
+// 发送消息时返回 ErrNoProvider；之后目录里有可用厂商了，再切换即可。
+func TestReplaceCatalogWithNoUsableProfile(t *testing.T) {
 	h := newHarness(t, fake.DemoScript(), 0, allow)
 	reg := provider.NewRegistry()
 	reg.Register("broken", func(provider.ProfileConfig) (provider.Provider, error) {
 		return nil, errors.New("missing key")
 	})
 	bad := provider.NewCatalog(reg, []provider.ProfileConfig{{Name: "x", Type: "broken", Models: []string{"m"}}})
-	if err := h.engine.ReplaceCatalog(bad); err == nil {
-		t.Fatal("没有可用配置档时应失败")
+	if err := h.engine.ReplaceCatalog(bad); err != nil {
+		t.Fatalf("没有可用配置档不应让替换失败: %v", err)
 	}
-	if ps := h.engine.Profiles(); len(ps) != 2 || ps[0].Name != "fake" {
-		t.Fatalf("失败后应保留原目录: %+v", ps)
+	if st := h.engine.Status(); st.Provider != "" || st.Model != "" {
+		t.Fatalf("会话应回到未配置状态: %+v", st)
 	}
-	if _, err := h.engine.Send(context.Background(), "演示"); err != nil {
-		t.Fatalf("失败后应能继续使用原厂商: %v", err)
+	if _, err := h.engine.Send(context.Background(), "演示"); !errors.Is(err, core.ErrNoProvider) {
+		t.Fatalf("应返回 ErrNoProvider: %v", err)
 	}
 }
 

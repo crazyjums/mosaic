@@ -99,7 +99,7 @@ function ModelItem() {
         disabled={running}
         title={t("切换厂商与模型（下一条消息生效，会被记住）")}
       >
-        {!profiles.some((p) => p.name === provider) && <option value={value}>{provider}/{model}</option>}
+        {!profiles.some((p) => p.name === provider) && <option value={value}>{provider ? `${provider}/${model}` : t("未配置模型")}</option>}
         {profiles.map((p) => (
           <optgroup key={p.name} label={p.available ? `${p.name}（${p.type}）` : p.name + t("（不可用：{error}）", { error: p.error ?? "" })}>
             {(p.models ?? []).map((m) => (
@@ -110,6 +110,11 @@ function ModelItem() {
           </optgroup>
         ))}
       </select>
+      {!provider && (
+        <button className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-warn hover:bg-warn/25" onClick={() => void openSettings("providers")}>
+          {t("配置模型厂商 →")}
+        </button>
+      )}
       {isDemo && (
         <button className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-warn hover:bg-warn/25" onClick={() => void openSettings("providers")}>
           {t("演示模型 · 配置真实模型 →")}

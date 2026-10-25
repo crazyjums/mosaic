@@ -14,6 +14,7 @@ import (
 // 绑定层测试：不需要 Wails 运行时，用记录函数替换 EventsEmit。
 func TestAppForwardsEventsAndCommands(t *testing.T) {
 	cfg := config.Default()
+	cfg.EnableDemo()
 	cfg.DataDir = t.TempDir()
 	cfg.Providers[0].Options = map[string]any{} // demo 剧本、无延迟
 	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})

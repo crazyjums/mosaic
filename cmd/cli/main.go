@@ -22,7 +22,7 @@ import (
 
 type flags struct {
 	config, provider, model, workspace, mode, resume, prompt string
-	yes, jsonOut, noStore, list                              bool
+	yes, jsonOut, noStore, list, demo                        bool
 }
 
 func main() {
@@ -37,6 +37,7 @@ func main() {
 	flag.BoolVar(&f.yes, "yes", false, "自动允许所有权限确认（谨慎使用）")
 	flag.BoolVar(&f.jsonOut, "json", false, "以 JSONL 输出原始事件（提示信息走 stderr）")
 	flag.BoolVar(&f.noStore, "no-store", false, "不保存会话到数据库")
+	flag.BoolVar(&f.demo, "demo", false, "使用演示厂商 fake（按固定剧本回复，不需要密钥、不调用真实模型）")
 	flag.BoolVar(&f.list, "sessions", false, "列出已保存的会话后退出")
 	flag.Parse()
 
@@ -51,6 +52,9 @@ func run(f flags) error {
 	cfg, err := config.Load(f.config)
 	if err != nil {
 		return err
+	}
+	if f.demo {
+		cfg.EnableDemo()
 	}
 	built, err := bootstrap.Build(cfg, bootstrap.Options{NoStore: f.noStore, PermissionMode: f.mode, Workspace: f.workspace})
 	if err != nil {

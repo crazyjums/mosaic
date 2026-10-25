@@ -557,9 +557,13 @@ func (m *Manager) apply(next File) error {
 	return m.engine.ReplaceCatalog(provider.NewCatalogWith(m.registry, ps, m.catalogOptions()))
 }
 
-// currentIsFake 判断当前会话是否还在用演示厂商。
+// currentIsFake 判断当前会话是否还没有真正的厂商：还没配置任何厂商，或在用演示厂商（fake，配置文件里自己加的）。
+// 此时配置好第一个真实厂商后，顺手切过去。
 func (m *Manager) currentIsFake() bool {
 	st := m.engine.Status()
+	if st.Provider == "" {
+		return true
+	}
 	for _, p := range m.engine.Profiles() {
 		if p.Name == st.Provider {
 			return p.Type == "fake"
