@@ -4,7 +4,10 @@
 #   1. go run ./cmd/mkmanifest genkey
 #   2. 公钥写进 internal/update/pubkey.txt 并提交
 #   3. 私钥保存为仓库的加密变量 UPDATE_SIGNING_KEY（Settings → Secrets and variables → Actions）
-# 发布：git tag v1.2.3 && git push origin v1.2.3
+# 发布方式（二选一）：
+#   A. 命令行：git tag v1.2.3 && git push origin v1.2.3
+#   B. 手动运行（手机上的 GitHub app 也行）：Actions → release → Run workflow，在 "tag" 里填 v1.2.3。
+#      只能在默认分支上运行；tag 会在最后创建 Release 时一并创建，指向被运行的那个提交，所以不需要先建 tag。
 #
 # 带连字符的 tag（v1.2.3-beta.1）会标成预发布，不会成为"最新版本"，所以正式版用户不会收到它。
 
@@ -13,6 +16,16 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的版本，例如 v1.3.0（预发布：v1.3.0-beta.1）。必须在 CHANGELOG.md 里有对应小节"
+        required: true
+        type: string
+
+# 下面各处的 TAG：tag 触发时是被推送的 tag，手动运行时是输入的版本号。
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -23,6 +36,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # 手动运行时没有 tag 约束，这里补上：格式要对、只能发默认分支、tag 不能已经存在。
+      - name: 检查手动运行的参数
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::版本号格式应为 v1.2.3 或 v1.2.3-beta.1，收到：$TAG"; exit 1
+          fi
+          if [ "$GITHUB_REF" != "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+            echo "::error::只能在默认分支（${{ github.event.repository.default_branch }}）上手动发布，当前是 $GITHUB_REF"; exit 1
+          fi
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag $TAG 已经存在"; exit 1
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -35,7 +62,7 @@ jobs:
       # 正式版必须有；预发布（带连字符的 tag）可以没有。
       - name: 检查更新日志
         run: |
-          v="${GITHUB_REF_NAME#v}"
+          v="${TAG#v}"
           case "$v" in *-*) echo "预发布版本，跳过更新日志检查"; exit 0;; esac
           if ! grep -qE "^## \[${v//./\\.}\]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md 里没有 ${v} 的小节。请把 [Unreleased] 的内容挪到 \"## [${v}] - 日期\" 下面，合并后重新打 tag。"
@@ -87,7 +114,7 @@ jobs:
       - name: 打包
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           args=(build -platform "${{ matrix.platform }}" -clean -trimpath -ldflags "-X github.com/crazyjums/myllmapp/internal/update.Version=${VERSION}")
           if [ -n "${{ matrix.tags }}" ]; then args+=(-tags "${{ matrix.tags }}"); fi
           wails "${args[@]}"
@@ -122,14 +149,16 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$UPDATE_SIGNING_KEY" || { echo "缺少加密变量 UPDATE_SIGNING_KEY"; exit 1; }
-          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
-          range=${prev:+$prev..}${GITHUB_REF_NAME}
+          # tag 触发时 tag 已存在；手动运行时还没有，范围终点用当前提交
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then end="$TAG"; else end=HEAD; fi
+          prev=$(git describe --tags --abbrev=0 "${end}^" 2>/dev/null || true)
+          range=${prev:+$prev..}${end}
           git log --no-merges --pretty='%s' "$range" > commits.txt
-          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
           # 更新日志优先取 CHANGELOG.md 里本版本的小节；没有就用提交标题兜底（并输出警告）。
-          go run ./cmd/mkmanifest sign -version "${GITHUB_REF_NAME}" -base-url "$base" \
+          go run ./cmd/mkmanifest sign -version "${TAG}" -base-url "$base" \
             -changelog CHANGELOG.md -commits-file commits.txt -notes-out notes.md \
-            -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" -out dist \
+            -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" -out dist \
             -asset windows-amd64=dist/mosaic-windows-amd64.exe \
             -asset linux-amd64=dist/mosaic-linux-amd64
           # 更新日志会公开发布：不能带 Claude 会话链接（可能泄露隐私）。mkmanifest 已经清理过，这里再兜底检查一次。
@@ -141,7 +170,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [ -f notes.md ] || echo "$GITHUB_REF_NAME" > notes.md
+          [ -f notes.md ] || echo "$TAG" > notes.md
           flags=""
-          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease";; esac
-          gh release create "$GITHUB_REF_NAME" $flags --title "$GITHUB_REF_NAME" --notes-file notes.md dist/*
+          case "$TAG" in *-*) flags="--prerelease";; esac
+          # --target：手动运行时 tag 还不存在，会在这个提交上创建；tag 触发时 tag 已存在，--target 被忽略。
+          gh release create "$TAG" $flags --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*

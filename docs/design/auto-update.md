@@ -129,7 +129,7 @@ sequenceDiagram
 1. 生成密钥：`go run ./cmd/mkmanifest genkey`。
 2. 把**公钥**写进 `internal/update/pubkey.txt` 并提交。
 3. 把**私钥**保存为 GitHub 仓库的加密变量 `UPDATE_SIGNING_KEY`（Settings → Secrets and variables → Actions）。**私钥绝不能提交进仓库，也不要发给任何人**；丢失或泄露时需要重新生成密钥，并发布一个用新公钥打包的版本——旧版本客户端只认旧公钥，所以泄露后旧用户只能手动重装一次。
-4. 发布：`git tag v1.2.3 && git push origin v1.2.3`。流水线的第一步 `preflight` 会运行 `mkmanifest check-key`，确认私钥已配置、`pubkey.txt` 非空且与私钥是同一对；不通过就直接失败，不会发布一个没人能更新的版本。
+4. 发布，二选一：① 命令行 `git tag v1.2.3 && git push origin v1.2.3`；② 在 GitHub 的 Actions → release → Run workflow（手机 app 也可以）里填 `tag`，只能在默认分支上运行，tag 会随 Release 一起创建。流水线的第一步 `preflight` 会运行 `mkmanifest check-key`，确认私钥已配置、`pubkey.txt` 非空且与私钥是同一对；不通过就直接失败，不会发布一个没人能更新的版本。
 
 ### 流水线做了什么（`.github/workflows/release.yml`）
 
