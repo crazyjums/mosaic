@@ -75,7 +75,7 @@ err := a.cfg.Provider.Stream(ctx, req, func(d provider.Delta) {
 
 | 扩展点 | 文件 | 状态 |
 | --- | --- | --- |
-| 上下文压缩 `Compactor` | `compact.go` | 接口 + `NoopCompactor`，已在每步调用前接入，`context_compacted` 事件已就绪 |
+| 上下文压缩 `Compactor` | `compact.go` | `SummaryCompactor`（估算触发 + 摘要 + 保留最近几轮，不拆工具调用）；取消 → `cancelled`，失败 → 非致命 `compact_failed` 并继续，详见 roadmap |
 | 子 agent | `subagent.go` | `SubagentDefinition` + `SubagentRegistry`（已实现）、`SubagentRunner`（接口） |
 | 后台任务 | `task.go` | `TaskManager` 接口 |
 

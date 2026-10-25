@@ -107,7 +107,7 @@ type Tool interface {
 
 - `Agent.Run`：一次用户输入 → 多步（step）模型调用，直到模型不再调用工具或达到 `MaxSteps`。
 - `Engine`：命令接口（新建/加载/列出会话、发送、取消、回复权限、切换厂商模型、查询状态），持有事件总线。CLI 和 Wails 绑定层都只和 `Engine` 打交道。
-- 预留扩展点（只定义接口）：`Compactor`（上下文压缩，每步调用，当前为 no-op）、`SubagentRegistry`/`SubagentDefinition`、`TaskManager`。
+- 预留扩展点（只定义接口）：`Compactor`（上下文压缩，每步调用；后来已实现为 `SummaryCompactor`）、`SubagentRegistry`/`SubagentDefinition`、`TaskManager`。
 
 ### 4.6 Store（持久化）
 
