@@ -82,9 +82,22 @@ func (a *App) ListSessions() ([]core.SessionSummary, error) {
 
 func (a *App) NewSession() (core.Status, error) { return a.engine.NewSession() }
 
-// LoadSession 加载历史会话；历史内容会以重放事件的形式通过 agent:event 推给前端。
-func (a *App) LoadSession(id string) (core.Status, error) {
-	return a.engine.LoadSession(a.context(), id)
+// LoadSession 加载历史会话，只返回最近若干轮（设置 → 常规 → 历史会话加载轮数）的重放事件。
+// 事件作为返回值一次性交给前端，不走 agent:event：一次调用代替成百上千次 IPC。
+func (a *App) LoadSession(id string) (core.Loaded, error) {
+	return a.engine.LoadSessionTail(a.context(), id, a.historyTurns())
+}
+
+// LoadEarlierHistory 返回当前会话里更早的一页历史，前端把它放到已有内容前面。
+func (a *App) LoadEarlierHistory(sessionID string) (core.History, error) {
+	return a.engine.LoadEarlier(sessionID, a.historyTurns())
+}
+
+func (a *App) historyTurns() int {
+	if a.settings == nil {
+		return core.DefaultHistoryTurns
+	}
+	return a.settings.General().Effective.HistoryTurns
 }
 
 func (a *App) DeleteSession(id string) error { return a.engine.DeleteSession(a.context(), id) }

@@ -11,7 +11,7 @@
 import { create } from "zustand";
 import { backend, type PermissionMode, type ProfileInfo, type SessionSummary, type Status, type WorkspaceInfo } from "../bridge";
 import type { Decision } from "../protocol/events";
-import { applyEvent, initialState, type ChatState } from "./reducer";
+import { applyEvent, foldEvents, initialState, prependHistory, type ChatState } from "./reducer";
 import { t } from "../i18n";
 
 interface Store extends ChatState {
@@ -29,6 +29,11 @@ interface Store extends ChatState {
   permissionMode: PermissionMode;
   /** 动作失败时显示在界面顶部的提示 */
   toast: string | null;
+  /** 当前会话还有多少轮更早的历史没有加载（打开长会话时只加载最近几轮） */
+  earlier: number;
+  loadingEarlier: boolean;
+  /** 每次把更早的历史接到前面后加一：消息列表据此保持滚动位置 */
+  prependTick: number;
 
   init(): Promise<void>;
   send(text: string): Promise<void>;
@@ -36,6 +41,8 @@ interface Store extends ChatState {
   respondPermission(requestId: string, decision: Decision): Promise<void>;
   newSession(): Promise<void>;
   loadSession(id: string): Promise<void>;
+  /** 加载当前会话更早的一页历史，放到已有内容前面 */
+  loadEarlier(): Promise<void>;
   deleteSession(id: string): Promise<void>;
   /** 修改会话标题；失败时显示提示并返回 false */
   renameSession(id: string, title: string): Promise<boolean>;
@@ -109,6 +116,9 @@ export const useChat = create<Store>((set, get) => {
     workspaceInfo: null,
     permissionMode: "default",
     toast: null,
+    earlier: 0,
+    loadingEarlier: false,
+    prependTick: 0,
 
     async init() {
       if (initialized) return;
@@ -156,20 +166,25 @@ export const useChat = create<Store>((set, get) => {
       guard(async () => {
         if (!(await stopRunning())) return;
         const st = await backend().newSession();
-        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", ...wsFrom(st) });
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", earlier: 0, loadingEarlier: false, ...wsFrom(st) });
         void get().refreshWorkspace();
       }),
 
     loadSession: (id) =>
       guard(async () => {
         if (!(await stopRunning())) return;
-        // 先切换到目标会话再调用后端：后端会在调用返回之前就开始推送重放事件，
-        // 提前设置 sessionId 才能让 reducer 接收它们、同时丢弃旧会话的残留事件。
+        // 先切换到目标会话再调用后端：这样加载期间旧会话残留的实时事件会被 reducer 丢弃。
         const prev = get();
-        set({ ...initialState(id), provider: prev.provider, model: prev.model });
+        set({ ...initialState(id), provider: prev.provider, model: prev.model, earlier: 0, loadingEarlier: false });
         try {
-          const st = await backend().loadSession(id);
-          set({ title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, ...wsFrom(st) });
+          // 历史作为返回值一次性给出（只有最近几轮）：折叠完再 set 一次，界面只渲染一次。
+          const r = await backend().loadSession(id);
+          const st = r.status;
+          set((s) => ({
+            ...foldEvents(s, r.events),
+            title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, earlier: r.earlier,
+            ...wsFrom(st),
+          }));
           void get().refreshWorkspace(); // 不同会话的工作区不同，git 信息要重新取
         } catch (e) {
           // 加载失败时后端仍停留在原会话：恢复原来的界面状态，否则 sessionId 指向一个没加载成功的会话，
@@ -183,8 +198,23 @@ export const useChat = create<Store>((set, get) => {
             agents: prev.agents,
             tasks: prev.tasks,
             lastSeq: prev.lastSeq,
+            earlier: prev.earlier,
           });
           throw e;
+        }
+      }),
+
+    loadEarlier: () =>
+      guard(async () => {
+        const { sessionId, earlier, loadingEarlier } = get();
+        if (!sessionId || earlier === 0 || loadingEarlier) return;
+        set({ loadingEarlier: true });
+        try {
+          const page = await backend().loadEarlierHistory(sessionId);
+          if (get().sessionId !== sessionId) return; // 等待期间用户切换了会话，这一页不属于现在的会话
+          set((s) => ({ ...prependHistory(s, page.events), earlier: page.earlier, prependTick: s.prependTick + 1 }));
+        } finally {
+          if (get().sessionId === sessionId) set({ loadingEarlier: false });
         }
       }),
 
@@ -234,7 +264,7 @@ export const useChat = create<Store>((set, get) => {
     resetToCurrentSession: () =>
       guard(async () => {
         const st = await backend().getStatus();
-        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, ...wsFrom(st) });
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, earlier: 0, loadingEarlier: false, ...wsFrom(st) });
         await refreshMeta();
       }),
 

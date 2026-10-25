@@ -86,6 +86,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		MaxTokens:           cfg.MaxTokens,
 		ShellTimeoutSeconds: cfg.ShellTimeoutSeconds,
 		SystemPrompt:        cfg.SystemPrompt,
+		HistoryTurns:        cfg.HistoryTurns,
 	}
 	eff, _ := settings.ResolveGeneral(settingsMgr.SavedGeneral(), defaults, override)
 	workspace := eff.Workspace

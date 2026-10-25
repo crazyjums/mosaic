@@ -27,6 +27,8 @@ type Config struct {
 	MaxTokens           int    `toml:"max_tokens"`
 	ShellTimeoutSeconds int    `toml:"shell_timeout_seconds"`
 	SystemPrompt        string `toml:"system_prompt"`
+	// HistoryTurns 是打开历史会话时先加载的最近轮数；0 表示默认 20。
+	HistoryTurns int `toml:"history_turns"`
 
 	Providers []ProviderConfig `toml:"providers"`
 

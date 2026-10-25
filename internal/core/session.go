@@ -26,6 +26,9 @@ type Session struct {
 	Usage     provider.Usage
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// epoch 在整段消息被替换（压缩上下文）时加一。界面按"消息下标"分页加载历史，
+	// 消息被替换后下标不再对应原来的位置，据此让分页请求失败，而不是返回错位的内容。
+	epoch int
 
 	mu sync.Mutex
 }
@@ -50,6 +53,7 @@ func (s *Session) Snapshot() *Session {
 		Usage:     s.Usage,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
+		epoch:     s.epoch,
 	}
 }
 
@@ -70,6 +74,7 @@ func (s *Session) replaceMessages(msgs []provider.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Messages = msgs
+	s.epoch++
 	s.UpdatedAt = time.Now()
 }
 
