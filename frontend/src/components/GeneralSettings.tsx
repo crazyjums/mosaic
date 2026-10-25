@@ -134,6 +134,8 @@ export default function GeneralSettings() {
           </div>
         </Row>
 
+        <ProxyRow />
+
         <KeychainRow />
       </div>
 
@@ -217,6 +219,59 @@ function KeychainRow() {
       {!st.available && st.error && <div className="mt-1 text-[11px] text-warn">{t("不可用：{error}", { error: st.error })}</div>}
       {st.warning && <div className="mt-1 text-[11px] text-warn">{st.warning}</div>}
       {error && <div className="mt-1 text-[11px] text-danger">{error}</div>}
+    </Row>
+  );
+}
+
+// 全局默认代理：没有单独设置代理的厂商都用它。和钥匙串开关一样，点"保存"立即生效，不跟随页面底部的保存按钮。
+// 地址里的密码不会回传到界面（显示成 ***）；原样保存脱敏的地址表示不修改。
+function ProxyRow() {
+  const [value, setValue] = useState<string | null>(null);
+  const [orig, setOrig] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    void backend()
+      .getProxy()
+      .then((p) => {
+        setValue(p.display);
+        setOrig(p.display);
+      })
+      .catch(() => setValue(""));
+  }, []);
+  if (value === null) return null;
+
+  const save = async () => {
+    try {
+      await backend().setProxy(value);
+      const p = await backend().getProxy();
+      setValue(p.display);
+      setOrig(p.display);
+      setMsg({ ok: true, text: value.trim() ? t("已保存，立即生效") : t("已清除，使用环境变量或直连") });
+    } catch (e) {
+      setMsg({ ok: false, text: String(e instanceof Error ? e.message : e) });
+    }
+  };
+  return (
+    <Row label={t("网络代理（全局默认）")} hint={t("访问海外厂商时用。留空则沿用环境变量 HTTP_PROXY / HTTPS_PROXY（从开始菜单启动的应用通常读不到它们）。单个厂商可以在它自己的“高级选项”里改成别的代理，或填 direct 强制直连。")}>
+      <div className="flex gap-2">
+        <input
+          className="input flex-1 font-mono"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setMsg(null);
+          }}
+          placeholder="http://127.0.0.1:7890  或  socks5://127.0.0.1:1080"
+          spellCheck={false}
+          autoComplete="off"
+          aria-label={t("全局代理地址")}
+        />
+        <button className="btn" onClick={() => void save()} disabled={value === orig}>
+          {t("保存")}
+        </button>
+      </div>
+      {msg && <div className={`mt-1 text-xs ${msg.ok ? "text-ok" : "text-danger"}`}>{msg.text}</div>}
+      <div className="mt-1 text-[11px] text-muted">{t("代理可以看到你的 API Key 和请求的目标地址。地址里带的密码保存在本机的设置文件里，和 API Key 一样。")}</div>
     </Row>
   );
 }

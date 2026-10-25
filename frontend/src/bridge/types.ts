@@ -50,6 +50,9 @@ export interface ModelMeta {
   context_window?: number;
   input_price?: number;
   output_price?: number;
+  /** 缓存读 / 写的单价；没填时按输入价计算（估算偏高而不是偏低） */
+  cache_read_price?: number;
+  cache_write_price?: number;
 }
 
 /** 对应 workspace.Info */
@@ -330,6 +333,18 @@ export interface Backend {
   /** 在浏览器中打开 ChatGPT 的用量页面（地址由后端固定） */
   openChatGPTUsage(): Promise<void>;
   /** 当前版本号；开发构建是 "dev" */
+  // ---- 用量统计、模型组（故障转移）、网络代理 ----
+  getUsageReport(req: UsageRequest): Promise<UsageReport>;
+  /** 弹出"另存为"对话框导出 CSV；返回保存的路径，取消时为空串 */
+  saveUsageCSV(req: UsageRequest): Promise<string>;
+  getGroups(): Promise<GroupView[]>;
+  saveGroup(input: GroupInput): Promise<void>;
+  deleteGroup(name: string): Promise<void>;
+  getGroupStatuses(): Promise<GroupStatus[]>;
+  /** 手动恢复一个成员：清掉冷却和停用状态 */
+  resetGroupMember(profile: string, model: string): Promise<void>;
+  getProxy(): Promise<ProxyView>;
+  setProxy(raw: string): Promise<void>;
   getVersion(): Promise<string>;
   /** 检查更新：网络或签名错误以异常返回；disabled 非空表示更新功能不可用（开发版 / 没配置公钥） */
   checkUpdate(): Promise<UpdateInfo>;
@@ -398,4 +413,105 @@ export interface UpdateStatus {
   done: number;
   total: number;
   error?: string;
+}
+
+export type UsageBy = "day" | "session" | "model" | "profile";
+export type UsageRange = "today" | "7d" | "30d" | "all" | "custom";
+
+export interface UsageRequest {
+  range: UsageRange;
+  from?: string;
+  to?: string;
+  by: UsageBy;
+  profile?: string;
+  model?: string;
+  group?: string;
+}
+
+/** 对应 usage.Totals。输入 token 的口径是"含缓存读写"。 */
+export interface UsageTotals {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
+  requests: number;
+  failed_tries: number;
+  handed_on: number;
+  /** 美元；换算人民币由界面按用户填的汇率做 */
+  cost_usd: number;
+  /** 没有价格、因而没有计入花费的成功调用数 */
+  unpriced_calls: number;
+  /** 按套餐计费、不计金额的成功调用数 */
+  plan_calls: number;
+  cache_hit: number;
+}
+
+export interface UsageNode extends UsageTotals {
+  key: string;
+  label: string;
+  plan?: boolean;
+  priced: boolean;
+  children?: UsageNode[];
+}
+
+export interface UsageReport {
+  by: UsageBy;
+  totals: UsageTotals;
+  nodes: UsageNode[];
+  unpriced_models: string[];
+  from: string;
+  to: string;
+  /** 范围内出现过的配置档，供筛选下拉框使用 */
+  profiles: string[];
+}
+
+export interface GroupMember {
+  profile: string;
+  model: string;
+}
+
+export type GroupStrategy = "order" | "rotate" | "least_used";
+
+export interface GroupConfig {
+  name: string;
+  members: GroupMember[];
+  strategy: GroupStrategy;
+  sticky: boolean;
+  first_byte_timeout_s: number;
+}
+
+export interface GroupView extends GroupConfig {
+  available: boolean;
+  error?: string;
+}
+
+export interface GroupInput extends GroupConfig {
+  original_name: string;
+}
+
+export type MemberState = "healthy" | "cooling" | "probing" | "disabled";
+
+export interface MemberStatus {
+  profile: string;
+  model: string;
+  state: MemberState;
+  /** 冷却到期时间（Unix 毫秒） */
+  until?: number;
+  kind?: string;
+  message?: string;
+  fails?: number;
+  /** 成员本身不可用的原因（配置档被删了、缺密钥…），与运行时的健康状态无关 */
+  unavailable?: string;
+}
+
+export interface GroupStatus {
+  name: string;
+  strategy: string;
+  members: MemberStatus[] | null;
+}
+
+export interface ProxyView {
+  set: boolean;
+  /** 密码已脱敏的地址 */
+  display: string;
 }

@@ -1,4 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { backend, type UsageReport } from "../bridge";
+import { t } from "../i18n";
+import { fmtTokens } from "../store/metrics";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 import { Notice } from "./GeneralSettings";
@@ -40,6 +43,8 @@ export default function DataSettings() {
         </div>
       </section>
 
+      <UsageSummary />
+
       <section>
         <div className="mb-2 text-sm font-medium">历史会话</div>
         <Notice tone="info">
@@ -70,5 +75,36 @@ function Item({ label, value, note }: { label: string; value: string; note?: Rea
         {note && <span className="mt-0.5 block text-[11px] text-muted">{note}</span>}
       </span>
     </div>
+  );
+}
+
+// 用量的一行汇总，详情在"用量"页（按天展开、花费、导出）。
+function UsageSummary() {
+  const setTab = useSettings((s) => s.setTab);
+  const [all, setAll] = useState<UsageReport | null>(null);
+  const [today, setToday] = useState<UsageReport | null>(null);
+  useEffect(() => {
+    void backend().getUsageReport({ range: "all", by: "day" }).then(setAll).catch(() => {});
+    void backend().getUsageReport({ range: "today", by: "day" }).then(setToday).catch(() => {});
+  }, []);
+  if (!all) return null;
+  const sum = (r: UsageReport | null) => (r ? fmtTokens(r.totals.input + r.totals.output) : "—");
+  return (
+    <section>
+      <div className="mb-2 text-sm font-medium">{t("用量")}</div>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm">
+        <span>
+          {t("今天")} <b className="tabular-nums">{sum(today)}</b> tokens
+        </span>
+        <span className="text-muted">·</span>
+        <span>
+          {t("累计")} <b className="tabular-nums">{sum(all)}</b> tokens · {all.totals.requests} {t("请求")}
+        </span>
+        <div className="flex-1" />
+        <button className="text-accent hover:underline" onClick={() => setTab("usage")}>
+          {t("查看按天的明细")} →
+        </button>
+      </div>
+    </section>
   );
 }

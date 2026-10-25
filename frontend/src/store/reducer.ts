@@ -52,6 +52,14 @@ export interface AssistantItem {
   /** 发出请求（message_start）和收到第一个内容（思考 / 文本 / 工具调用 / 图片）的时间，用于计算首字延迟。重放的历史没有 */
   startedAt?: number;
   firstTokenAt?: number;
+  /** 使用模型组时：实际应答的成员，以及前面被转交的尝试。provider / model 已经更新为实际应答者 */
+  route?: RouteView;
+}
+
+export interface RouteView {
+  group: string;
+  tried: number;
+  handedOn: { profile: string; model: string; kind: string; message: string }[];
 }
 
 export type TimelineItem =
@@ -161,6 +169,14 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
       };
       return { ...s, provider: ev.data.provider, model: ev.data.model, timeline: [...s.timeline, item] };
     }
+
+    case "route":
+      return updateMessage(s, ev.message_id, (m) => ({
+        ...m,
+        provider: ev.data.profile,
+        model: ev.data.model,
+        route: { group: ev.data.group, tried: ev.data.try, handedOn: ev.data.handed_on ?? [] },
+      }));
 
     case "thinking_delta":
       return updateMessage(s, ev.message_id, (m) => ({

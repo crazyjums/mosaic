@@ -31,6 +31,9 @@ export interface UIPrefs {
   updateCheck: "auto" | "off";
   /** 用户选择"跳过此版本"的版本号：这个版本不再弹提示（有更新的版本时仍会提示） */
   skippedVersion: string;
+  /** 用量页的花费用什么币种显示；内部一律是美元，人民币按下面手填的汇率换算（不联网取汇率） */
+  currency: "usd" | "cny";
+  cnyRate: number;
   /** 左侧会话栏是否收起（收起后只剩一列图标） */
   sidebarCollapsed: boolean;
 }
@@ -47,6 +50,8 @@ export const DEFAULT_PREFS: UIPrefs = {
   customSkins: [],
   contextPanel: true,
   sidebarCollapsed: false,
+  currency: "usd",
+  cnyRate: 7.2,
   updateCheck: "auto",
   skippedVersion: "",
   process: "collapsed",
@@ -80,6 +85,8 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     skin: pick(r.skin, ids, d.skin),
     customSkins,
     contextPanel: typeof r.contextPanel === "boolean" ? r.contextPanel : d.contextPanel,
+    currency: pick(r.currency, ["usd", "cny"], d.currency),
+    cnyRate: typeof r.cnyRate === "number" && r.cnyRate > 0 && r.cnyRate < 1000 ? r.cnyRate : d.cnyRate,
     updateCheck: pick(r.updateCheck, ["auto", "off"], d.updateCheck),
     skippedVersion: typeof r.skippedVersion === "string" ? r.skippedVersion.slice(0, 40) : d.skippedVersion,
     process: pick(r.process, ["collapsed", "expanded"], d.process),
