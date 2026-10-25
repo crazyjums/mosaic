@@ -72,7 +72,7 @@ func (u *Updater) client() *http.Client {
 // Enabled 说明更新功能是否可用，以及不可用的原因（开发版、没有公钥）。
 func (u *Updater) Enabled() (bool, string) {
 	if u.Current == "dev" || u.Current == "" {
-		return false, "开发版本不检查更新"
+		return false, "开发版本（版本号 dev）不检查更新。打正式包请执行：VERSION=1.0.0 ./scripts/build.sh，详见 docs/design/auto-update.md"
 	}
 	if u.PubKey == nil {
 		return false, ErrNotConfigured.Error()
