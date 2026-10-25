@@ -6,7 +6,7 @@ const sources = import.meta.glob(
   [
     "./App.tsx",
     "./components/{Sidebar,MessageList,PermissionDialog,ToolCallCard,ThinkingCard,AssistantMessage,Composer,StatusBar,PermissionModeSelect}.tsx",
-    "./components/{SettingsDialog,ChatGPTAccount,AppearanceSettings,PermissionsSettings,MCPSettings,GeneralSettings,StatusLineSettings}.tsx",
+    "./components/{SettingsDialog,ChatGPTAccount,AppearanceSettings,SkinSettings,PermissionsSettings,MCPSettings,GeneralSettings,StatusLineSettings}.tsx",
   ],
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;

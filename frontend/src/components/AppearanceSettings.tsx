@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import { t } from "../i18n";
 import { MOD_KEY } from "../store/keys";
 import { DEFAULT_PREFS, resolveLanguage, useUIPrefs, type UIPrefs } from "../store/uiPrefs";
+import SkinSettings from "./SkinSettings";
 
-// 设置 → 外观：主题、字体大小、消息区宽度、思考卡片、发送快捷键、界面语言。
+// 设置 → 外观：主题、皮肤、字体大小、消息区宽度、思考卡片、发送快捷键、界面语言。
 // 都是纯界面偏好，修改立即生效并保存（settings.json 的 ui 字段）。
 
 export default function AppearanceSettings() {
@@ -24,6 +25,10 @@ export default function AppearanceSettings() {
               ["dark", t("深色")],
             ]}
           />
+        </Row>
+
+        <Row label={t("皮肤")} hint={t("皮肤决定深色和浅色各是什么配色；上面的主题决定显示深色还是浅色。")}>
+          <SkinSettings />
         </Row>
 
         <Row label={t("字体大小")} hint={t("整个界面按比例缩放。")}>
@@ -91,7 +96,7 @@ export default function AppearanceSettings() {
       <footer className="flex shrink-0 items-center border-t border-line px-6 py-3">
         <span className="text-xs text-muted">{t("修改会立即保存")}</span>
         <div className="flex-1" />
-        <button className="btn" onClick={() => confirm(t("恢复外观的默认设置？")) && void update(DEFAULT_PREFS)}>
+        <button className="btn" onClick={() => confirm(t("恢复外观的默认设置？")) && void update({ ...DEFAULT_PREFS, customSkins: prefs.customSkins })}>
           {t("恢复默认")}
         </button>
       </footer>
@@ -117,7 +122,7 @@ function Segmented<T extends string>({ value, onChange, options }: { value: T; o
           key={v}
           role="radio"
           aria-checked={value === v}
-          className={`rounded-md px-3 py-1 text-sm ${value === v ? "bg-accent text-white" : "hover:bg-panel-2"}`}
+          className={`rounded-md px-3 py-1 text-sm ${value === v ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
           onClick={() => onChange(v)}
         >
           {label}

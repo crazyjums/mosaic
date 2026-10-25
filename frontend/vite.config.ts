@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -7,4 +8,6 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { port: 5173, strictPort: true },
+  // Vitest 默认把 CSS 导入当成空字符串；皮肤的测试要读 index.css 原文，核对默认配色（store/skins.test.ts）。
+  test: { css: { include: [/index\.css/] } },
 });

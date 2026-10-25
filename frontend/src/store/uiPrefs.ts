@@ -1,10 +1,11 @@
-// 界面偏好：主题、字号、消息区宽度、思考卡片、发送快捷键、语言（设置 → 外观）。
+// 界面偏好：主题、皮肤、字号、消息区宽度、思考卡片、发送快捷键、语言（设置 → 外观）。
 //
 // 与状态栏配置一样，结构完全由前端定义，后端只把它当作一段 JSON 原样存进 settings.json 的 ui 字段。
 
 import { create } from "zustand";
 import { backend } from "../bridge";
 import { setLanguage, type Lang } from "../i18n";
+import { applySkin, BUILTIN_SKINS, DEFAULT_SKIN_ID, findSkin, parseSkin, type Skin } from "./skins";
 
 export interface UIPrefs {
   version: 1;
@@ -18,6 +19,10 @@ export interface UIPrefs {
   sendKey: "enter" | "mod_enter";
   /** auto：按系统语言 */
   language: "auto" | Lang;
+  /** 当前皮肤的 id（内置皮肤或自定义皮肤），见 store/skins.ts */
+  skin: string;
+  /** 用户自定义的皮肤 */
+  customSkins: Skin[];
 }
 
 export const DEFAULT_PREFS: UIPrefs = {
@@ -28,6 +33,8 @@ export const DEFAULT_PREFS: UIPrefs = {
   thinking: "auto",
   sendKey: "enter",
   language: "auto",
+  skin: DEFAULT_SKIN_ID,
+  customSkins: [],
 };
 
 /** 字号作用在根元素上：Tailwind 的尺寸都是 rem，整个界面会等比缩放。 */
@@ -40,6 +47,13 @@ const pick = <T extends string>(v: unknown, allowed: readonly T[], fallback: T):
 export function normalizePrefs(raw: unknown): UIPrefs {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const d = DEFAULT_PREFS;
+  // 自定义皮肤逐个校验，坏掉的（例如手改 settings.json 写错了颜色）直接丢弃，不影响其他偏好。
+  const customSkins: Skin[] = [];
+  for (const raw of Array.isArray(r.customSkins) ? r.customSkins : []) {
+    const sk = parseSkin(raw);
+    if (typeof sk !== "string" && !customSkins.some((c) => c.id === sk.id)) customSkins.push(sk);
+  }
+  const ids = [...BUILTIN_SKINS, ...customSkins].map((s) => s.id);
   return {
     version: 1,
     theme: pick(r.theme, ["system", "light", "dark"], d.theme),
@@ -48,6 +62,8 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     thinking: pick(r.thinking, ["auto", "expanded", "collapsed"], d.thinking),
     sendKey: pick(r.sendKey, ["enter", "mod_enter"], d.sendKey),
     language: pick(r.language, ["auto", "zh", "en"], d.language),
+    skin: pick(r.skin, ids, d.skin),
+    customSkins,
   };
 }
 
@@ -63,6 +79,7 @@ export function applyPrefs(p: UIPrefs) {
   else root.dataset.theme = p.theme;
   root.style.fontSize = `${FONT_SIZE_PX[p.fontSize]}px`;
   root.style.setProperty("--content-width", CONTENT_WIDTH[p.contentWidth]);
+  applySkin(findSkin(p.skin, p.customSkins));
   const lang = resolveLanguage(p.language);
   root.lang = lang === "zh" ? "zh-CN" : "en";
   setLanguage(lang);
