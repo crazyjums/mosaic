@@ -575,3 +575,38 @@ func TestEnginePermissionRules(t *testing.T) {
 		t.Fatal("应无规则")
 	}
 }
+
+func TestContextBreakdown(t *testing.T) {
+	if core.EstimateTokens("abcdefgh") != 2 || core.EstimateTokens("你好") != 2 || core.EstimateTokens("") != 0 {
+		t.Fatal("EstimateTokens")
+	}
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	before := h.engine.ContextBreakdown()
+	if before.Messages != 0 || before.ToolCount != 4 || len(before.Parts) != 2 {
+		t.Fatalf("空会话只有系统提示词和工具定义: %+v", before)
+	}
+	h.engine.Send(context.Background(), "演示一下")
+	b := h.engine.ContextBreakdown()
+	kinds := map[string]core.ContextPart{}
+	sum := 0
+	for _, p := range b.Parts {
+		kinds[p.Kind] = p
+		sum += p.Tokens
+	}
+	for _, k := range []string{"system", "tools", "user", "assistant", "thinking", "tool_call", "tool_result", "image"} {
+		if kinds[k].Count == 0 {
+			t.Errorf("演示剧本应产生 %s", k)
+		}
+	}
+	if kinds["tool_call"].Count != 3 || kinds["tool_result"].Count != 3 || sum != b.Total || b.Messages == 0 {
+		t.Fatalf("明细: %+v", b)
+	}
+	if len(b.Largest) == 0 || b.Largest[0].Tokens < b.Largest[len(b.Largest)-1].Tokens {
+		t.Fatalf("最大项应按 token 数降序: %+v", b.Largest)
+	}
+	// 禁用工具后，工具定义的开销随之减少。
+	h.engine.SetDisabledTools([]string{"shell"})
+	if h.engine.ContextBreakdown().ToolCount != 3 {
+		t.Fatal("禁用的工具不计入")
+	}
+}
