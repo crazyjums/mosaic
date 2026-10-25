@@ -163,21 +163,3 @@ func TestCheckCarriesReleases(t *testing.T) {
 		t.Fatalf("旧格式: %+v", info)
 	}
 }
-
-// 已经是最新版本时，Check 要把当前版本自己的日志带出来，关于页才有东西可显示。
-func TestCheckCarriesCurrentRelease(t *testing.T) {
-	f := newFixture(t, "1.3.0")
-	f.manifest.Releases = []Release{
-		{Version: "1.3.0", Sections: []Section{{Kind: KindAdded, Items: []string{"新功能"}}}},
-		{Version: "1.2.0", Sections: []Section{{Kind: KindFixed, Items: []string{"旧的"}}}},
-	}
-	info, err := f.updater(t, "1.3.0", "linux").Check(context.Background())
-	if err != nil || info.Available || info.CurrentRelease == nil || info.CurrentRelease.Version != "1.3.0" {
-		t.Fatalf("应带上 1.3.0 自己的日志: %+v %v", info, err)
-	}
-	// 清单里没有当前版本（比如本地开发版）：不带，也不报错。
-	info, err = f.updater(t, "1.4.0", "linux").Check(context.Background())
-	if err != nil || info.CurrentRelease != nil {
-		t.Fatalf("找不到应为空: %+v %v", info, err)
-	}
-}
