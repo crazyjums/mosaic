@@ -397,6 +397,8 @@ export interface UpdateInfo {
   pub_date?: string;
   /** 当前版本之后到最新版本之间的全部更新日志，最新的在前 */
   releases?: ReleaseNotes[];
+  /** 当前版本自己的更新日志；已是最新版本时关于页用它显示"这个版本更新了什么" */
+  current_release?: ReleaseNotes;
   /** 更新建议：critical 含安全修复 / recommended 含修复 / optional 只有新功能；旧格式清单没有 */
   level?: "critical" | "recommended" | "optional";
   /** 含不兼容变更，更新前需要先阅读 */

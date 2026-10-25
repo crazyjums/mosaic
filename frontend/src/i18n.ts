@@ -188,6 +188,7 @@ export const EN: Record<string, string> = {
   "更新包经过签名校验：只有用发布者私钥签名的版本才会被安装。检查更新只会访问发布服务器，不会上传你的任何数据。": "Updates are signature-verified: only builds signed with the publisher's private key are installed. Checking for updates only contacts the release server and uploads none of your data.",
   "更新说明": "Release notes",
   "检查更新": "Check for updates",
+  "当前版本更新了什么": "What changed in this version",
   "正在下载 {p}%（{a} / {b}）": "Downloading {p}% ({a} / {b})",
   "正在安装…": "Installing…",
   "正在检查…": "Checking…",

@@ -32,7 +32,7 @@ export function ChangeSummary({ releases }: { releases: ReleaseNotes[] }) {
   );
 }
 
-function Release({ r, open }: { r: ReleaseNotes; open: boolean }) {
+export function Release({ r, open }: { r: ReleaseNotes; open: boolean }) {
   return (
     <details open={open} className="rounded-md border border-line bg-panel">
       <summary className="cursor-pointer select-none px-3 py-1.5 text-xs">

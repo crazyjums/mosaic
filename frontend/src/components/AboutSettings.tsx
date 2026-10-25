@@ -3,7 +3,7 @@ import { t } from "../i18n";
 import { useUIPrefs } from "../store/uiPrefs";
 import { useUpdate } from "../store/updateStore";
 import { Notice } from "./GeneralSettings";
-import ChangeLog, { ChangeSummary, LevelBadge } from "./ChangeLog";
+import ChangeLog, { ChangeSummary, LevelBadge, Release } from "./ChangeLog";
 
 // 设置 → 关于：版本号、检查更新、自动检查开关。
 export default function AboutSettings() {
@@ -48,6 +48,12 @@ export default function AboutSettings() {
           <div className="mt-3 space-y-2">
             {info.releases && <ChangeSummary releases={info.releases} />}
             <ChangeLog info={info} />
+          </div>
+        )}
+        {info && !info.available && !checking && !error && info.current_release && (
+          <div className="mt-3 space-y-1">
+            <div className="text-xs text-muted">{t("当前版本更新了什么")}</div>
+            <Release r={info.current_release} open />
           </div>
         )}
         {info?.available && info.manual && <div className="mt-2 text-[11px] text-muted">{t("这个系统暂不支持自动安装，请到发布页下载新版本。")}</div>}
