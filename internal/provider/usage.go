@@ -107,11 +107,28 @@ func observe(ctx context.Context, base UsageEvent, stream func(onDelta func(Delt
 	return ev, err
 }
 
+// normalizeUsage 统一"输入 token"的口径：账本里的 InputTokens 一律包含缓存读写的部分。
+//
+// 各家的算法不同：OpenAI 系的 prompt_tokens 已经包含缓存命中的部分（缓存读 ⊂ 输入）；
+// Anthropic 的 input_tokens 只算没命中缓存的新输入，缓存读写是另外两个数。
+// 不统一的话，同样的"输入"在不同厂商下含义不同，既不能加总也没法算费用。
+// 统一之后：费用 = (输入 − 缓存读 − 缓存写) × 输入价 + 缓存读 × 缓存读价 + 缓存写 × 缓存写价 + 输出 × 输出价。
+func normalizeUsage(u Usage, cacheSeparate bool) Usage {
+	if cacheSeparate {
+		u.InputTokens += u.CacheReadTokens + u.CacheWriteTokens
+	}
+	return u
+}
+
+// cacheSeparateType 说明某个适配器类型的输入 token 是否不含缓存部分。
+func cacheSeparateType(adapterType string) bool { return adapterType == "anthropic" }
+
 // metered 给一个 Provider 加上用量记录。每次 Stream 记一条。
 type metered struct {
-	inner   Provider
-	rec     UsageRecorder
-	profile string
+	inner         Provider
+	rec           UsageRecorder
+	profile       string
+	cacheSeparate bool
 }
 
 func (m *metered) Name() string { return m.inner.Name() }
@@ -120,6 +137,7 @@ func (m *metered) Stream(ctx context.Context, req Request, onDelta func(Delta)) 
 	ev, err := observe(ctx, UsageEvent{Profile: m.profile, Model: req.Model, TryNo: 1}, func(on func(Delta)) error {
 		return m.inner.Stream(ctx, req, on)
 	}, onDelta)
+	ev.Usage = normalizeUsage(ev.Usage, m.cacheSeparate)
 	m.rec.RecordUsage(ev)
 	return err
 }

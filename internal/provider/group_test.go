@@ -172,6 +172,21 @@ func TestGroupFailsOverBeforeAnyOutput(t *testing.T) {
 	}
 }
 
+func TestUsageInputIsNormalizedAcrossVendors(t *testing.T) {
+	b := &stub{name: "B", steps: []step{{usage: &Usage{InputTokens: 20, OutputTokens: 5, CacheReadTokens: 100, CacheWriteTokens: 30}}}}
+	g, rec, _ := newGroup(t, GroupConfig{}, b)
+	g.members[0].cacheSeparate = true // Anthropic 口径：input_tokens 不含缓存
+	run(g, context.Background())
+	if u := rec.events()[0].Usage; u.InputTokens != 150 || u.CacheReadTokens != 100 || u.CacheWriteTokens != 30 {
+		t.Fatalf("输入应换算为含缓存的总输入: %+v", u)
+	}
+	g2, rec2, _ := newGroup(t, GroupConfig{}, &stub{name: "O", steps: []step{{usage: &Usage{InputTokens: 120, CacheReadTokens: 100}}}})
+	run(g2, context.Background())
+	if u := rec2.events()[0].Usage; u.InputTokens != 120 {
+		t.Fatalf("OpenAI 口径本来就含缓存，不应再加: %+v", u)
+	}
+}
+
 func TestGroupDoesNotFailOverOnClientErrors(t *testing.T) {
 	a := &stub{name: "A", steps: []step{{err: httpErr(400, "invalid tool schema")}}}
 	b := &stub{name: "B"}

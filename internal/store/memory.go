@@ -13,6 +13,7 @@ import (
 type Memory struct {
 	mu       sync.Mutex
 	sessions map[string]*core.Session
+	use      *memUsage // 用量账本，见 usage.go
 }
 
 var _ core.SessionStore = (*Memory)(nil)

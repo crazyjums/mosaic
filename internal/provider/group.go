@@ -85,6 +85,8 @@ type groupMember struct {
 	key       string
 	leaf      Provider // 没有计量包装的原始实例：尝试的记账由模型组自己做，才能标出"已转交"
 	ctxWindow int
+	// cacheSeparate：成员的输入 token 不含缓存部分（Anthropic），记账时要换算，见 normalizeUsage。
+	cacheSeparate bool
 	// unavailable 非空表示成员本身不可用（引用的配置档不存在、缺密钥……）。
 	unavailable string
 }
@@ -221,7 +223,8 @@ func stripThinking(msgs []Message) []Message {
 	return out
 }
 
-func (g *Group) record(ev UsageEvent) {
+func (g *Group) record(ev UsageEvent, cacheSeparate bool) {
+	ev.Usage = normalizeUsage(ev.Usage, cacheSeparate)
 	if g.rec != nil {
 		g.rec.RecordUsage(ev)
 	}
@@ -302,14 +305,14 @@ func (g *Group) Stream(ctx context.Context, req Request, onDelta func(Delta)) er
 				g.sticky[ci.SessionID] = m.key
 			}
 			g.mu.Unlock()
-			g.record(ev)
+			g.record(ev, m.cacheSeparate)
 			return nil
 		}
 
 		// 用户取消：不是成员的问题。
 		if ctx.Err() != nil {
 			g.health.release(m.key)
-			g.record(ev)
+			g.record(ev, m.cacheSeparate)
 			return err
 		}
 
@@ -318,7 +321,7 @@ func (g *Group) Stream(ctx context.Context, req Request, onDelta func(Delta)) er
 		// 已经输出过内容，或者这类错误换成员也没用：直接报错，不动成员的健康状态。
 		if emitted || !kind.Failover() {
 			g.health.release(m.key)
-			g.record(ev)
+			g.record(ev, m.cacheSeparate)
 			return err
 		}
 
@@ -339,7 +342,7 @@ func (g *Group) Stream(ctx context.Context, req Request, onDelta func(Delta)) er
 		if next != nil {
 			ev.Status = StatusHandedOn
 		}
-		g.record(ev)
+		g.record(ev, m.cacheSeparate)
 		m = next
 	}
 

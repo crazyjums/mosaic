@@ -213,7 +213,7 @@ func NewCatalogWith(reg *Registry, cfgs []ProfileConfig, opts CatalogOptions) *C
 		}
 		raw[cfg.Name] = p
 		if opts.Recorder != nil {
-			p = &metered{inner: p, rec: opts.Recorder, profile: cfg.Name}
+			p = &metered{inner: p, rec: opts.Recorder, profile: cfg.Name, cacheSeparate: cacheSeparateType(cfg.Type)}
 		}
 		c.instances[cfg.Name] = p
 	}
@@ -278,6 +278,7 @@ func (c *Catalog) buildGroup(cfg ProfileConfig, raw map[string]Provider, opts Ca
 			}
 		default:
 			gm.leaf = raw[m.Profile]
+			gm.cacheSeparate = cacheSeparateType(mc.Type)
 			gm.ctxWindow = parseModelMeta(mc.Options)[m.Model].ContextWindow
 			usable++
 		}

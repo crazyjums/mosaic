@@ -49,6 +49,30 @@ var migrations = []string{
 	CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);`,
 	// 2：每个会话可以有自己的工作区（为空表示跟随默认工作区）。
 	`ALTER TABLE sessions ADD COLUMN workspace TEXT NOT NULL DEFAULT '';`,
+	// 3：用量账本。一次模型调用（故障转移时每次尝试各一行）一条记录；只有数字和名称，不存任何内容。
+	// 不设外键到 sessions：删除会话或清空历史不应该抹掉用量统计。
+	// day 是写入时按本地时区算好的日期：按天分组就是 GROUP BY day，不会因为夏令时或之后换时区而变。
+	`CREATE TABLE usage_events (
+		id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts                 INTEGER NOT NULL,
+		day                TEXT    NOT NULL,
+		session_id         TEXT    NOT NULL DEFAULT '',
+		source             TEXT    NOT NULL DEFAULT 'chat',
+		profile            TEXT    NOT NULL,
+		model              TEXT    NOT NULL,
+		group_name         TEXT    NOT NULL DEFAULT '',
+		try_no             INTEGER NOT NULL DEFAULT 1,
+		status             TEXT    NOT NULL,
+		error_kind         TEXT    NOT NULL DEFAULT '',
+		input_tokens       INTEGER NOT NULL DEFAULT 0,
+		output_tokens      INTEGER NOT NULL DEFAULT 0,
+		cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+		cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+		duration_ms        INTEGER NOT NULL DEFAULT 0,
+		ttft_ms            INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX idx_usage_day ON usage_events(day, profile, model);
+	CREATE INDEX idx_usage_session ON usage_events(session_id);`,
 }
 
 // OpenSQLite 打开（必要时创建）数据库文件并执行迁移。
