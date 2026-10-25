@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -81,6 +82,11 @@ func (a *App) LoadSession(id string) (core.Status, error) {
 }
 
 func (a *App) DeleteSession(id string) error { return a.engine.DeleteSession(a.context(), id) }
+
+// RenameSession 修改会话标题（当前会话或历史会话）。
+func (a *App) RenameSession(id, title string) error {
+	return a.engine.RenameSession(a.context(), id, title)
+}
 
 // SetModel 切换厂商和模型，并记住选择（下次启动直接使用）。
 func (a *App) SetModel(profile, model string) (core.Status, error) {
@@ -193,6 +199,18 @@ func (a *App) GetChatGPTUsage() settings.ChatGPTUsage { return a.settings.ChatGP
 
 // SetCodexQuota 开启或关闭"读取本机 Codex 登录查询剩余额度"（未公开接口，默认关闭）。
 func (a *App) SetCodexQuota(on bool) error { return a.settings.SetCodexQuota(on) }
+
+// OpenExternalURL 在系统浏览器中打开模型回答里的链接。只接受 http / https：
+// 不能让一段模型输出借此打开 file:// 或自定义协议。
+func (a *App) OpenExternalURL(raw string) error {
+	if !isWebURL(raw) {
+		return fmt.Errorf("只能打开 http / https 链接")
+	}
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, raw)
+	}
+	return nil
+}
 
 // OpenChatGPTUsage 在浏览器中打开 ChatGPT 的用量页面。地址是固定的，前端不能借此打开任意网址。
 func (a *App) OpenChatGPTUsage() {

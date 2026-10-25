@@ -669,3 +669,33 @@ func TestPerSessionWorkspace(t *testing.T) {
 		t.Fatalf("应拒绝在不存在的工作区运行: %v", err)
 	}
 }
+
+func TestRenameSession(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t, fake.DemoScript(), 0, allow)
+	if err := h.engine.RenameSession(ctx, h.engine.Status().SessionID, "  "); err == nil {
+		t.Fatal("空标题应报错")
+	}
+	h.engine.Send(ctx, "演示一下")
+	first := h.engine.Status().SessionID
+	if err := h.engine.RenameSession(ctx, first, "我的会话\n"); err != nil {
+		t.Fatal(err)
+	}
+	if ups := payloads[event.SessionUpdated](h.rec); len(ups) == 0 || ups[len(ups)-1].Title != "我的会话" {
+		t.Fatalf("应发 session_updated: %+v", ups)
+	}
+	// 历史会话（不是当前会话）也能改名。
+	if _, err := h.engine.NewSession(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.engine.RenameSession(ctx, first, "改过两次"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := h.engine.ListSessions(ctx)
+	if len(list) != 1 || list[0].Title != "改过两次" {
+		t.Fatalf("list: %+v", list)
+	}
+	if err := h.engine.RenameSession(ctx, "nope", "x"); err == nil {
+		t.Fatal("不存在的会话应报错")
+	}
+}

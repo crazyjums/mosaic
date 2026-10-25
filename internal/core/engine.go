@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/crazyjums/myllmapp/internal/event"
@@ -390,9 +391,11 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 	// 第一轮正常结束后，按设置让模型生成标题。放到后台做：它要再调一次模型（几秒），
 	// 不应该让界面一直显示"运行中"、挡住用户的下一条消息。失败就保留截取的第一句，不打扰用户。
 	if rt.TitleMode == "model" && res.Reason == event.TurnCompleted && isFirstTurn(sess) {
+		before := sess.Snapshot().Title
 		go func() {
 			title, err := generateTitle(context.Background(), p, snap.Model, sess)
-			if err != nil || title == "" {
+			// 生成期间用户手动改了名，以用户的为准。
+			if err != nil || title == "" || sess.Snapshot().Title != before {
 				return
 			}
 			sess.setTitle(title)
@@ -629,6 +632,41 @@ func (e *Engine) SetSessionWorkspace(ctx context.Context, dir string) (Status, e
 		}
 	}
 	return e.Status(), nil
+}
+
+// RenameSession 修改会话标题（当前会话或历史会话）。标题去掉首尾空白，不能为空，最长 100 个字符。
+//
+// 当前会话还没有任何消息时只改内存（空会话不入库，第一轮结束时连同标题一起保存）。
+// 改完发 session_updated，界面上的标题和会话列表随之刷新。
+func (e *Engine) RenameSession(ctx context.Context, id, title string) error {
+	title = strings.TrimSpace(strings.ReplaceAll(title, "\n", " "))
+	if title == "" {
+		return fmt.Errorf("标题不能为空")
+	}
+	if r := []rune(title); len(r) > 100 {
+		title = string(r[:100])
+	}
+	e.mu.Lock()
+	sess := e.session
+	e.mu.Unlock()
+	if sess.ID != id {
+		if e.cfg.Store == nil {
+			return fmt.Errorf("会话 %s 不存在", id)
+		}
+		s, err := e.cfg.Store.LoadSession(ctx, id)
+		if err != nil {
+			return err
+		}
+		sess = s
+	}
+	sess.setTitle(title)
+	if e.cfg.Store != nil && len(sess.messages()) > 0 {
+		if err := e.cfg.Store.SaveSession(ctx, sess.Snapshot()); err != nil {
+			return err
+		}
+	}
+	e.bus.Publish(event.New(id, event.RootAgentID, "", event.SessionUpdated{Title: title}))
+	return nil
 }
 
 // Subagents 返回子 agent 定义注册表（预留扩展点）。
