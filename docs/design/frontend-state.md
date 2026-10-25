@@ -61,7 +61,9 @@ stateDiagram-v2
 
 ## 会话切换的竞态
 
-`LoadSession` 时后端在方法调用**返回之前**就开始推送重放事件。如果等返回后再清空界面，会把重放事件一起清掉。所以 `chatStore.loadSession` **先**把状态重置为目标会话 ID，**再**调用后端；reducer 的会话过滤同时丢弃旧会话的残留事件。
+`chatStore.loadSession` 先把状态重置为目标会话 ID，再调用后端：加载期间旧会话残留的实时事件会被 reducer 的会话过滤丢掉。
+
+历史作为返回值给出（只有最近几轮，见 `docs/event-protocol.md` §6），`foldEvents` 一次折叠后只 `set` 一次，界面只渲染一次。更早的历史由 `loadEarlier` 取回，`prependHistory` 把它放到时间线前面；`MessageList` 用 `prependTick` 和接入前的内容高度补偿滚动位置，让正在看的内容保持不动。等待期间如果切换了会话，这一页直接丢弃。
 
 ## 组件交互约定
 

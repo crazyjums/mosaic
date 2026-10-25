@@ -114,7 +114,7 @@ flowchart TB
 Send(ctx, text)              // 发送消息，阻塞到本轮结束
 Cancel()                     // 取消当前轮
 RespondPermission(id, dec)   // 回复权限确认
-NewSession() / LoadSession(id) / ListSessions() / DeleteSession(id)
+NewSession() / LoadSession(id) / LoadSessionTail(id, turns) / LoadEarlier(sessionID, turns) / ListSessions() / DeleteSession(id)
 SetModel(profile, model) / Status() / Profiles()
 
 // 事件：core.Engine.Bus()

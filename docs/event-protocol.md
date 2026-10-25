@@ -356,7 +356,10 @@ turn_end(completed)
 
 ## 6. 会话恢复（重放）
 
-`Engine.LoadSession` 把历史消息转换为事件重新发布（[`core.ReplayEvents`](../internal/core/replay.go)），前端用同一条渲染路径显示历史。
+历史消息由 [`core.ReplayEvents`](../internal/core/replay.go) 转换为同样的事件，前端用同一条渲染路径显示历史。有两条路径：
+
+- **CLI**：`Engine.LoadSession` 把全部历史重新发布到事件总线。
+- **桌面界面**：`Engine.LoadSessionTail` 只重放**最近若干轮**（设置 → 常规 → 历史会话加载轮数，默认 20），事件**不走总线**，作为调用结果一次性返回（`{status, events, earlier}`，`earlier` 是还没加载的更早轮数）；`Engine.LoadEarlier` 按需返回更早的一页。重放事件的 `seq` 为 0，不参与实时事件的排序。长会话因此不再逐条 IPC、逐条渲染。
 重放事件的 `turn_start` / `turn_end` 带 `replay: true`；历史中不存在的信息（工具耗时、权限确认过程、每条消息的用量）不会出现。
 
 ## 7. 修改协议的清单
