@@ -6,6 +6,7 @@
 - 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）+ 离线 fake；
   在界面上填 Base URL + API Key 即可接入，可从服务器获取模型列表、一键测试连接
 - ⚙️ **设置界面**：常规（工作区、步数、超时、会话标题、钥匙串）、模型厂商、系统提示词、权限规则与工具开关、MCP 服务器、外观（主题 / 字号 / 宽度 / 快捷键 / 中英文）、状态栏（含自定义脚本）、数据管理，修改即时生效，不用改配置文件
+- 🔑 **用 ChatGPT 账号登录**：OpenAI 官方的 Sign in with ChatGPT，用 ChatGPT 套餐的额度调用 GPT 模型，不需要 API Key
 - 🔌 **MCP**：在界面上添加 stdio 或 HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
 - 👀 **可视化**：思考过程、工具调用、权限确认、图片；可自定义的状态栏（上下文占用、预估花费、实时耗时、git 分支、权限模式……）；为子 agent 树和后台任务预留了事件与界面
 - 🖥 **内核与界面解耦**：同一个内核，既是 Wails 桌面应用，也是终端 CLI
@@ -107,6 +108,7 @@ wails build    # 打包到 build/bin/
 │   │   ├── sse/                极简 SSE 解析器
 │   │   ├── openai/             OpenAI 兼容协议适配器
 │   │   ├── anthropic/          Anthropic 原生协议适配器（思考块与签名）
+│   │   ├── chatgpt/            Responses API 适配器（ChatGPT 账号登录，使用套餐额度）
 │   │   ├── fake/               剧本驱动的假厂商，用于测试与离线演示
 │   │   └── all/                空导入注册所有适配器
 │   ├── tool/                   Tool 接口与注册表
@@ -117,6 +119,7 @@ wails build    # 打包到 build/bin/
 │   ├── config/                 读取 TOML 配置与环境变量密钥
 │   ├── settings/               界面上的所有设置：持久化到 settings.json（可选钥匙串）、与配置文件合并、修改后热更新
 │   ├── secret/                 系统钥匙串（macOS 钥匙串 / Windows 凭据管理器 / Linux Secret Service）
+│   ├── siwc/                   用 ChatGPT 账号登录：动态注册、PKCE、本地回调、令牌刷新与吊销
 │   ├── workspace/              工作区信息（git 分支、未提交改动），供状态栏显示
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
 │   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑

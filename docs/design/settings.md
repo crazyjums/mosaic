@@ -76,6 +76,16 @@ flowchart LR
 - `unresolved` 的条目在之后的保存中**保留引用**，不会因为一次读取失败就把用户的密钥弄丢；用户重新填写密钥或删除厂商后才移除；
 - 探测钥匙串是否可用（写入、读回、删除一个探测条目）只做一次，避免某些系统反复弹授权框。
 
+## ChatGPT 账号
+
+[`chatgpt.go`](../../internal/settings/chatgpt.go) 把登录状态（[`internal/siwc`](../../internal/siwc/doc.go)）变成一个厂商配置档：
+
+- 登录后，`merged` 在配置文件的配置档后面追加一个 `chatgpt`（类型 `chatgpt`），并把 `siwc.Manager` 作为 `Auth` 注入；来源标记为 `account`，界面上不能删除，只能退出登录；
+- 模型列表和其他厂商一样保存在 `providers` 里（首次登录时自动获取），可以编辑；退出登录后这个条目隐藏但保留，下次登录直接用；
+- 登录 / 退出 / 令牌失效时 siwc 回调 `onChatGPTChange`：重建厂商目录，首次登录时获取模型列表，当前还在用演示厂商时自动切换；
+- 名称 `chatgpt` 保留，不能用于其他类型的厂商；
+- 令牌保存在 `{data_dir}/chatgpt/`，不在 settings.json 里，也不经过任何绑定方法——条款要求令牌只在本机、只给本应用使用。
+
 ## 权限规则、工具开关、MCP、状态栏脚本
 
 都在 [`extras.go`](../../internal/settings/extras.go)，模式相同：校验 → 应用到运行中的组件 → `persist` → 更新内存。

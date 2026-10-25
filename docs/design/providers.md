@@ -13,6 +13,7 @@ internal/provider/            契约：中立消息、Provider 接口、注册�
 ├── sse/                      共用的 SSE 解析器
 ├── openai/                   OpenAI 兼容 Chat Completions
 ├── anthropic/                Anthropic Messages API（原生）
+├── chatgpt/                  Responses API + ChatGPT 账号登录（套餐额度）
 ├── fake/                     剧本驱动的假厂商
 └── all/                      空导入，注册以上全部
 ```
@@ -111,18 +112,33 @@ SSE 事件 → Delta：
 
 回传历史时：没有签名的思考块（来自其他厂商或被中断的调用）、空文本块、assistant 里的图片都会被跳过，避免 400。
 
+## ChatGPT 适配器（Responses API）
+
+用 ChatGPT 账号登录后（登录见 [`internal/siwc`](../../internal/siwc/doc.go)），用套餐额度调用 `POST https://api.openai.com/v1/responses`。
+
+- **认证**：`ProfileConfig.Auth`（`provider.TokenSource`）而不是 `APIKey`。访问令牌一小时过期，由 `siwc.Manager.Token` 按需刷新；适配器每次请求前取一次。settings 在组装配置档时把登录管理器注入给类型为 `chatgpt` 的配置档；
+- **请求**：系统提示词放 `instructions`；中立消息拆成输入条目——用户文本 / 图片是 `message`（`input_text` / `input_image`），assistant 文本是 `message`（`output_text`），每个工具调用是 `function_call`，每个工具结果是 `function_call_output`；工具是普通的 `function` 工具；
+- **套餐额度的限制**：必须 `store: false`、`stream: true`；不能发 `max_output_tokens`、`temperature` 等字段（所以 `req.MaxTokens` 被忽略）；不接受 system 角色的消息条目；
+- **思考**：请求 `reasoning.summary = auto`，思考摘要显示在思考卡片里。思考不回传：`store=false` 时回传思考需要请求加密内容，套餐这条路未必支持，没有它模型照样能继续；
+- **事件**：`response.output_text.delta` → 文本，`response.reasoning_summary_text.delta` → 思考，`response.output_item.done`（`function_call`，参数已完整）→ 工具调用，`response.completed` → 用量与停止原因；`response.failed` 和 `error` 事件转换成错误——额度用完可能在开始输出之后才到达；
+- **错误码**：`subscription_sharing_usage_limit_exceeded`（额度用完）、`subscription_sharing_user_not_eligible`、`subscription_sharing_unsupported_capability`、`subscription_sharing_route_not_supported` 都翻译成中文说明，原始信息附在后面；
+- **模型列表**：`GET /v1/models` 在这条路上返回 `{"models": [...]}`，元素形状没有写死，字符串或带 `id` / `slug` 的对象都接受。
+
+为什么不复用 Codex CLI 的登录：那需要冒用 Codex 的 client_id 和请求头去调 `chatgpt.com` 的内部接口，违反条款，也随时可能失效。
+
 ## Fake 适配器
 
 剧本（`Script`）由若干 `Step` 组成，每步可以有思考、文本、图片、工具调用、错误。第 N 次调用（从本轮用户发言算起）返回第 N 步，不管工具返回什么——这正是测试需要的确定性。`{{input}}` 占位符替换为用户输入（在 JSON 中会先转义）。
 
 ## 降级矩阵
 
-| 能力 | OpenAI 兼容（无 reasoning 字段） | OpenAI 兼容（DeepSeek 等） | Anthropic |
-| --- | --- | --- | --- |
-| 思考卡片 | 不显示 | 显示 | 显示（摘要） |
-| 思考回传 | — | 丢弃 | 带签名回传 |
-| 缓存用量 | `cached_tokens`（如有） | 同左 | 读 / 写都有 |
-| 图片输出 | 不支持 | 不支持 | 不支持（协议本身） |
+| 能力 | OpenAI 兼容（无 reasoning 字段） | OpenAI 兼容（DeepSeek 等） | Anthropic | ChatGPT 账号 |
+| --- | --- | --- | --- | --- |
+| 思考卡片 | 不显示 | 显示 | 显示（摘要） | 显示（摘要） |
+| 思考回传 | — | 丢弃 | 带签名回传 | 丢弃 |
+| 缓存用量 | `cached_tokens`（如有） | 同左 | 读 / 写都有 | `cached_tokens` |
+| 图片输出 | 不支持 | 不支持 | 不支持（协议本身） | 不支持 |
+| 单次输出上限 | 支持 | 支持 | 支持 | 不支持（套餐额度的限制） |
 
 ## 测试
 

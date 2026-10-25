@@ -29,6 +29,8 @@ flowchart TB
         STORE["internal/store<br/>(SQLite)"]
         MCP["internal/mcp<br/>(MCP 客户端)"]
         SECRET["internal/secret<br/>(系统钥匙串)"]
+        SIWC["internal/siwc<br/>(ChatGPT 账号登录)"]
+        CGPT["provider/chatgpt"]
         PLUGIN["internal/plugin<br/>(状态栏脚本)"]
     end
 
@@ -62,6 +64,8 @@ flowchart TB
     BUILTIN --> TOOL
     MCP --> TOOL
     SET --> SECRET
+    SET --> SIWC
+    CGPT --> PROV
     SET --> PLUGIN
     CORE --> EVENT
     CORE --> PROV
@@ -92,6 +96,7 @@ flowchart TB
 | | `store` | `core.SessionStore` 的 SQLite / 内存实现 |
 | | `mcp` | MCP 客户端（stdio / Streamable HTTP）与连接管理器，把 MCP 工具注册成普通工具 |
 | | `secret` | 系统钥匙串（保存 API Key，可选） |
+| | `siwc`、`provider/chatgpt` | 用 ChatGPT 账号登录（Sign in with ChatGPT）与对应的 Responses API 适配器，使用套餐额度 |
 | | `plugin` | 插件接口；已实现状态栏脚本（`CommandStatusLine`），技能 / 斜杠命令 / 钩子仍是预留 |
 | 装配 | `config`、`settings`、`bootstrap` | 读配置文件；管理界面上配置的厂商（持久化、合并、热更新）；把具体实现组装成 `Engine` |
 | 入口 | `cmd/cli`、`internal/app` + `main.go`、`frontend` | 两种界面 |
