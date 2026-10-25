@@ -127,3 +127,11 @@ func (a *App) runInstall(info *update.Info) {
 	}
 	quit(a.context())
 }
+
+// SetChangelog 交给 CHANGELOG.md 的原文（由 main 用 go:embed 打包进程序）。
+// 版本历史直接从程序自带的日志解析：离线可用，也不依赖发布服务器上的清单带了几个版本。
+func (a *App) SetChangelog(md string) { a.changelog = md }
+
+// GetVersionHistory 返回程序自带的全部历史版本更新日志，最新的在前。
+// [Unreleased] 不算：它还没发布，用户装不到。
+func (a *App) GetVersionHistory() []update.Release { return update.ParseChangelog(a.changelog) }

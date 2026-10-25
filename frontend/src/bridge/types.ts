@@ -348,6 +348,8 @@ export interface Backend {
   getVersion(): Promise<string>;
   /** 检查更新：网络或签名错误以异常返回；disabled 非空表示更新功能不可用（开发版 / 没配置公钥） */
   checkUpdate(): Promise<UpdateInfo>;
+  /** 随程序打包的全部历史版本更新日志，最新的在前；离线可用 */
+  getVersionHistory(): Promise<ReleaseNotes[]>;
   /** 下载并安装最近一次检查到的版本，然后重启；立即返回，进度用 getUpdateStatus 轮询 */
   installUpdate(): Promise<void>;
   getUpdateStatus(): Promise<UpdateStatus>;

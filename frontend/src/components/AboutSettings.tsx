@@ -1,15 +1,20 @@
-import { backend } from "../bridge";
+import { useEffect, useState } from "react";
+import { backend, type ReleaseNotes } from "../bridge";
 import { t } from "../i18n";
 import { useUIPrefs } from "../store/uiPrefs";
 import { useUpdate } from "../store/updateStore";
 import { Notice } from "./GeneralSettings";
-import ChangeLog, { ChangeSummary, LevelBadge } from "./ChangeLog";
+import ChangeLog, { ChangeSummary, LevelBadge, Release } from "./ChangeLog";
 
 // 设置 → 关于：版本号、检查更新、自动检查开关。
 export default function AboutSettings() {
   const { version, info, checking, error, status, check, install } = useUpdate();
   const prefs = useUIPrefs((s) => s.prefs);
   const update = useUIPrefs((s) => s.update);
+  const [history, setHistory] = useState<ReleaseNotes[]>([]);
+  useEffect(() => {
+    backend().getVersionHistory().then(setHistory).catch(() => setHistory([]));
+  }, []);
   const busy = status.state === "downloading" || status.state === "installing" || status.state === "restarting";
 
   return (
@@ -52,6 +57,17 @@ export default function AboutSettings() {
         )}
         {info?.available && info.manual && <div className="mt-2 text-[11px] text-muted">{t("这个系统暂不支持自动安装，请到发布页下载新版本。")}</div>}
       </section>
+
+      {history.length > 0 && (
+        <section>
+          <div className="mb-2 text-sm font-medium">{t("版本历史")}</div>
+          <div className="space-y-2">
+            {history.map((r, i) => (
+              <Release key={r.version} r={r} open={i === 0} mark={r.version === version ? t("当前") : undefined} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-2 text-sm font-medium">{t("自动检查")}</div>

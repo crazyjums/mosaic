@@ -32,11 +32,12 @@ export function ChangeSummary({ releases }: { releases: ReleaseNotes[] }) {
   );
 }
 
-function Release({ r, open }: { r: ReleaseNotes; open: boolean }) {
+export function Release({ r, open, mark }: { r: ReleaseNotes; open: boolean; mark?: string }) {
   return (
     <details open={open} className="rounded-md border border-line bg-panel">
       <summary className="cursor-pointer select-none px-3 py-1.5 text-xs">
         <span className="font-semibold">v{r.version}</span>
+        {mark && <span className="ml-2 rounded-full border border-accent px-1.5 py-px text-[10px] text-accent">{mark}</span>}
         {r.date && <span className="ml-2 text-muted">{r.date}</span>}
         {r.summary && <span className="ml-2 text-muted">{r.summary}</span>}
       </summary>

@@ -451,6 +451,10 @@ export function createDemoBackend(): Backend {
     },
     getVersion: async () => "dev",
     checkUpdate: async () => ({ current: "dev", latest: "", available: false, manual: false, disabled: "浏览器演示模式不检查更新" }),
+    getVersionHistory: async () => [
+      { version: "1.1.0", date: "2026-10-25", summary: "更新提示现在会告诉你这次改了什么。", sections: [{ kind: "added" as const, items: ["发现新版本时可以查看更新日志"] }] },
+      { version: "1.0.1", date: "2026-10-25", summary: "第一个正式发布的版本。", sections: [{ kind: "added" as const, items: ["自动更新"] }, { kind: "fixed" as const, items: ["修复运行中无法打开设置的问题"] }] },
+    ],
     installUpdate: async () => {
       throw new Error(demoOnly);
     },
