@@ -2,6 +2,9 @@
 //
 // 用法：
 //
+//	UPDATE_SIGNING_KEY=<私钥> mkmanifest check-key
+//	    发布前自检：私钥存在，internal/update/pubkey.txt 非空，且两者是同一对密钥（流水线第一步运行）。
+//
 //	mkmanifest genkey
 //	    生成一对 ed25519 密钥。公钥写进 internal/update/pubkey.txt 并提交；
 //	    私钥保存为 GitHub 仓库的加密变量 UPDATE_SIGNING_KEY，绝不能提交进仓库。

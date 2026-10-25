@@ -18,7 +18,21 @@ permissions:
   contents: write
 
 jobs:
+  # 第一步：确认签名密钥配置正确。没配好就在这里失败，而不是发布出一个谁都更新不了的版本。
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: 检查签名密钥
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: go run ./cmd/mkmanifest check-key
+
   build:
+    needs: preflight
     strategy:
       fail-fast: true
       matrix:

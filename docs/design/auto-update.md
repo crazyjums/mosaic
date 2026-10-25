@@ -82,7 +82,15 @@ sequenceDiagram
 1. 生成密钥：`go run ./cmd/mkmanifest genkey`。
 2. 把**公钥**写进 `internal/update/pubkey.txt` 并提交。
 3. 把**私钥**保存为 GitHub 仓库的加密变量 `UPDATE_SIGNING_KEY`（Settings → Secrets and variables → Actions）。**私钥绝不能提交进仓库，也不要发给任何人**；丢失或泄露时需要重新生成密钥，并发布一个用新公钥打包的版本——旧版本客户端只认旧公钥，所以泄露后旧用户只能手动重装一次。
-4. 发布：`git tag v1.2.3 && git push origin v1.2.3`。
+4. 发布：`git tag v1.2.3 && git push origin v1.2.3`。流水线的第一步 `preflight` 会运行 `mkmanifest check-key`，确认私钥已配置、`pubkey.txt` 非空且与私钥是同一对；不通过就直接失败，不会发布一个没人能更新的版本。
+
+### 流水线做了什么（`.github/workflows/release.yml`）
+
+1. `preflight`：检查签名密钥（见上）。
+2. `build`（Windows / Linux / macOS 三个平台并行）：跑 Go 和前端测试 → `wails build`（带 `-ldflags` 写入版本号）→ 上传产物。产物名：`myllmapp-windows-amd64.exe`、`myllmapp-linux-amd64`、`myllmapp-darwin-universal.zip`。
+3. `release`：下载三个产物 → 用 git 提交记录生成更新说明 → `mkmanifest sign` 生成并签名 `manifest.json` / `manifest.json.sig` → `gh release create` 创建 Release，上传全部文件。带连字符的 tag 标为预发布。
+
+仓库需要允许 Actions 写入：Settings → Actions → General → Workflow permissions 选 "Read and write permissions"（工作流里已声明 `contents: write`，组织仓库有时会被上层策略覆盖）。
 
 本地验证（不经过 GitHub）：用 `cmd/mkmanifest sign` 生成清单，起一个本地静态服务器，运行时设置 `MYLLMAPP_UPDATE_URL=http://127.0.0.1:端口/manifest.json`，并用 `VERSION=1.0.0 ./scripts/build.sh` 构建一个旧版本。
 

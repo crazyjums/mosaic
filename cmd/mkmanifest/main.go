@@ -35,6 +35,8 @@ func main() {
 		fmt.Println(priv)
 	case "sign":
 		sign(os.Args[2:])
+	case "check-key":
+		checkKey(os.Args[2:])
 	default:
 		fail("未知命令 " + os.Args[1])
 	}
@@ -100,4 +102,29 @@ func check(err error) {
 func fail(msg string) {
 	fmt.Fprintln(os.Stderr, "错误:", msg)
 	os.Exit(1)
+}
+
+// checkKey 发布前自检：私钥存在，internal/update/pubkey.txt 非空，并且两者是同一对密钥。
+// 少了这一步，公钥没配或配错时流水线会照常发布，但所有客户端都无法验签，用户永远更新不了。
+func checkKey(args []string) {
+	fs := flag.NewFlagSet("check-key", flag.ExitOnError)
+	pubFile := fs.String("pubkey", "internal/update/pubkey.txt", "内置公钥文件")
+	check(fs.Parse(args))
+	key := os.Getenv("UPDATE_SIGNING_KEY")
+	if key == "" {
+		fail("加密变量 UPDATE_SIGNING_KEY 没有设置（仓库 Settings → Secrets and variables → Actions）")
+	}
+	b, err := os.ReadFile(*pubFile)
+	check(err)
+	pub, err := update.ParsePublicKey(string(b))
+	if err != nil {
+		fail(*pubFile + ": " + err.Error() + "（先运行 mkmanifest genkey，把公钥写进该文件并提交）")
+	}
+	probe := []byte("myllmapp-key-check")
+	sig, err := update.Sign(key, probe)
+	check(err)
+	if err := update.Verify(pub, probe, sig); err != nil {
+		fail("私钥与 " + *pubFile + " 里的公钥不是一对，客户端将无法验证更新")
+	}
+	fmt.Println("签名密钥检查通过")
 }
