@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用量与故障转移方案</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：左侧目录 + 正文单栏；宽表格和代码在各自容器里横向滚动。
+   色彩：冷灰纸面 + 石墨，强调色用深青；风险等级用独立的语义色。 */
+:root {
+  --bg: #f5f6f7;
+  --surface: #ffffff;
+  --surface-2: #eceff1;
+  --fg: #16202a;
+  --muted: #5b6874;
+  --line: #d7dde2;
+  --accent: #0b6e72;
+  --accent-soft: #dbeeee;
+  --read: #1f7a4d;
+  --write: #9a6700;
+  --exec: #b3261e;
+  --code-bg: #101820;
+  --code-fg: #d7e2ea;
+  --font-sans: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1418; --surface: #151d23; --surface-2: #1c262d; --fg: #e4eaee; --muted: #93a1ac; --line: #2a363f;
+    --accent: #4fc3c7; --accent-soft: #14343a; --read: #5ec28d; --write: #e0b04a; --exec: #ff8a80;
+    --code-bg: #0a1014; --code-fg: #d0dce4; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1418; --surface: #151d23; --surface-2: #1c262d; --fg: #e4eaee; --muted: #93a1ac; --line: #2a363f;
+  --accent: #4fc3c7; --accent-soft: #14343a; --read: #5ec28d; --write: #e0b04a; --exec: #ff8a80;
+  --code-bg: #0a1014; --code-fg: #d0dce4; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-size: 15px; line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; }
+header.top { padding-block: 40px 28px; border-bottom: 1px solid var(--line); }
+.kicker { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(26px, 4vw, 38px); line-height: 1.2; margin: 8px 0 12px; font-weight: 600; text-wrap: balance; }
+.lede { max-width: 62ch; color: var(--muted); font-size: 16px; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 18px; font-size: 12.5px; color: var(--muted); font-family: var(--font-mono); }
+.layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; padding-top: 28px; }
+nav.toc { position: sticky; top: 20px; align-self: start; font-size: 13px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+nav.toc a { display: block; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--muted); text-decoration: none; }
+nav.toc a:hover { color: var(--accent); border-left-color: var(--accent); }
+article { min-width: 0; max-width: 780px; }
+section { padding-top: 12px; margin-bottom: 44px; }
+h2 { font-size: 22px; margin: 0 0 14px; font-weight: 600; text-wrap: balance; scroll-margin-top: 16px; }
+h3 { font-size: 16px; margin: 26px 0 8px; font-weight: 600; }
+p { margin: 0 0 12px; }
+ul, ol.plain { margin: 0 0 12px; padding-left: 1.3em; }
+li { margin: 3px 0; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--surface-2); padding: .1em .35em; border-radius: 4px; }
+pre { background: var(--code-bg); color: var(--code-fg); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.6; margin: 0 0 14px; max-width: 100%; }
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+pre.mermaid { background: var(--surface); color: var(--fg); border: 1px solid var(--line); text-align: center; }
+.tablewrap { overflow-x: auto; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--surface-2); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.callout { background: var(--accent-soft); border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; }
+.callout.warn { background: color-mix(in srgb, var(--write) 14%, var(--surface)); }
+.callout p:last-child { margin-bottom: 0; }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 11.5px; padding: 0 7px; border-radius: 999px; border: 1px solid currentColor; line-height: 1.6; white-space: nowrap; }
+.tag.read { color: var(--read); } .tag.write { color: var(--write); } .tag.exec { color: var(--exec); }
+.tag.p { color: var(--accent); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card h3 { margin: 0 0 6px; }
+.card .lvl { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); letter-spacing: .06em; }
+.card p, .card ul { font-size: 13.5px; margin-bottom: 8px; }
+.phase { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 4px 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.phase:first-of-type { border-top: 0; }
+.phase .when { font-family: var(--font-mono); font-size: 12.5px; color: var(--accent); padding-top: 2px; }
+.phase h3 { margin: 0 0 4px; }
+.phase p, .phase ul { font-size: 13.5px; margin-bottom: 6px; }
+.q { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+.q b { display: block; margin-bottom: 4px; }
+.q p { margin: 0; font-size: 13.5px; }
+.q .rec { color: var(--accent); font-weight: 500; }
+footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: 12.5px; color: var(--muted); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  nav.toc { position: static; margin-bottom: 20px; }
+  nav.toc ol { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .phase { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* 用量页示意：用原生 details 做可展开的行 */
+.mock { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 0 0 16px; max-width: 100%; }
+.mock-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.mock-sp { flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 12.5px; }
+.seg span { padding: 4px 12px; color: var(--muted); }
+.seg span.on { background: var(--accent); color: var(--surface); }
+.mock-btn { font-size: 12.5px; border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; color: var(--muted); }
+.mock-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.mock-cards div { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; min-width: 0; }
+.mock-cards small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.mock-cards b { font-size: 19px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.mock-note { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.mock-table { overflow-x: auto; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mrow { display: grid; grid-template-columns: minmax(170px, 2.4fr) repeat(4, minmax(64px, 1fr)); gap: 8px; padding: 7px 8px; min-width: 460px; align-items: center; }
+.mrow span:not(:first-child) { text-align: right; }
+.mth { color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+.mock-table details { border-bottom: 1px solid var(--line); }
+.mock-table summary { cursor: pointer; list-style: none; font-weight: 500; }
+.mock-table summary::-webkit-details-marker { display: none; }
+.mock-table summary span:first-child::before { content: "▸ "; color: var(--muted); }
+.mock-table details[open] summary span:first-child::before { content: "▾ "; }
+.mock-table summary:hover { background: var(--surface-2); }
+.msub { color: var(--muted); background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+.msub span:first-child { padding-left: 18px; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="kicker">技术方案 · 探讨稿</div>
+  <h1>用量统计与故障转移方案</h1>
+  <p class="lede">把"用了多少 token、花了多少钱"按天展开，并给每个厂商配置独立的网络代理，再加上模型组的自动故障转移。参考了开源项目 magpie 的做法，但按本项目"自己就是 agent"的特点重新取舍。</p>
+  <div class="meta"><span>参考：yetone/magpie</span><span>基于当前代码盘点</span><span>状态：待你确认几个决策</span></div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <ol>
+    <li><a href="#summary">1 结论</a></li>
+    <li><a href="#status">2 现状盘点</a></li>
+    <li><a href="#magpie">3 magpie 的做法</a></li>
+    <li><a href="#usage">4 用量统计</a></li>
+    <li><a href="#proxy">5 网络代理</a></li>
+    <li><a href="#failover">6 故障转移</a></li>
+    <li><a href="#core">7 与代码的接合点</a></li>
+    <li><a href="#security">8 安全与隐私</a></li>
+    <li><a href="#plan">9 分期计划</a></li>
+    <li><a href="#test">10 测试策略</a></li>
+    <li><a href="#risks">11 风险</a></li>
+    <li><a href="#questions">12 需要你决定的事</a></li>
+  </ol>
+</nav>
+
+<article>
+
+<section id="summary">
+<h2>1 结论</h2>
+<p><b>三件事都可行，建议按"用量 → 代理 → 故障转移"的顺序做。</b>用量账本是后两者的基础：故障转移要靠它判断"谁用得最少"，也要靠它记录每次切换。</p>
+<ul>
+  <li><b>用量统计</b>：新增一张逐次调用的账本表（SQLite，和会话同一个数据库），在所有模型调用的唯一出口记录，按本地日期聚合。设置里新增"用量"页：今天 / 7 天 / 30 天 / 全部，每天一行，点开看按模型、按会话的明细。</li>
+  <li><b>代理</b>：每个厂商配置档可以单独设置 HTTP / HTTPS / SOCKS5 代理，另有全局默认。现在的请求只会读环境变量，从桌面启动的应用读不到，所以国内访问海外厂商时没法配置。</li>
+  <li><b>故障转移</b>：新增"模型组"：一个虚拟的厂商，由若干个"配置档 + 模型"按顺序组成。请求失败且<b>还没有输出任何内容</b>时自动切到下一个成员；失败的成员进入冷却，到期后再试探恢复。</li>
+</ul>
+<div class="callout">
+  <p><b>和 magpie 的关键区别</b></p>
+  <p>magpie 是给 Claude Code、Codex 等<i>其他</i>工具用的本地网关，要在四种 API 协议之间互相转换。本项目自己就是 agent，故障转移可以直接放在进程内的 Provider 这一层，<b>不需要网关，也不需要协议转换</b>，工作量小得多。如果以后想把本工具的厂商配置开放给别的 agent 用，再单独评估网关。</p>
+</div>
+<p>预计总工作量 17–19 个开发日（粗估，见第 9 节）。其中故障转移最重，主要风险在于"换厂商后历史消息能不能被新厂商接受"（第 6 节）。</p>
+</section>
+
+<section id="status">
+<h2>2 现状盘点</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>位置</th><th>现在是什么样</th><th>问题</th></tr></thead>
+<tbody>
+<tr><td><code>sessions.usage_json</code></td><td>每个会话保存一份<b>累计</b>用量（输入、输出、缓存读写）</td><td>没有时间维度，看不出"哪天用了多少"；会话继续聊，数字只增不减</td></tr>
+<tr><td><code>siwc/usage.go</code></td><td>ChatGPT 登录有自己的账本 <code>usage.jsonl</code>（5 小时 / 7 天窗口）</td><td>只覆盖 ChatGPT，且只给状态栏的额度用；其他厂商没有</td></tr>
+<tr><td><code>ModelMeta</code></td><td>每个模型可以配上下文窗口、输入价、输出价（美元 / 百万 token）</td><td>没有缓存读写价格；没填就不显示花费；不分币种</td></tr>
+<tr><td><code>core/agent.go</code> <code>callModel</code></td><td>直接调用 <code>Provider.Stream</code>，失败就把错误交给界面</td><td>没有重试、没有切换。标题生成、上下文压缩也是各自直接调用，用量不会进任何统计</td></tr>
+<tr><td><code>provider/*</code></td><td>三个适配器各自 <code>&amp;http.Client{}</code></td><td>只认环境变量代理；没有按厂商配置的入口</td></tr>
+<tr><td><code>provider.Catalog</code></td><td>按名字取 Provider，配置变化时整体重建</td><td>适合在这里挂"计量包装"和"模型组"</td></tr>
+<tr><td>设置 → 数据</td><td>显示数据目录、会话数和数据库大小</td><td>没有用量信息（你截图里的页面）</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="magpie">
+<h2>3 magpie 的做法：借鉴什么，不照搬什么</h2>
+<div class="callout warn">
+  <p><b>先说明依据的范围</b>：我读了 magpie 的 README、<code>docs/reference.md</code> 的前 100KB 和 <code>providers-accounts.md</code> 的前 100KB。<code>gateway-routing.md</code> 只读到了前半部分，<b>路由组五种模式的算法细节、故障转移的重试次数和冷却时长我没有读到</b>，下面标"本方案自行设计"的部分都不是 magpie 的数值。</p>
+</div>
+<div class="tablewrap"><table>
+<thead><tr><th>主题</th><th>magpie 的做法（已核实）</th><th>本方案的取舍</th></tr></thead>
+<tbody>
+<tr><td>用量窗口</td><td>today / 7d / 30d / all，可自定义最近 N 天或时长；可导出 CSV</td><td><b>借鉴</b>：同样的窗口，加"按天展开"</td></tr>
+<tr><td>统计字段</td><td>输入、输出、缓存读写、推理 token、调用次数；<code>tries</code>、<code>handed_on</code>（被转交的尝试单独成行，且不算作请求）；首字后的输出速度</td><td><b>借鉴</b>：失败 / 转交的尝试也记账，但不计入请求数</td></tr>
+<tr><td>费用</td><td>价格是 美元/百万 token，四个数：输入、输出、缓存读、缓存写；<b>没有价格的调用不计入总花费，也不当作免费</b>；总额在读取时按当前价格重算，所以改价格会改写历史</td><td><b>借鉴</b>：这三条规则都采用</td></tr>
+<tr><td>价格来源</td><td>自己设置的价格 → 厂商目录 → models.dev 的目录 → "同某模型"</td><td><b>简化</b>：自己设置 → 内置默认表 → 无价格；联网获取价格表放到后面</td></tr>
+<tr><td>配额</td><td>读取订阅 / 套餐 / key 的余额和配额窗口，保留 45 天历史，窗口重置前提醒</td><td><b>已有</b>：ChatGPT 的额度（状态栏）；其他厂商暂不做，各家接口不统一</td></tr>
+<tr><td>路由组</td><td>五种模式：<code>smart</code>（优先最快重置的订阅）、<code>order</code>（依次用，直到某个答不了）、<code>rotate</code>（每轮换下一个）、<code>usage</code>（优先用得最少的）、<code>pace</code>（优先每小时剩余周额最多的）；可嵌套</td><td><b>借鉴</b> order / rotate / usage 三种；smart 和 pace 依赖各家的配额窗口，不做；不做嵌套</td></tr>
+<tr><td>转移时机</td><td>"上游在回复尚未发出任何内容前失败时，网关转向下一个候选"</td><td><b>采用同一条规则</b>：已经输出内容后不自动切换，避免内容重复或拼接错乱</td></tr>
+<tr><td>会话粘性</td><td>提示缓存有价值时，同一会话固定在回答过它的成员上</td><td><b>借鉴</b>：会话内优先沿用上一个成员，它失败才换</td></tr>
+<tr><td>上下文超限</td><td>请求停在某成员且已用到其上下文窗口的 95%，会换到能装得下更多的成员</td><td><b>借鉴</b>：收到"上下文超长"错误时换到窗口更大的成员</td></tr>
+<tr><td>登录失效</td><td>401 且原因是 <code>token_revoked</code> / <code>invalid_grant</code> 等，把账号标为已撤销，停止使用直到重新登录；<code>token_expired</code> 只刷新一次</td><td><b>借鉴</b>：认证类失败的成员长时间冷却，直到配置变化或用户手动恢复</td></tr>
+<tr><td>代理</td><td>每个厂商、每个账号都可以单独设置；查找顺序是 账号 → 订阅 → 全局；日志里的代理地址会去掉用户名密码</td><td><b>借鉴</b>：厂商级 + 全局，日志脱敏；账号级暂不需要</td></tr>
+<tr><td>本地网关</td><td>127.0.0.1:3425，四种协议互转，供其他 agent 使用</td><td><b>不做</b>：这是它的核心产品，我们不需要</td></tr>
+<tr><td>插件中间件、隐私过滤模型、WebDAV / S3 同步</td><td>onRequest / onEvent / onResponse 钩子；本地过滤模型；备份同步</td><td><b>不做</b>：与本需求无关（插件系统另见专门方案）</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="usage">
+<h2>4 用量统计</h2>
+
+<h3>4.1 记在哪里：所有模型调用的唯一出口</h3>
+<p>现在只有 <code>callModel</code> 里的对话调用会累加到会话，标题生成、上下文压缩、将来的子 agent 都绕过了它，所以账对不上。做法是在 <code>Catalog.Get</code> 返回 Provider 时包一层"计量包装"，所有走 Catalog 的调用都自动记账：</p>
+<pre class="mermaid">
+flowchart LR
+  A["对话 callModel"] --> W
+  B["标题生成"] --> W
+  C["上下文压缩"] --> W
+  D["子 agent（将来）"] --> W
+  W["计量包装<br/>记时间 / 首字 / 用量 / 结果"] --> G["模型组（可选）"]
+  G --> P1["厂商 A"]
+  G --> P2["厂商 B"]
+  W --> L[("usage_events<br/>SQLite")]
+</pre>
+<p>会话 ID、调用来源（对话 / 标题 / 压缩）通过 <code>context</code> 传入，包装层不需要知道会话的任何其他信息。</p>
+
+<h3>4.2 数据模型</h3>
+<p>在现有 <code>sessions.db</code> 里新增一张表（迁移 3），一次模型调用一行；故障转移时，每次<b>尝试</b>各一行：</p>
+<pre><code>CREATE TABLE usage_events (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts            INTEGER NOT NULL,              -- 开始时间，Unix 毫秒（UTC）
+  day           TEXT    NOT NULL,              -- 本地日期 YYYY-MM-DD，写入时按用户时区算好
+  session_id    TEXT    NOT NULL DEFAULT '',
+  source        TEXT    NOT NULL DEFAULT 'chat',   -- chat / title / compact / subagent
+  profile       TEXT    NOT NULL,              -- 实际应答的厂商配置档
+  model         TEXT    NOT NULL,
+  group_name    TEXT    NOT NULL DEFAULT '',   -- 经哪个模型组路由；直连为空
+  try_no        INTEGER NOT NULL DEFAULT 1,    -- 第几次尝试
+  status        TEXT    NOT NULL,              -- ok / error / cancelled / handed_on
+  error_kind    TEXT    NOT NULL DEFAULT '',   -- rate_limit / server / auth / network / context / quota / other
+  input_tokens  INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+  cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+  duration_ms   INTEGER NOT NULL DEFAULT 0,
+  ttft_ms       INTEGER NOT NULL DEFAULT 0     -- 首字延迟，没有测到为 0
+);
+CREATE INDEX idx_usage_day ON usage_events(day, profile, model);
+CREATE INDEX idx_usage_session ON usage_events(session_id);</code></pre>
+<ul>
+  <li><b>为什么单独存 <code>day</code></b>：按日分组如果每次用 SQL 的时区函数算，跨夏令时和 Windows 上容易出错；写入时算好，查询就只是 <code>GROUP BY day</code>，并且已记录的历史不会因为之后换时区而变。</li>
+  <li><b>不存内容</b>：只记数字和名称，不存提示词和回答，账本泄露也不会泄露对话。</li>
+  <li><b>体量</b>：一行约 100–150 字节，每天 500 次调用一年约 25MB，不需要分表；设置里提供"保留最近 N 天"，默认永久保留。</li>
+  <li><b>失败的尝试</b>：<code>status = error / handed_on</code> 的行不计入"请求数"，但计入 token（有的厂商失败时也会计费）；用于排查"为什么今天切换了这么多次"。</li>
+</ul>
+
+<h3>4.3 历史数据怎么办</h3>
+<p>已有会话只有累计值，没有逐次记录。两个选项：</p>
+<ul>
+  <li><b>推荐</b>：不回填。账本从升级那天开始记，界面上注明"此前的会话只有累计值"，并在"数据"页保留各会话的累计 token。</li>
+  <li>备选：把每个旧会话的累计值记在它最后更新的那一天，标为"估算"。会让某一天虚高，不推荐。</li>
+</ul>
+<p>ChatGPT 现有的 <code>usage.jsonl</code> 在首次启动时导入新表（<code>profile = chatgpt</code>），之后状态栏的额度也从新表读取，两套账合成一套。</p>
+
+<h3>4.4 费用</h3>
+<ul>
+  <li><b>价格表</b>：<code>ModelMeta</code> 增加缓存读价和缓存写价，四个数都是 美元 / 百万 token。</li>
+  <li><b>查找顺序</b>：用户在界面里设的价格 → 配置档 <code>models_meta</code> → 应用内置的默认表（只放常见模型，随版本更新，并标注"可能已过期"）→ 无价格。</li>
+  <li><b>无价格的调用不计入花费，也不当作免费</b>，界面上写明"有 N 次调用没有价格"并给出补价格的入口（照搬 magpie 的规则）。</li>
+  <li><b>读取时计价</b>：账本只存 token，不存金额。改价格后历史花费同步改写，这是有意的：价格填错了可以更正。代价是无法回看"当时的价格"。</li>
+  <li><b>订阅类厂商</b>（ChatGPT 账号登录）：只显示 token，不计金额，因为按套餐额度而不是按量计费。</li>
+  <li><b>币种</b>：内部一律美元；界面可以切换为人民币，汇率由用户填写（不联网取汇率）。</li>
+</ul>
+
+<h3>4.5 界面：设置 → 用量</h3>
+<p>新增一个"用量"标签页，不塞进"数据"页：数据页管"文件在哪、占多大"，用量页管"花了多少"。数据页只保留一行汇总和跳转链接。点开每一天可以看到按模型的明细，再点模型可以看到按会话的明细（下面是可交互的示意，数据是编的）：</p>
+
+<div class="mock" aria-label="用量页示意">
+  <div class="mock-head">
+    <div class="seg"><span class="on">今天</span><span>7 天</span><span>30 天</span><span>全部</span></div>
+    <div class="mock-sp"></div>
+    <span class="mock-btn">导出 CSV</span>
+  </div>
+  <div class="mock-cards">
+    <div><small>输入</small><b>2.84M</b></div>
+    <div><small>输出</small><b>312K</b></div>
+    <div><small>缓存命中</small><b>63%</b></div>
+    <div><small>请求</small><b>418</b></div>
+    <div><small>预估花费</small><b>$6.21</b></div>
+  </div>
+  <div class="mock-note">有 3 次调用没有价格，未计入花费 · 另有 2 次失败的尝试已转交给其他模型</div>
+  <div class="mock-table">
+    <div class="mrow mth"><span>日期</span><span>输入</span><span>输出</span><span>请求</span><span>花费</span></div>
+    <details open>
+      <summary class="mrow"><span>10-25 周日</span><span>1.20M</span><span>134K</span><span>186</span><span>$2.84</span></summary>
+      <div class="msub mrow"><span>anthropic / claude-sonnet</span><span>0.86M</span><span>98K</span><span>121</span><span>$2.51</span></div>
+      <div class="msub mrow"><span>volcengine / deepseek-v4</span><span>0.31M</span><span>31K</span><span>63</span><span>$0.33</span></div>
+      <div class="msub mrow"><span>chatgpt / gpt-6-luna</span><span>0.03M</span><span>5K</span><span>2</span><span>套餐</span></div>
+    </details>
+    <details>
+      <summary class="mrow"><span>10-24 周六</span><span>0.97M</span><span>101K</span><span>142</span><span>$1.96</span></summary>
+      <div class="msub mrow"><span>anthropic / claude-sonnet</span><span>0.97M</span><span>101K</span><span>142</span><span>$1.96</span></div>
+    </details>
+    <details>
+      <summary class="mrow"><span>10-23 周五</span><span>0.67M</span><span>77K</span><span>90</span><span>$1.41</span></summary>
+      <div class="msub mrow"><span>anthropic / claude-sonnet</span><span>0.67M</span><span>77K</span><span>90</span><span>$1.41</span></div>
+    </details>
+  </div>
+</div>
+<ul>
+  <li><b>可选的视图</b>：按天（默认）、按模型、按厂商、按会话；顶部可按厂商筛选。</li>
+  <li><b>条形图</b>：每天一根堆叠条（输入 / 输出 / 缓存读），鼠标移上去显示数值；用前端自己画的 SVG，不引入图表库。</li>
+  <li><b>会话栏</b>：会话详情里显示该会话累计 token 和花费（取代现在只在状态栏看到的数字）。</li>
+  <li><b>导出</b>：CSV，列与账本表一致，方便在表格里对账。</li>
+</ul>
+
+<h3>4.6 查询接口</h3>
+<p>后端只提供一个聚合查询，前端不接触原始行：</p>
+<pre><code>UsageReport(range: "today" | "7d" | "30d" | "all" | {from, to},
+            group_by: "day" | "model" | "profile" | "session",
+            filter: {profile?, model?}) → {
+  totals: {input, output, cache_read, cache_write, requests, failed_tries, cost_usd, unpriced_calls},
+  rows:   [{key, input, output, cache_read, cache_write, requests, cost_usd,
+            children: [...]}]          // 按天时 children 是按模型的明细
+}</code></pre>
+</section>
+
+<section id="proxy">
+<h2>5 网络代理</h2>
+<h3>5.1 现状与问题</h3>
+<p>三个适配器都用 <code>&amp;http.Client{}</code>，Go 默认只读 <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> 环境变量。从开始菜单或 Finder 启动的桌面应用拿不到你在终端里设置的变量，所以国内访问海外厂商时没有办法配置；而国内厂商又不希望走代理。</p>
+
+<h3>5.2 设计</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>层级</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>厂商配置档的 <code>proxy</code></td><td>最高优先级。取值：留空（跟随下一层）、<code>direct</code>（强制直连，忽略环境变量和全局设置）、或一个代理地址。</td></tr>
+<tr><td>全局默认代理</td><td>设置 → 常规 里设置一次，所有没单独设置的厂商共用。</td></tr>
+<tr><td>环境变量</td><td>最后兜底，保持和现在一致。</td></tr>
+</tbody></table></div>
+<ul>
+  <li><b>协议</b>：<code>http://</code>、<code>https://</code>、<code>socks5://</code>（<code>golang.org/x/net</code> 已在依赖里，目前是间接依赖，只需提升为直接依赖）。</li>
+  <li><b>认证</b>：地址里可以带用户名密码；<b>密码走系统钥匙串</b>，不写进 <code>settings.json</code>（和 API Key 同一套存储）。</li>
+  <li><b>实现</b>：新增 <code>provider.NewHTTPClient(cfg)</code>，三个适配器都改用它，统一设置代理、连接超时和"等待首字节"的超时（现在没有）。</li>
+  <li><b>测试连接</b>：厂商页的"测试连接"按钮自动走所配置的代理，失败时区分"代理连不上"和"厂商拒绝"，给出不同提示。</li>
+  <li><b>日志脱敏</b>：错误信息和日志里的代理地址一律去掉用户名密码（照搬 magpie 的做法）。</li>
+  <li><b>ChatGPT 登录</b>：登录流程和模型调用都走同一个代理设置，否则会出现"能登录但不能调用"。</li>
+</ul>
+<div class="callout">
+  <p>Windows 的"系统代理"（IE / 系统设置里的代理）Go 默认不读。第一版不做自动读取，让用户显式填写；以后可以加一个"跟随系统"选项。</p>
+</div>
+</section>
+
+<section id="failover">
+<h2>6 故障转移：模型组</h2>
+<h3>6.1 概念</h3>
+<p><b>模型组</b>是一个虚拟的厂商配置档，类型为 <code>group</code>，由有序的成员列表组成，每个成员是"配置档 + 模型"。在模型下拉框里它和普通模型并列，选中后所有请求经它路由。内核只看到一个 Provider，完全不知道背后有几个厂商。</p>
+<pre><code>{
+  "name": "主力",
+  "type": "group",
+  "strategy": "order",                 // order | rotate | least_used
+  "members": [
+    {"profile": "anthropic",  "model": "claude-sonnet"},
+    {"profile": "volcengine", "model": "deepseek-v4"},
+    {"profile": "chatgpt",    "model": "gpt-6-luna"}
+  ],
+  "sticky": true,                      // 会话内优先沿用上一个成员
+  "first_byte_timeout_s": 30
+}</code></pre>
+
+<h3>6.2 策略</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>策略</th><th>行为</th><th>适用</th></tr></thead>
+<tbody>
+<tr><td><code>order</code>（默认）</td><td>永远从第一个健康的成员开始，它不行再用下一个</td><td>"主力 + 备用"，最常见</td></tr>
+<tr><td><code>rotate</code></td><td>每个新会话（或每一轮）换下一个健康成员</td><td>分摊多个账号 / key 的额度</td></tr>
+<tr><td><code>least_used</code></td><td>选今天 token 用得最少的健康成员（读用量账本）</td><td>多个等价账号，希望用得均匀</td></tr>
+</tbody></table></div>
+<p>三种策略之上都叠加<b>会话粘性</b>：同一会话已经用过某个成员时，优先继续用它（厂商侧的提示缓存按账号生效，来回换会让缓存全部失效，既慢又贵）；它不可用时才按策略重新选。</p>
+
+<h3>6.3 什么情况下切换</h3>
+<div class="callout warn">
+  <p><b>总规则：只有在一个成员"还没有输出任何内容"就失败时才自动切换。</b>一旦已经向界面输出了文字、思考或工具调用，就不再自动换（换了会出现重复、断句错乱或工具调用重复执行），而是把错误显示出来，并给一个"用下一个模型重试"的按钮。</p>
+</div>
+<div class="tablewrap"><table>
+<thead><tr><th>失败类型</th><th>判定</th><th>动作</th><th>该成员的冷却（本方案自行设计）</th></tr></thead>
+<tbody>
+<tr><td>网络 / 超时</td><td>连接失败、TLS 错误、等待首字节超过设定值（默认 30 秒）</td><td>切下一个</td><td>30 秒起，连续失败翻倍，上限 10 分钟</td></tr>
+<tr><td>限流</td><td>429</td><td>切下一个</td><td>取 <code>Retry-After</code>；没有则 60 秒</td></tr>
+<tr><td>服务端错误</td><td>5xx、529 过载</td><td>切下一个</td><td>同"网络"</td></tr>
+<tr><td>认证失败</td><td>401 / 403（令牌刷新已由适配器内部处理过，仍失败才算）</td><td>切下一个</td><td>长冷却：直到配置变化或用户点"恢复"，不自动试探</td></tr>
+<tr><td>额度用完</td><td>ChatGPT 的 <code>ErrUsageLimit</code>，或厂商返回余额不足</td><td>切下一个</td><td>知道重置时间就到重置；否则 30 分钟</td></tr>
+<tr><td>上下文超长</td><td>400 且错误类型为 context length</td><td>切到<b>上下文窗口更大</b>的成员；没有就走现有的上下文压缩</td><td>不冷却（不是成员的问题）</td></tr>
+<tr><td>请求本身有问题</td><td>其他 400 / 422</td><td><b>不切换</b>，直接报错：换谁都一样会失败</td><td>—</td></tr>
+<tr><td>用户取消</td><td><code>ctx</code> 被取消</td><td>不切换</td><td>—</td></tr>
+</tbody></table></div>
+<p>所有成员都不可用时，报错信息里列出每个成员的失败原因和剩余冷却时间，而不是只说"失败"。</p>
+
+<h3>6.4 成员的健康状态</h3>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> 健康
+  健康 --> 冷却中: 失败（记录原因和到期时间）
+  冷却中 --> 试探中: 冷却到期
+  试探中 --> 健康: 一次请求成功
+  试探中 --> 冷却中: 再次失败（冷却翻倍）
+  冷却中 --> 健康: 用户点「恢复」/ 配置变化
+  健康 --> 已停用: 认证失败
+  已停用 --> 健康: 重新登录 / 改配置 / 点「恢复」
+</pre>
+<ul>
+  <li>状态只放内存，应用重启后全部重置为健康：冷却是为了避免反复撞墙，重启后重新试一次的代价很小。</li>
+  <li><b>试探</b>用真实请求，而不是单独的探活：同一时间只放行一个请求去试探，其余请求继续用其他成员，所以用户不会因为试探而卡住。</li>
+  <li>用户随时可以在界面上看到每个成员的状态点和剩余冷却，也可以手动恢复。</li>
+</ul>
+
+<h3>6.5 一次请求的流程</h3>
+<pre class="mermaid">
+sequenceDiagram
+  participant C as callModel
+  participant G as 模型组
+  participant A as 成员 A
+  participant B as 成员 B
+  participant L as 用量账本
+  C->>G: Stream(请求)
+  G->>G: 按粘性 / 策略选成员，跳过冷却中的
+  G->>A: 发送请求
+  A--xG: 429（尚未输出任何内容）
+  G->>L: 记一行 handed_on（成员 A，限流）
+  G->>G: A 进入冷却
+  G->>B: 清洗历史后发送同一请求
+  B-->>G: 流式输出
+  G-->>C: 增量（附带"实际应答者 = B"）
+  G->>L: 记一行 ok（成员 B，含 token）
+</pre>
+
+<h3>6.6 最大的技术风险：换厂商后历史还能用吗</h3>
+<p>消息历史是中立格式，但各厂商对历史的要求不同。切换后同一份历史发给另一个厂商，可能直接被拒绝：</p>
+<div class="tablewrap"><table>
+<thead><tr><th>问题</th><th>例子</th><th>处理</th></tr></thead>
+<tbody>
+<tr><td>思考块的签名</td><td>Anthropic 的思考块带签名，只对原模型有效；其他厂商不认</td><td>发给不同厂商前<b>丢弃</b>历史中的思考块（它们本来就只用于回显，不影响内容）</td></tr>
+<tr><td>加密思考</td><td>Anthropic 的 redacted thinking、OpenAI Responses 的加密推理项</td><td>同上，丢弃</td></tr>
+<tr><td>工具调用 ID 格式</td><td>各家对 ID 的字符集和长度有要求</td><td>适配器统一规范化，成对的调用和结果用同一个映射</td></tr>
+<tr><td>图片</td><td>目标模型不支持图片输入</td><td>替换成一句文字说明，并在界面提示</td></tr>
+<tr><td>上下文窗口</td><td>备用成员窗口更小，放不下当前历史</td><td>切换前估算；放不下就先压缩，或跳过这个成员</td></tr>
+<tr><td>工具名 / 参数规则</td><td>名字长度、字符限制不同（MCP 工具名尤其容易触发）</td><td>沿用现有的名字规范，并在测试里覆盖</td></tr>
+</tbody></table></div>
+<p>实现上，在 Provider 的接口上增加一个可选能力 <code>PrepareHistory(msgs) []Message</code>（每个适配器自己说明"我不能回放什么"），模型组在切换时对历史调用目标成员的这个方法。<b>这部分必须先用真实的跨厂商会话做测试（Anthropic ⇄ OpenAI 兼容 ⇄ Responses 各方向），再决定哪些成员组合可以放进同一个组。</b></p>
+
+<h3>6.7 让用户看得见</h3>
+<ul>
+  <li><b>消息头</b>：每一步现在显示"厂商 / 模型"，改为显示<b>实际应答者</b>；发生过切换时加一个小标记"由 A 转交"，悬停显示原因。需要新增一个事件字段（<code>message_start</code> 里的 provider / model 目前取自请求，转交后要更新为实际成员）。</li>
+  <li><b>状态栏</b>：选中模型组时显示"主力 → B"，B 为当前实际使用的成员。</li>
+  <li><b>设置 → 模型厂商</b>：新增"模型组"区块，可以新建、拖动排序、选策略；每个成员旁显示状态点、今日用量、剩余冷却，以及"恢复"按钮。</li>
+  <li><b>用量页</b>：按模型组筛选，并能看到每天"转交了多少次、各因为什么"。</li>
+</ul>
+</section>
+
+<section id="core">
+<h2>7 与代码的接合点</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>位置</th><th>改动</th><th>规模</th></tr></thead>
+<tbody>
+<tr><td><code>internal/store</code></td><td>迁移 3：<code>usage_events</code> 表；<code>AppendUsage</code>、<code>UsageReport</code>；内存版同步实现（测试用）</td><td>中</td></tr>
+<tr><td><code>internal/usage</code>（新包）</td><td>价格表与计价、聚合逻辑、CSV、ChatGPT 旧账本导入；不依赖 Wails，可直接 <code>go test</code></td><td>中</td></tr>
+<tr><td><code>internal/provider</code></td><td>计量包装（装饰器）；<code>NewHTTPClient</code>（代理 + 超时）；<code>group</code> 适配器（策略、健康状态、错误分类、粘性）；可选接口 <code>PrepareHistory</code>；<code>ProfileConfig</code> 增加 <code>Proxy</code></td><td>大</td></tr>
+<tr><td><code>internal/provider/*</code> 三个适配器</td><td>改用 <code>NewHTTPClient</code>；把 HTTP 状态码、<code>Retry-After</code> 包成带类型的错误，供分类使用；实现 <code>PrepareHistory</code></td><td>中</td></tr>
+<tr><td><code>internal/core</code></td><td>通过 <code>context</code> 传会话 ID 和调用来源；<code>message_start</code> 更新为实际应答者；"用下一个模型重试"命令</td><td>小</td></tr>
+<tr><td><code>internal/event</code></td><td>新增字段需要同步更新协议文档和前端类型（按 <code>event-protocol.md §7</code> 的清单）；协议版本是否 +1 见待决策</td><td>小</td></tr>
+<tr><td><code>internal/settings</code> / <code>internal/app</code></td><td>模型组、代理的读写与校验（密码进钥匙串）；绑定 <code>GetUsageReport</code>、<code>ExportUsageCSV</code>、<code>GetGroupHealth</code>、<code>ResetMember</code></td><td>中</td></tr>
+<tr><td>前端</td><td>"用量"页（汇总卡片、按天展开表格、堆叠条形图）、代理输入框、模型组编辑与状态、消息头的转交标记</td><td>大</td></tr>
+<tr><td>设置 → 数据</td><td>增加一行"累计 N token，今日 M"和跳转到用量页的链接</td><td>小</td></tr>
+</tbody></table></div>
+<p>内核（agent 循环、工具、权限）基本不动：计量和故障转移都是 Provider 层的装饰器，这也是选择"进程内"而不是"本地网关"的主要好处。</p>
+</section>
+
+<section id="security">
+<h2>8 安全与隐私</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>风险</th><th>措施</th></tr></thead>
+<tbody>
+<tr><td><b>故障转移会把对话发给另一个厂商</b></td><td>这是本功能最实质的隐私影响。只有用户<b>亲手加进模型组</b>的成员才会被使用，不存在"悄悄换到没配置过的厂商"；转交发生时在消息上有明显标记；模型组编辑页写明"组内所有成员都会收到你的对话内容"。</td></tr>
+<tr><td>代理账号密码泄露</td><td>密码进系统钥匙串，不落盘、不进日志、不发给前端；日志和错误里的代理地址统一脱敏。</td></tr>
+<tr><td>自建的恶意代理读取流量</td><td>代理由用户自己填写，应用无法判断；界面提示"代理可以看到你的 API Key 和对话内容"（HTTPS 内容本身仍是加密的，但 CONNECT 前的目标域名可见，HTTP 代理地址若是明文协议则代理凭据可被嗅探）。</td></tr>
+<tr><td>用量账本泄露内容</td><td>只存数字和名称，不存任何提示词和回答；导出的 CSV 同理。</td></tr>
+<tr><td>费用误导</td><td>价格由用户 / 内置表提供，可能过期或填错；界面用"预估"，并标出无价格的调用数量，不显示精确到分的假象。</td></tr>
+<tr><td>冷却被滥用导致全员不可用</td><td>冷却有上限（10 分钟）；认证类的长冷却可以手动恢复；全员冷却时仍会放行一次试探，而不是直接拒绝所有请求。</td></tr>
+<tr><td>失败重试造成重复计费</td><td>已输出内容后不自动重试；失败的尝试单独记账，用户能看到。</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="plan">
+<h2>9 分期计划</h2>
+<p>工作量按"开发 + 单元测试 + 三平台联调"粗估，单位是开发日。</p>
+<div class="phase">
+  <div class="when">第 1 期<br>4 天</div>
+  <div>
+    <h3>用量账本 + 按天视图</h3>
+    <ul>
+      <li>迁移 3、计量包装、按天聚合；标题生成和压缩纳入统计；导入 ChatGPT 旧账本</li>
+      <li>设置 → 用量页：时间窗口、汇总卡片、按天展开（按模型 → 按会话）、条形图；数据页加一行汇总</li>
+    </ul>
+    <p>验收：用 fake 厂商聊几轮，各窗口的 token 与会话累计值一致；标题和压缩的调用也在账里；跨零点的调用记在开始那天。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 2 期<br>2–3 天</div>
+  <div>
+    <h3>价格、费用、导出</h3>
+    <ul><li>价格表（含缓存读写）、内置默认表、无价格的处理、美元 / 人民币切换、CSV 导出</li></ul>
+    <p>验收：改价格后历史花费同步变化；无价格的调用不进总额且有提示。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 3 期<br>2 天</div>
+  <div>
+    <h3>网络代理</h3>
+    <ul><li><code>NewHTTPClient</code>、厂商级和全局代理、密码进钥匙串、测试连接区分错误、日志脱敏</li></ul>
+    <p>验收：起一个本地代理，只有配置了代理的厂商流量经过它；<code>direct</code> 能绕过环境变量。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 4 期<br>6–7 天</div>
+  <div>
+    <h3>故障转移核心</h3>
+    <ul>
+      <li>带类型的厂商错误、错误分类、<code>group</code> 适配器（三种策略、粘性、冷却与试探）</li>
+      <li><code>PrepareHistory</code> 与跨厂商历史清洗；实际应答者上报；"用下一个模型重试"</li>
+    </ul>
+    <p>验收：用故障注入的假厂商，覆盖第 6.3 节每一行；已输出内容后不切换；Anthropic ⇄ OpenAI ⇄ Responses 的跨厂商会话都能继续。</p>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">第 5 期<br>3 天</div>
+  <div>
+    <h3>模型组界面与可观测性</h3>
+    <ul><li>模型组编辑与排序、成员状态点和冷却倒计时、手动恢复、消息头的转交标记、用量页按模型组筛选</li></ul>
+  </div>
+</div>
+<div class="phase">
+  <div class="when">以后</div>
+  <div>
+    <h3>按需再做</h3>
+    <ul><li>联网更新价格表；其他厂商的余额 / 配额探测；<code>smart</code> / <code>pace</code> 这类依赖配额窗口的策略；"跟随 Windows 系统代理"；对外的本地网关</li></ul>
+  </div>
+</div>
+<p>合计约 17–19 个开发日。第 1、2 期单独就能交付价值，建议先做完并用一段时间，再开始第 4 期。</p>
+</section>
+
+<section id="test">
+<h2>10 测试策略</h2>
+<ul>
+  <li><b>账本</b>：跨零点、跨时区、取消的调用、只有部分用量的失败调用；内存版和 SQLite 版共用同一组用例（沿用 <code>store_test.go</code> 的做法）。</li>
+  <li><b>计价</b>：缺价格、缓存价格缺失、超长上下文分档（如果以后加）、改价后重算。</li>
+  <li><b>故障注入</b>：给 fake 厂商加"第 N 次调用返回某错误 / 在首字节前超时 / 输出一半后断开"的脚本，逐行验证第 6.3 节的表格；冷却用可注入的时钟，不用真实等待。</li>
+  <li><b>跨厂商历史</b>：用真实录制的会话做夹具，断言清洗后的历史符合目标适配器的请求格式（现有适配器测试里已有请求体断言的做法）。</li>
+  <li><b>并发</b>：多个会话同时失败时只有一个试探请求；<code>-race</code> 必须通过。</li>
+  <li><b>代理</b>：用本地 HTTP 和 SOCKS5 代理验证走向；<code>direct</code> 与环境变量的优先级；日志里搜不到密码。</li>
+  <li><b>端到端</b>：Playwright 在 <code>wails dev</code> 里用 mock 服务制造 429，截图验证转交标记、用量页的按天展开和状态点。</li>
+</ul>
+</section>
+
+<section id="risks">
+<h2>11 风险</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>风险</th><th>影响</th><th>缓解</th></tr></thead>
+<tbody>
+<tr><td>跨厂商历史不兼容</td><td>转交后备用成员直接报 400，等于没有故障转移</td><td>第 4 期最先做兼容性测试；对不兼容的组合在编辑页给出警告</td></tr>
+<tr><td>各家错误格式不统一</td><td>分类不准，该切的没切、不该切的切了</td><td>分类逻辑集中在一处并用真实响应样本做夹具；无法识别的错误默认<b>不切换</b></td></tr>
+<tr><td>价格表过期</td><td>花费估算偏离</td><td>标注"预估"和价格表日期；价格可由用户随时覆盖</td></tr>
+<tr><td>账本写入拖慢请求</td><td>每次调用多一次写库</td><td>写入放在异步队列里，失败只记日志，不影响对话</td></tr>
+<tr><td>首字节超时设得不合适</td><td>思考很久的模型被误判为失败而切换</td><td>默认 30 秒只作用于"首个字节"（流式的第一个事件），而不是整个响应；每个模型组可调；推理类模型可单独放宽</td></tr>
+<tr><td>我对 magpie 的了解不完整</td><td>其路由细节我没读到，可能有我没考虑到的边界情况</td><td>冷却、重试等数值都是本方案的独立设计，上线前用故障注入测试验证，而不是假定与 magpie 一致</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="questions">
+<h2>12 需要你决定的事</h2>
+<div class="q"><b>1. 能不能接受"对话被转交给另一个厂商"？</b><p>这是故障转移的前提。模型组只包含你自己加入的成员，但如果某些厂商不允许你的数据出现在那里（合规），就只能在同一厂商的多个 key / 账号之间转移。<span class="rec">我的倾向：允许，由你在模型组里自己决定谁在组里。</span></p></div>
+<div class="q"><b>2. 币种和价格来源</b><p>只显示美元，还是可切换人民币？价格只用"内置表 + 手填"，还是以后联网更新？<span class="rec">我的倾向：美元为内部单位，界面可切换人民币（手填汇率）；第一版不联网。</span></p></div>
+<div class="q"><b>3. 历史数据要不要回填</b><p>见第 4.3 节。<span class="rec">我的倾向：不回填，从升级当天开始记。</span></p></div>
+<div class="q"><b>4. 输出到一半断开怎么办</b><p>现方案是不自动切换，给"用下一个模型重试"按钮。也可以让它自动重试（会丢弃已显示的半截内容并重新生成），但对工具调用已执行的情况不安全。<span class="rec">我的倾向：保持手动。</span></p></div>
+<div class="q"><b>5. 要不要做对外的本地网关</b><p>magpie 的核心产品，让 Claude Code 等别的工具共用你的厂商配置和用量统计。工作量很大（四种协议互转），与当前需求无关。<span class="rec">我的倾向：不做，除非你有明确场景。</span></p></div>
+<div class="q"><b>6. 事件协议是否升版本</b><p>只是给现有字段增加取值和可选字段，向后兼容，可以不升；如果希望旧前端明确拒绝新后端，则升到 2。<span class="rec">我的倾向：不升。</span></p></div>
+<div class="q"><b>7. 订阅类（ChatGPT 账号）的用量怎么展示</b><p>只显示 token 和调用次数，花费一栏写"套餐"。<span class="rec">我的倾向：如此。</span></p></div>
+</section>
+
+<footer>本方案基于当前仓库代码（internal/provider、internal/store、internal/core、internal/siwc）和 magpie 公开文档的已读部分整理；所列工作量为粗估，故障转移的数值参数为本方案自行设计，需要在实现阶段用故障注入测试校准。</footer>
+
+</article>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"default"});</script>
+</body>
+</html>
