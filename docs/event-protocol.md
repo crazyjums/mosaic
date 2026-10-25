@@ -14,7 +14,10 @@
 | 桌面端 | Wails 事件 `agent:event`，载荷为一个事件的 JSON |
 | CLI | `-json` 时每行一个事件（JSONL） |
 
-所有事件走**同一个通道**，前端按 `type` 分发。不为每种类型单开 Wails 事件，是因为不同事件名之间 Wails 不保证顺序。
+所有事件走**同一个通道**，前端按 `type` 分发，新增事件类型不需要改绑定层。
+
+**顺序**：同一个通道也不能保证到达顺序——Wails 开发服务器（`wails dev` 时用浏览器打开 `http://localhost:34115`）给每条消息开一个 goroutine 发送，实测会乱序。
+所以前端按信封里单调递增的 `seq` 重新排序（[`bridge/reorder.ts`](../frontend/src/bridge/reorder.ts)）：按序到达的立即交付，提前到达的等缺口补上，最多等 150ms。
 
 ## 2. 版本规则
 
@@ -47,7 +50,7 @@
 | `v` | int | 协议版本 |
 | `type` | string | 事件类型，见第 4 节 |
 | `id` | string | 事件唯一 ID（`ev_` 前缀），用于去重 |
-| `seq` | int | 同一个 Bus 内单调递增的序号，用于排查乱序 |
+| `seq` | int | 同一个 Bus 内单调递增的序号；前端据此恢复到达顺序（见第 1 节） |
 | `session_id` | string | 所属会话。前端只处理当前会话的事件 |
 | `agent_id` | string | 产生事件的 agent。主 agent 固定为 `"main"` |
 | `parent_id` | string? | 父 agent 的 `agent_id`。主 agent 为空。用 `agent_id` + `parent_id` 可以把任意事件挂到 agent 树上 |

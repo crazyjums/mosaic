@@ -7,6 +7,7 @@
 
 import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
+import { createReorderBuffer } from "./reorder";
 import type {
   Backend, ChatGPTStatus, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
@@ -130,10 +131,12 @@ export function createWailsBackend(): Backend {
     getKeychain: () => app.GetKeychain(),
     setUseKeychain: (on) => app.SetUseKeychain(on),
     onEvent(cb: (ev: AgentEvent) => void) {
-      return runtime.EventsOn(EVENT_NAME, (data) => {
+      // 先按 seq 排序再过滤：未知类型的事件也占一个 seq，先过滤会让排序以为丢了事件而多等。
+      const ordered = createReorderBuffer<{ seq: number }>((data) => {
         // 不认识的事件类型直接忽略（协议约定的向前兼容）。
         if (isKnownEvent(data)) cb(data);
       });
+      return runtime.EventsOn(EVENT_NAME, (data) => ordered(data as { seq: number }));
     },
   };
 }

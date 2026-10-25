@@ -18,8 +18,9 @@ import (
 
 // EventName 是前端订阅的 Wails 事件名。所有内核事件都走这一个通道，由前端按 type 分发。
 //
-// 为什么不为每种事件类型各开一个 Wails 事件：单通道保证了顺序（不同事件名之间 Wails 不保证顺序），
-// 前端只需注册一次监听，新增事件类型也不需要改绑定层。
+// 为什么不为每种事件类型各开一个 Wails 事件：前端只需注册一次监听，新增事件类型也不需要改绑定层。
+// 顺序不靠传输层保证：Wails 开发服务器给每条消息开一个 goroutine 发送，到达浏览器时可能乱序，
+// 所以前端按事件信封里单调递增的 seq 重新排序（frontend/src/bridge/reorder.ts）。
 const EventName = "agent:event"
 
 // EmitFunc 把一个事件发给前端。生产环境是 runtime.EventsEmit，测试时替换成记录函数。
