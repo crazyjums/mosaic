@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,8 @@ type ServerStatus struct {
 	Tools         []string `json:"tools"` // 注册进工具表的名字（带 mcp__ 前缀）
 	ServerName    string   `json:"server_name,omitempty"`
 	ServerVersion string   `json:"server_version,omitempty"`
+	// Source 同 ServerConfig.Source：界面据此区分“你添加的”和“插件带来的”（后者不能在设置里直接编辑）。
+	Source string `json:"source,omitempty"`
 }
 
 // conn 是 Manager 需要的连接能力：RPCClient 实现了它，测试里可以替换。
@@ -53,6 +56,8 @@ type Manager struct {
 	mu      sync.Mutex
 	servers map[string]*server
 	order   []string
+	// lists 按来源记录配置的顺序（用户的在 "" 下），order 由它合并而来。
+	lists map[string][]string
 }
 
 type server struct {
@@ -67,31 +72,75 @@ func NewManager(reg *tool.Registry) *Manager {
 	return &Manager{
 		reg:     reg,
 		servers: map[string]*server{},
+		lists:   map[string][]string{},
 		connect: func(ctx context.Context, cfg ServerConfig) (conn, error) { return Connect(ctx, cfg) },
 	}
 }
 
-// Apply 让运行中的连接与配置保持一致：删掉的断开，新增的连接，修改过的重连，没变的不动。
-func (m *Manager) Apply(cfgs []ServerConfig) {
+// Apply 让用户配置的 server（Source 为空）与配置保持一致：删掉的断开，新增的连接，修改过的重连，没变的不动。
+// 插件带来的 server 不受影响，见 ApplySource。
+func (m *Manager) Apply(cfgs []ServerConfig) { _ = m.ApplySource("", cfgs) }
+
+// ApplySource 和 Apply 一样，但只管理来源为 source 的 server（例如 "plugin:feishu"）。
+//
+// 为什么按来源分开：设置页保存的是“用户配置的完整列表”，按整份覆盖的话，插件带来的 server 会被当成
+// “不在列表里”而断开；反过来，停用一个插件也只应该摘掉它自己的 server。
+//
+// server 名字全局唯一：名字已经被别的来源占用时，新的那个不会启动，错误里会说明（其余的照常处理）。
+func (m *Manager) ApplySource(source string, cfgs []ServerConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	want := map[string]ServerConfig{}
-	m.order = m.order[:0]
+	names := make([]string, 0, len(cfgs))
 	for _, c := range cfgs {
+		c.Source = source
 		want[c.Name] = c
-		m.order = append(m.order, c.Name)
+		names = append(names, c.Name)
+	}
+	m.lists[source] = names
+	m.order = m.order[:0]
+	for _, src := range m.sourcesLocked() {
+		m.order = append(m.order, m.lists[src]...)
 	}
 	for name, s := range m.servers {
+		if s.cfg.Source != source {
+			continue
+		}
 		if c, ok := want[name]; !ok || !reflect.DeepEqual(c, s.cfg) {
 			m.stopLocked(s)
 			delete(m.servers, name)
 		}
 	}
-	for _, c := range cfgs {
-		if _, running := m.servers[c.Name]; !running {
-			m.startLocked(c)
+	var conflicts []string
+	for _, name := range names {
+		c := want[name]
+		if cur, running := m.servers[name]; running {
+			if cur.cfg.Source != source {
+				conflicts = append(conflicts, name)
+			}
+			continue
 		}
+		m.startLocked(c)
 	}
+	if len(conflicts) > 0 {
+		return fmt.Errorf("mcp: server 名字已被占用: %s", strings.Join(conflicts, ", "))
+	}
+	return nil
+}
+
+// sourcesLocked 返回有配置列表的来源：用户的在前，其余按名字排序（让状态列表的顺序稳定）。
+func (m *Manager) sourcesLocked() []string {
+	out := make([]string, 0, len(m.lists))
+	for src := range m.lists {
+		out = append(out, src)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if (out[i] == "") != (out[j] == "") {
+			return out[i] == ""
+		}
+		return out[i] < out[j]
+	})
+	return out
 }
 
 // Reconnect 断开并重新连接一个 server（例如修好了 server 那边的问题之后）。
@@ -140,7 +189,7 @@ func (m *Manager) Close() {
 // ---- 内部（调用方持有 m.mu） ----
 
 func (m *Manager) startLocked(cfg ServerConfig) {
-	s := &server{cfg: cfg, status: ServerStatus{Name: cfg.Name, State: StateConnecting}}
+	s := &server{cfg: cfg, status: ServerStatus{Name: cfg.Name, State: StateConnecting, Source: cfg.Source}}
 	m.servers[cfg.Name] = s
 	if cfg.Disabled {
 		s.status.State = StateDisabled

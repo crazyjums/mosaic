@@ -33,6 +33,9 @@ type ServerConfig struct {
 	Risk permission.Risk `json:"risk,omitempty"`
 	// Disabled 为 true 时保留配置但不连接。
 	Disabled bool `json:"disabled,omitempty"`
+	// Source 是这份配置的来源：空表示用户在设置里添加的，"plugin:<id>" 表示插件带来的。
+	// 由 Manager 在 Apply / ApplySource 时设置，调用方（包括前端保存设置时传来的值）填的会被覆盖。
+	Source string `json:"source,omitempty"`
 }
 
 // serverNameRe 限制 server 名：它会成为工具名的一部分，而各厂商要求工具名只含字母、数字、_ 和 -。

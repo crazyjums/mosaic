@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -349,5 +350,97 @@ func TestManager(t *testing.T) {
 	}
 	if _, ok := reg.Get("mcp__fake__echo"); ok {
 		t.Fatal("删除 server 后工具应移除")
+	}
+}
+
+// 按来源管理：Apply（用户的）和 ApplySource（插件的）互不影响。
+func TestManagerSources(t *testing.T) {
+	reg := tool.NewRegistry()
+	m := NewManager(reg)
+	defer m.Close()
+	statusOf := func(name string) ServerStatus {
+		for _, s := range m.Statuses() {
+			if s.Name == name {
+				return s
+			}
+		}
+		return ServerStatus{}
+	}
+
+	m.Apply([]ServerConfig{fakeStdioConfig("mine")})
+	if err := m.ApplySource("plugin:demo", []ServerConfig{fakeStdioConfig("demo")}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return statusOf("mine").State == StateConnected && statusOf("demo").State == StateConnected })
+	if statusOf("mine").Source != "" || statusOf("demo").Source != "plugin:demo" {
+		t.Fatalf("状态里带来源: %+v %+v", statusOf("mine"), statusOf("demo"))
+	}
+	if names := func() []string {
+		var n []string
+		for _, s := range m.Statuses() {
+			n = append(n, s.Name)
+		}
+		return n
+	}(); !slices.Equal(names, []string{"mine", "demo"}) {
+		t.Fatalf("用户的在前、插件的在后: %v", names)
+	}
+
+	// 设置页重新保存用户的列表（不含插件的 server）：插件的不受影响。
+	m.Apply([]ServerConfig{fakeStdioConfig("mine")})
+	m.Apply(nil)
+	if statusOf("demo").State != StateConnected {
+		t.Fatal("用户的列表变化不应断开插件的 server")
+	}
+	if _, ok := reg.Get("mcp__demo__echo"); !ok {
+		t.Fatal("插件的工具应还在")
+	}
+	if statusOf("mine").Name != "" {
+		t.Fatal("用户的 server 应已移除")
+	}
+
+	// 前端传来的 source 字段会被覆盖，不能冒充插件。
+	spoof := fakeStdioConfig("spoof")
+	spoof.Source = "plugin:demo"
+	m.Apply([]ServerConfig{spoof})
+	waitFor(t, func() bool { return statusOf("spoof").State == StateConnected })
+	if statusOf("spoof").Source != "" {
+		t.Fatalf("用户列表里的 source 应被清掉: %+v", statusOf("spoof"))
+	}
+
+	// 名字被别的来源占用：新的不启动并报错，已有的不受影响。
+	err := m.ApplySource("plugin:other", []ServerConfig{fakeStdioConfig("demo")})
+	if err == nil || !strings.Contains(err.Error(), "demo") {
+		t.Fatalf("应报告名字冲突: %v", err)
+	}
+	if statusOf("demo").Source != "plugin:demo" {
+		t.Fatal("冲突不应改变已有 server")
+	}
+
+	// 停用插件：只摘掉它自己的。
+	if err := m.ApplySource("plugin:demo", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reg.Get("mcp__demo__echo"); ok {
+		t.Fatal("停用后插件的工具应移除")
+	}
+	if statusOf("spoof").State != StateConnected {
+		t.Fatal("用户的 server 不受影响")
+	}
+}
+
+// 插件的子进程只拿到白名单环境变量和清单里声明的，拿不到应用的密钥；用户自己配的 server 仍然继承整个环境。
+func TestPluginEnvWhitelist(t *testing.T) {
+	t.Setenv("MOSAIC_TEST_SECRET", "s3cret")
+	t.Setenv("PATH", os.Getenv("PATH"))
+	env := BaseEnv()
+	joined := strings.Join(env, "\n")
+	if strings.Contains(joined, "MOSAIC_TEST_SECRET") {
+		t.Fatalf("白名单外的变量不应继承: %v", env)
+	}
+	if !strings.Contains(joined, "PATH=") {
+		t.Fatal("PATH 应继承")
+	}
+	if !IsPluginSource("plugin:x") || IsPluginSource("") || IsPluginSource("user") {
+		t.Fatal("IsPluginSource")
 	}
 }
