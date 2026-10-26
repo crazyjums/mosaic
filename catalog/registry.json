@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "hello-skill",
+      "name": "问候示例",
+      "summary": { "zh": "一个技能加一个 /hello 命令，用来熟悉插件怎么用。", "en": "A skill plus a /hello command, to get familiar with plugins." },
+      "bundled": "hello-skill"
+    },
+    {
+      "id": "echo-mcp",
+      "name": "回声工具示例",
+      "summary": { "zh": "最小的 MCP 工具插件，演示配置表单、状态检查和操作按钮（需要 python3）。", "en": "A minimal MCP tool plugin showing the settings form, status check and actions (needs python3)." },
+      "bundled": "echo-mcp"
+    }
+  ]
+}

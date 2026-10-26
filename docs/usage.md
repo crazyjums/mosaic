@@ -248,7 +248,7 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 - **状态与动作**：卡片上可以检查状态（例如是否已登录）、运行插件声明的动作。缺少依赖的程序（如 python3）时会提示。
 - **启停与卸载**：停用立即生效，不需要等对话结束；卸载可选择同时删除插件的数据。
 - **使用**：插件的技能会出现在技能清单里，命令在输入框键入 `/` 后可选；插件的 MCP 工具以 `mcp__<插件id>__工具名` 形式出现，照常走权限确认。
-- 插件目录在 `~/.myllmapp/plugins`，插件自己的数据在 `plugin-data`。示例见仓库 `examples/plugins`，格式见 `docs/design/plugin-system.md`。
+- 插件目录在 `~/.myllmapp/plugins`，插件自己的数据在 `plugin-data`。示例见仓库 `catalog/bundled`，格式见 `docs/design/plugin-system.md`。
 
 ## 2.8 外观与语言
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +37,10 @@ type HostOptions struct {
 	MCP     MCPApplier
 	// AppVersion 用于检查 min_app_version；"dev" 或空表示不检查。
 	AppVersion string
+	// Catalog 是随应用发布的目录（结构见 catalog 包：registry.json 和 bundled/<目录>）；为 nil 时市场里只有远程列表。
+	Catalog fs.FS
+	// RegistryURL 是在线插件列表的地址；为空时不联网刷新，只用内置列表。
+	RegistryURL string
 	// LookPath 查找外部命令（检查 requires），默认 exec.LookPath；测试里可以替换。
 	LookPath func(string) (string, error)
 }
@@ -50,6 +55,8 @@ type Host struct {
 	plugins map[string]*loaded
 	staged  map[string]*stagedPlugin
 	warn    map[string]string
+	// remote 是在线列表里（上次刷新的）条目，见 catalog.go。
+	remote []registryEntry
 }
 
 type stateFile struct {
@@ -105,6 +112,7 @@ func NewHost(opts HostOptions) (*Host, error) {
 	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, warn: map[string]string{}}
 	h.cleanLeftovers()
 	h.loadState()
+	h.loadRegistryCache()
 	h.scan()
 	h.mu.Lock()
 	h.applyLocked()
@@ -143,11 +151,16 @@ func (h *Host) saveStateLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := h.opts.StateFile + ".tmp"
+	return writeFileAtomic(h.opts.StateFile, data)
+}
+
+// writeFileAtomic 先写临时文件再改名，进程中途退出也不会留下写了一半的文件。
+func writeFileAtomic(file string, data []byte) error {
+	tmp := file + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, h.opts.StateFile)
+	return os.Rename(tmp, file)
 }
 
 // scan 读取插件目录下所有插件的清单。
@@ -347,10 +360,28 @@ type Preview struct {
 // 此时什么都没有生效；确认后调用 Install，放弃调用 CancelPreview（不调用也会在下次启动时清理）。
 func (h *Host) Preview(src string) (Preview, error) {
 	src = strings.TrimSpace(src)
+	if isGitSource(src) {
+		url, ref := splitRef(src)
+		return h.PreviewGit(url, ref, "")
+	}
 	fi, err := os.Stat(src)
 	if err != nil {
 		return Preview{}, fmt.Errorf("找不到 %s", src)
 	}
+	return h.stage(src, func(stage string) error {
+		switch {
+		case fi.IsDir():
+			return copyDir(src, stage)
+		case strings.EqualFold(filepath.Ext(src), ".zip"):
+			return extractZip(src, stage)
+		}
+		return errors.New("请选择插件目录或 .zip 文件")
+	})
+}
+
+// stage 把一个插件放进临时目录并校验清单，登记为待确认的安装。fill 负责把内容放进（已存在的空）临时目录；
+// source 只用来记录来源。无论来源是目录、zip、Git 还是内置，之后的校验、确认和安装走同一条路。
+func (h *Host) stage(source string, fill func(stage string) error) (Preview, error) {
 	token, err := randomToken()
 	if err != nil {
 		return Preview{}, err
@@ -360,14 +391,7 @@ func (h *Host) Preview(src string) (Preview, error) {
 		return Preview{}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(stage) }
-	if fi.IsDir() {
-		err = copyDir(src, stage)
-	} else if strings.EqualFold(filepath.Ext(src), ".zip") {
-		err = extractZip(src, stage)
-	} else {
-		err = errors.New("请选择插件目录或 .zip 文件")
-	}
-	if err != nil {
+	if err := fill(stage); err != nil {
 		cleanup()
 		return Preview{}, err
 	}
@@ -395,7 +419,7 @@ func (h *Host) Preview(src string) (Preview, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.staged[token] = &stagedPlugin{dir: stage, m: m, source: src, at: time.Now()}
+	h.staged[token] = &stagedPlugin{dir: stage, m: m, source: source, at: time.Now()}
 	p := Preview{Token: token, Plugin: h.describe(m, stage, nil, "", "")}
 	if _, ok := h.plugins[m.ID]; ok {
 		ex := h.infoLocked(m.ID)

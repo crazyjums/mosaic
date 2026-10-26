@@ -205,7 +205,7 @@ stateDiagram-v2
 
 ## 12. 示例
 
-`examples/plugins/` 里有两个可以直接安装的示例：
+`catalog/bundled/` 里有两个可以直接安装的示例：
 
 - `hello-skill`：只有一个技能和一个斜杠命令（第 1 期，无可执行代码）。
 - `echo-mcp`：一个用 Python 写的最小 MCP 服务（`echo` 工具），带配置表单、状态检查和操作按钮（第 2 期）。
