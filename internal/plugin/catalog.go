@@ -46,6 +46,15 @@ type CatalogEntry struct {
 	// 界面显示“更新”：重新安装会覆盖旧版本并保留配置。
 	Version         string `json:"version,omitempty"`
 	UpdateAvailable bool   `json:"update_available,omitempty"`
+	// Category 是分类（dev / writing / office / data / demo，界面翻译成中文或英文）；Featured 的项显示在“精选”位。
+	Category string `json:"category,omitempty"`
+	Featured bool   `json:"featured,omitempty"`
+	// 卡片上的“它带来什么”：内置插件从它自己的 plugin.json 读出，Git 来源的在安装前不知道。
+	Skills    int      `json:"skills,omitempty"`
+	Commands  int      `json:"commands,omitempty"`
+	Servers   int      `json:"servers,omitempty"`
+	Requires  []string `json:"requires,omitempty"`
+	Sensitive bool     `json:"sensitive,omitempty"`
 }
 
 type registryFile struct {
@@ -61,7 +70,13 @@ type registryEntry struct {
 	Git     string            `json:"git,omitempty"`
 	Ref     string            `json:"ref,omitempty"`
 	Subdir  string            `json:"subdir,omitempty"`
+	// Category 和 Featured 只影响市场里的展示。
+	Category string `json:"category,omitempty"`
+	Featured bool   `json:"featured,omitempty"`
 }
+
+// categories 是市场里认识的分类；界面把它们翻译成中文或英文。
+var categories = map[string]bool{"dev": true, "writing": true, "office": true, "data": true, "demo": true}
 
 var (
 	gitRefRe    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
@@ -209,10 +224,10 @@ func (h *Host) catalogLocked() []CatalogEntry {
 	out := make([]CatalogEntry, 0, len(order))
 	for _, id := range order {
 		e := byID[id]
-		c := CatalogEntry{ID: e.ID, Name: e.Name, Summary: e.Summary, Kind: "git", Git: e.Git, Ref: e.Ref, Subdir: e.Subdir}
+		c := CatalogEntry{ID: e.ID, Name: e.Name, Summary: e.Summary, Kind: "git", Git: e.Git, Ref: e.Ref, Subdir: e.Subdir, Category: e.Category, Featured: e.Featured}
 		if e.Bundled != "" {
 			c.Kind = "bundled"
-			c.Version = h.bundledVersion(e.Bundled)
+			h.fillBundled(&c, e.Bundled)
 		}
 		if l, ok := h.plugins[id]; ok && l.m != nil {
 			c.Installed, c.InstalledVersion = true, l.m.Version
@@ -223,23 +238,35 @@ func (h *Host) catalogLocked() []CatalogEntry {
 	return out
 }
 
-// bundledVersion 读取内置插件自己的 plugin.json 里的版本；读不到返回空串。
-func (h *Host) bundledVersion(name string) string {
+// fillBundled 读取内置插件自己的 plugin.json，填上版本和“带来什么”（技能 / 命令 / 工具的数量、依赖、是否读取私密内容）；
+// 读不到就留空，卡片上少显示一些信息而已。
+func (h *Host) fillBundled(c *CatalogEntry, name string) {
 	sub, err := h.bundledFS(name)
 	if err != nil {
-		return ""
+		return
 	}
 	data, err := fs.ReadFile(sub, FileName)
 	if err != nil {
-		return ""
+		return
 	}
 	var v struct {
-		Version string `json:"version"`
+		Version  string `json:"version"`
+		Skills   []any  `json:"skills"`
+		Commands []any  `json:"commands"`
+		MCP      []struct {
+			Sensitive bool `json:"sensitive"`
+		} `json:"mcp"`
+		Requires struct {
+			Commands []string `json:"commands"`
+		} `json:"requires"`
 	}
 	if json.Unmarshal(data, &v) != nil {
-		return ""
+		return
 	}
-	return v.Version
+	c.Version, c.Skills, c.Commands, c.Servers, c.Requires = v.Version, len(v.Skills), len(v.Commands), len(v.MCP), v.Requires.Commands
+	for _, m := range v.MCP {
+		c.Sensitive = c.Sensitive || m.Sensitive
+	}
 }
 
 // builtinRegistry 读取随应用发布的列表；读不到（没有嵌入、格式坏了）就当作没有。
@@ -273,6 +300,9 @@ func (h *Host) parseRegistry(data []byte) []registryEntry {
 			if len([]rune(v)) > 300 {
 				e.Summary[k] = string([]rune(v)[:300])
 			}
+		}
+		if !categories[e.Category] {
+			e.Category = "" // 不认识的分类当作没有分类，不影响安装
 		}
 		switch {
 		case e.Bundled != "" && e.Git == "":
