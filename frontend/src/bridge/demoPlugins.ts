@@ -1,4 +1,4 @@
-import type { PluginActionResult, PluginCatalogEntry, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
+import type { PluginActionResult, PluginCatalogEntry, PluginLoginState, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
 
 // 演示模式（浏览器预览 / 截图 / 测试）里的插件：内存里的假实现，行为尽量和后端 internal/plugin 一致。
 // 选择路径里带 "hello" 得到一个只有技能和命令的插件，带 "bad" 得到校验失败，其余得到一个带 MCP 工具和配置表单的“飞书”示例。
@@ -19,8 +19,9 @@ const feishu = (): PluginInfo => ({
     { key: "app_secret", label: "App Secret", type: "secret", required: true, value: "", has_secret: false, help: "只保存在系统钥匙串里，界面不会再显示" },
     { key: "readonly", label: "只读模式", type: "bool", default: "true", value: "true", has_secret: false },
   ],
-  has_status: true, actions: [{ id: "login", label: "登录飞书" }],
-  requires: [{ command: "lark-cli", found: false }, { command: "node", found: true }], network: ["open.feishu.cn"],
+  has_status: true, actions: [{ id: "init", label: "初始化应用配置（首次使用）" }],
+  login: { label: "登录飞书", hosts: ["*.feishu.cn"] },
+  requires: [{ command: "lark-cli", found: false }, { command: "python3", found: true }], network: ["open.feishu.cn"],
 });
 
 const catalog = (): Omit<PluginCatalogEntry, "installed" | "installed_version">[] => [
@@ -46,6 +47,9 @@ export function createDemoPlugins() {
     return { ...p, warning: p.enabled && missing ? `还没有填写必填项「${missing.label}」` : undefined };
   };
 
+  // 演示的登录：点击后进入“等待授权”，2.5 秒后自动完成（真实后端是等用户在浏览器里授权）。
+  const logins = new Map<string, { state: PluginLoginState; timer?: ReturnType<typeof setTimeout> }>();
+  const loggedIn = new Set<string>();
   const withState = (): PluginCatalogEntry[] =>
     catalog().map((c) => {
       const p = installed.find((x) => x.id === c.id);
@@ -60,6 +64,30 @@ export function createDemoPlugins() {
   };
 
   return {
+    startPluginLogin: async (id: string): Promise<PluginLoginState> => {
+      const p = find(id);
+      if (!p.login) throw new Error("这个插件没有登录流程"); // 演示后端不检查依赖，方便预览登录界面
+      const cur = logins.get(id);
+      if (cur?.state.state === "running") return cur.state;
+      const run: { state: PluginLoginState; timer?: ReturnType<typeof setTimeout> } = {
+        state: { state: "running", url: "https://accounts.feishu.cn/demo-authorize", message: "已在浏览器里打开飞书授权页，请用你的飞书账号登录并同意授权。" },
+      };
+      run.timer = setTimeout(() => {
+        if (run.state.state !== "running") return;
+        loggedIn.add(id);
+        run.state = { state: "ok", message: "登录完成。已登录：演示用户" };
+      }, 2500);
+      logins.set(id, run);
+      return run.state;
+    },
+    getPluginLoginState: async (id: string): Promise<PluginLoginState> => logins.get(id)?.state ?? { state: "idle" },
+    cancelPluginLogin: async (id: string): Promise<void> => {
+      const run = logins.get(id);
+      if (run?.state.state === "running") {
+        clearTimeout(run.timer);
+        run.state = { state: "cancelled", message: "已取消" };
+      }
+    },
     scaffoldPlugin: async (parentDir: string, id: string): Promise<string> => {
       if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(id.trim())) throw new Error("插件 ID 只能用小写字母、数字和 -，以字母或数字开头，最长 24 个字符");
       return `${parentDir.replace(/\/$/, "")}/${id.trim()}`;
@@ -119,8 +147,10 @@ export function createDemoPlugins() {
     getPluginStatus: async (id: string): Promise<PluginStatus> => {
       const p = find(id);
       if (!p.has_status) return { state: "none" };
+      if (p.login && loggedIn.has(id)) return { state: "ok", message: "已登录：演示用户" };
       const missing = p.requires.filter((r) => !r.found).map((r) => r.command);
       if (missing.length) return { state: "missing_dependency", missing, message: `缺少依赖：${missing.join("、")}` };
+      if (p.login) return loggedIn.has(id) ? { state: "ok", message: "已登录：演示用户" } : { state: "bad", message: "未登录（当前只有机器人身份，读不到你的文档和消息）。" };
       return p.config.some((c) => c.type === "secret" && !c.has_secret) ? { state: "bad", message: '{"ok":false}' } : { state: "ok", message: '{"ok":true,"user":"demo"}' };
     },
     runPluginAction: async (id: string, action: string): Promise<PluginActionResult> => {

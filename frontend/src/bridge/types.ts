@@ -354,6 +354,10 @@ export interface Backend {
   // ---- 插件（见 docs/design/plugin-system.md）----
   listPlugins(): Promise<PluginInfo[]>;
   /** 在 parentDir 下生成一个可以直接安装的最小插件模板，返回新目录的路径 */
+  /** 开始插件的一键登录：在系统浏览器里打开授权页，返回当前状态（含授权链接）；之后轮询 getPluginLoginState */
+  startPluginLogin(id: string): Promise<PluginLoginState>;
+  getPluginLoginState(id: string): Promise<PluginLoginState>;
+  cancelPluginLogin(id: string): Promise<void>;
   scaffoldPlugin(parentDir: string, id: string): Promise<string>;
   /** 插件市场的列表（内置的加上上次刷新到的在线列表），不联网 */
   listPluginCatalog(): Promise<PluginCatalogEntry[]>;
@@ -737,6 +741,8 @@ export interface PluginInfo {
   config: PluginConfigView[];
   has_status: boolean;
   actions: { id: string; label: string }[];
+  /** 不为空表示有“一键登录”按钮 */
+  login?: { label: string; hosts: string[] };
   requires: { command: string; found: boolean }[];
   network: string[];
   installed_at?: string;
@@ -754,6 +760,17 @@ export interface PluginCatalogEntry {
   ref?: string;
   installed: boolean;
   installed_version?: string;
+  /** 市场里这一项的版本 */
+  version?: string;
+  /** 市场里的版本和已安装的不同：显示“更新” */
+  update_available?: boolean;
+}
+
+export interface PluginLoginState {
+  state: "idle" | "running" | "ok" | "failed" | "cancelled";
+  /** 授权链接：浏览器没有自动打开时让用户点开或复制 */
+  url?: string;
+  message?: string;
 }
 
 export interface PluginPreview {

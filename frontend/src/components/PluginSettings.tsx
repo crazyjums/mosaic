@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
+import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
 import { language, t } from "../i18n";
 import PluginInstallDialog from "./PluginInstallDialog";
 
@@ -197,11 +197,11 @@ export default function PluginSettings() {
               <li key={c.id} className="rounded-ctl px-2 py-1.5">
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
-                  {c.installed ? (
+                  {c.installed && !c.update_available ? (
                     <span className="shrink-0 text-[11px] text-muted">{t("已安装")}</span>
                   ) : (
                     <button className="btn shrink-0 px-2 py-0.5 text-xs" disabled={!!fetching} onClick={() => void startPreview(c.id, () => backend().previewCatalogPlugin(c.id))}>
-                      {fetching === c.id ? t("下载中…") : t("安装")}
+                      {fetching === c.id ? t("下载中…") : c.installed ? t("更新到 v{v}", { v: c.version ?? "" }) : t("安装")}
                     </button>
                   )}
                 </div>
@@ -232,6 +232,7 @@ const STATUS_TEXT: Record<PluginStatus["state"], string> = { ok: "状态正常",
 
 function PluginDetail({ plugin: p, onChange, onRemoved }: { plugin: PluginInfo; onChange: (p: PluginInfo) => void; onRemoved: () => void }) {
   const [error, setError] = useState("");
+  const [statusTick, setStatusTick] = useState(0); // 登录完成后让“状态”马上重新检查
   const [busy, setBusy] = useState(false);
   const run = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     setError("");
@@ -275,7 +276,8 @@ function PluginDetail({ plugin: p, onChange, onRemoved }: { plugin: PluginInfo; 
       {p.warning && <div className="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">{p.warning}</div>}
       {error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
-      {!p.error && p.has_status && <StatusBlock plugin={p} />}
+      {!p.error && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
+      {!p.error && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
       {!p.error && p.actions.length > 0 && <ActionsBlock plugin={p} />}
 
@@ -342,7 +344,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 // ---- 状态 ----
 
 /** 打开详情时检查一次，之后每 30 秒一次；保存配置后也会重新检查（用 plugin.config 变化触发）。 */
-function StatusBlock({ plugin: p }: { plugin: PluginInfo }) {
+function StatusBlock({ plugin: p, refresh = 0 }: { plugin: PluginInfo; refresh?: number }) {
   const [st, setSt] = useState<PluginStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const configKey = JSON.stringify(p.config.map((c) => [c.value, c.has_secret]));
@@ -360,7 +362,7 @@ function StatusBlock({ plugin: p }: { plugin: PluginInfo }) {
     void check();
     const timer = setInterval(() => void check(), 30000);
     return () => clearInterval(timer);
-  }, [check, configKey, p.enabled]);
+  }, [check, configKey, p.enabled, refresh]);
   return (
     <Block title={t("状态")}>
       <div className="flex items-center gap-2 text-sm">
@@ -373,6 +375,104 @@ function StatusBlock({ plugin: p }: { plugin: PluginInfo }) {
       </div>
       {st?.message && <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-ctl bg-code px-2.5 py-2 font-mono text-[11px]">{st.message}</pre>}
       {st?.state === "missing_dependency" && <div className="mt-1 text-xs text-muted">{t("先安装缺少的命令，装好后点“重新检查”。")}</div>}
+    </Block>
+  );
+}
+
+// ---- 一键登录 ----
+
+/**
+ * 点一下：后端在系统浏览器里打开授权页并在后台等待，这里每 1.5 秒看一次结果（和 ChatGPT 账号登录同一个交互）。
+ * 令牌由插件自己的程序保存，界面看不到也拿不到。
+ */
+function LoginBlock({ plugin: p, login, onDone }: { plugin: PluginInfo; login: { label: string; hosts: string[] }; onDone: () => void }) {
+  const [st, setSt] = useState<PluginLoginState>({ state: "idle" });
+  const [error, setError] = useState("");
+  const [starting, setStarting] = useState(false);
+
+  // 切到别的插件再回来时，后台可能还有一次登录在等。
+  useEffect(() => {
+    let alive = true;
+    void backend()
+      .getPluginLoginState(p.id)
+      .then((s) => alive && setSt(s))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [p.id]);
+
+  useEffect(() => {
+    if (st.state !== "running") return;
+    const timer = setInterval(async () => {
+      try {
+        const next = await backend().getPluginLoginState(p.id);
+        setSt(next);
+        if (next.state === "ok") onDone();
+      } catch {
+        /* 下次再试 */
+      }
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [st.state, p.id, onDone]);
+
+  const start = async () => {
+    setError("");
+    setStarting(true);
+    try {
+      setSt(await backend().startPluginLogin(p.id));
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setStarting(false);
+    }
+  };
+  const cancel = async () => {
+    await backend().cancelPluginLogin(p.id).catch(() => {});
+    setSt(await backend().getPluginLoginState(p.id));
+  };
+
+  return (
+    <Block title={t("账号")}>
+      {st.state === "running" ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden="true" />
+            {t("等待你在浏览器里完成授权…")}
+          </div>
+          {st.message && <div className="text-xs text-muted">{st.message}</div>}
+          <div className="flex flex-wrap gap-2">
+            {st.url && (
+              <button className="btn px-3 text-xs" onClick={() => void backend().openExternalURL(st.url!).catch((e) => setError(errMsg(e)))}>
+                {t("重新打开授权页")}
+              </button>
+            )}
+            {st.url && (
+              <button className="btn px-3 text-xs" onClick={() => void navigator.clipboard?.writeText(st.url!)}>
+                {t("复制链接")}
+              </button>
+            )}
+            <button className="btn px-3 text-xs" onClick={() => void cancel()}>
+              {t("取消")}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <button className="btn-primary" onClick={() => void start()} disabled={starting || !p.enabled}>
+              {starting ? t("正在打开…") : st.state === "ok" ? t("重新登录") : login.label}
+            </button>
+            {st.state === "ok" && <span className="text-xs text-ok">{t("已登录")}</span>}
+            {st.state === "cancelled" && <span className="text-xs text-muted">{t("已取消")}</span>}
+          </div>
+          {!p.enabled && <div className="text-xs text-muted">{t("先启用这个插件。")}</div>}
+          {st.state === "ok" && st.message && <div className="text-xs text-muted">{st.message}</div>}
+          {st.state === "failed" && <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-ctl bg-code px-2.5 py-2 font-mono text-[11px] text-danger">{st.message}</pre>}
+          <div className="text-[11px] text-muted">{t("会在系统浏览器里打开授权页（只会打开 {hosts} 下的链接）。令牌由插件自己的程序保存，本应用不接触。", { hosts: login.hosts.join("、") })}</div>
+        </div>
+      )}
+      {error && <div className="mt-2 text-sm text-danger">{error}</div>}
     </Block>
   );
 }
