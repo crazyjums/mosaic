@@ -41,3 +41,13 @@ func TestRegisterServerTools(t *testing.T) {
 		t.Fatalf("应调用原始工具名: %+v %s", r, c.called)
 	}
 }
+
+func TestToolAdapterSensitive(t *testing.T) {
+	a := &ToolAdapter{Server: "s", Info: ToolInfo{Name: "t"}, Sensitive: true}
+	if sp := a.Spec(); !sp.Sensitive || sp.Risk != permission.RiskExec {
+		t.Fatalf("%+v", sp)
+	}
+	if (&ToolAdapter{Server: "s", Info: ToolInfo{Name: "t"}}).Spec().Sensitive {
+		t.Fatal("默认不是私密工具")
+	}
+}

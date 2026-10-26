@@ -169,12 +169,14 @@ func (p *ModePolicy) Reset() {
 
 // Request 是一次待确认的工具调用。
 type Request struct {
-	ID      string
-	CallID  string
-	Tool    string
-	Risk    Risk
-	Summary string
-	Input   json.RawMessage
+	ID     string
+	CallID string
+	Tool   string
+	Risk   Risk
+	// Sensitive 为 true 时界面不提供“本会话总是允许”。
+	Sensitive bool
+	Summary   string
+	Input     json.RawMessage
 }
 
 // ErrUnknownRequest 表示回复了一个不存在（已处理/已取消/拼错）的请求。

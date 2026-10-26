@@ -254,7 +254,7 @@ func (m *Manager) run(ctx context.Context, s *server) {
 	}
 	var skipped []string
 	for _, info := range tools {
-		a := &ToolAdapter{Server: s.cfg.Name, Info: info, Client: c, Risk: s.cfg.Risk}
+		a := &ToolAdapter{Server: s.cfg.Name, Info: info, Client: c, Risk: s.cfg.Risk, Sensitive: s.cfg.Sensitive}
 		// 重名（例如两个工具名只差一个点号，替换后相同）时跳过后一个，而不是让整个 server 不可用。
 		if err := m.reg.Register(a); err != nil {
 			skipped = append(skipped, info.Name)

@@ -232,6 +232,8 @@ type ServerView struct {
 	Declared  string `json:"declared_risk"`
 	Effective string `json:"effective_risk"`
 	Approved  bool   `json:"approved"`
+	// Sensitive：工具会读取私密内容，每次调用都询问。
+	Sensitive bool `json:"sensitive,omitempty"`
 }
 
 // ConfigView 是设置表单的一项加上当前值。secret 的值永远不返回，只说有没有设置。
@@ -318,7 +320,7 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 		if transport == mcp.TransportHTTP {
 			cmdline = s.URL
 		}
-		info.Servers = append(info.Servers, ServerView{Name: name, Transport: transport, Command: cmdline, Declared: string(declared), Effective: string(eff), Approved: approved})
+		info.Servers = append(info.Servers, ServerView{Name: name, Transport: transport, Command: cmdline, Declared: string(declared), Effective: string(eff), Approved: approved, Sensitive: s.Sensitive})
 	}
 	for _, c := range m.Config {
 		v := ConfigView{ConfigField: c}
@@ -730,7 +732,7 @@ func (h *Host) serverConfigsLocked(id string) ([]mcp.ServerConfig, error) {
 	var out []mcp.ServerConfig
 	for _, s := range l.m.MCP {
 		name := l.m.ServerName(s)
-		cfg := mcp.ServerConfig{Name: name, Transport: s.Transport, Risk: permission.RiskExec}
+		cfg := mcp.ServerConfig{Name: name, Transport: s.Transport, Risk: permission.RiskExec, Sensitive: s.Sensitive}
 		if cfg.Transport == "" {
 			cfg.Transport = mcp.TransportStdio
 		}

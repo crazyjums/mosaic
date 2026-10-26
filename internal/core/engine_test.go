@@ -36,6 +36,12 @@ type harness struct {
 // answer 决定如何回答权限请求（在事件回调里同步回答，模拟一个"秒回"的界面）。
 func newHarness(t *testing.T, script fake.Script, maxSteps int, answer func(*core.Engine, event.PermissionRequest)) *harness {
 	t.Helper()
+	return newHarnessWith(t, script, maxSteps, answer)
+}
+
+// newHarnessWith 和 newHarness 一样，只是可以额外注册工具。
+func newHarnessWith(t *testing.T, script fake.Script, maxSteps int, answer func(*core.Engine, event.PermissionRequest), extra ...tool.Tool) *harness {
+	t.Helper()
 	reg := provider.NewRegistry()
 	reg.Register("fake", func(cfg provider.ProfileConfig) (provider.Provider, error) {
 		return fake.NewWithScript(cfg.Name, script, 0), nil
@@ -50,6 +56,11 @@ func newHarness(t *testing.T, script fake.Script, maxSteps int, answer func(*cor
 
 	tools := tool.NewRegistry()
 	builtin.Register(tools, builtin.Options{ShellTimeout: 5 * time.Second})
+	for _, x := range extra {
+		if err := tools.Register(x); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	ws := t.TempDir()
 	mem := store.NewMemory()
@@ -779,5 +790,49 @@ func TestGroupFailoverEmitsRouteAndRecordsUsage(t *testing.T) {
 	}
 	if strings.Join(texts, "") != "来自 b" {
 		t.Fatalf("文本: %v", texts)
+	}
+}
+
+// secretTool 是一个“读私密内容”的只读工具，用来测试 Spec.Sensitive。
+type secretTool struct{ ran int }
+
+func (s *secretTool) Spec() tool.Spec {
+	return tool.Spec{Name: "read_secret", Description: "读私密内容", InputSchema: json.RawMessage(`{"type":"object"}`), Risk: permission.RiskRead, Sensitive: true}
+}
+func (s *secretTool) Summarize(json.RawMessage) string { return "读取私密内容" }
+func (s *secretTool) Execute(context.Context, tool.Call) tool.Result {
+	s.ran++
+	return tool.Result{Output: "内容"}
+}
+
+func secretScript() fake.Script {
+	call := fake.Step{ToolCalls: []fake.ToolSpec{{Name: "read_secret", Input: json.RawMessage(`{}`)}}}
+	return fake.Script{Steps: []fake.Step{call, call, {Text: "完成"}}}
+}
+
+// 私密工具即使是只读、即使用户点过“本会话总是允许”，每次调用也都要问；请求里带 Sensitive，界面据此不提供“总是允许”。
+func TestSensitiveToolAlwaysAsks(t *testing.T) {
+	st := &secretTool{}
+	asked := 0
+	var flags []bool
+	h := newHarnessWith(t, secretScript(), 0, func(e *core.Engine, p event.PermissionRequest) {
+		asked++
+		flags = append(flags, p.Sensitive)
+		_ = e.RespondPermission(p.RequestID, "allow_session")
+	}, st)
+	if res, err := h.engine.Send(context.Background(), "读一下"); err != nil || res.Reason != event.TurnCompleted {
+		t.Fatalf("%v %+v", err, res)
+	}
+	if asked != 2 || st.ran != 2 || !flags[0] || !flags[1] {
+		t.Fatalf("同一轮里调两次都应该询问: asked=%d ran=%d flags=%v", asked, st.ran, flags)
+	}
+}
+
+func TestSensitiveToolRespectsDeny(t *testing.T) {
+	st := &secretTool{}
+	h := newHarnessWith(t, secretScript(), 0, deny, st)
+	h.engine.Send(context.Background(), "读一下")
+	if st.ran != 0 {
+		t.Fatalf("拒绝后不应执行: %d", st.ran)
 	}
 }

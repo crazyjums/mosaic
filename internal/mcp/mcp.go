@@ -36,6 +36,8 @@ type ServerConfig struct {
 	// Source 是这份配置的来源：空表示用户在设置里添加的，"plugin:<id>" 表示插件带来的。
 	// 由 Manager 在 Apply / ApplySource 时设置，调用方（包括前端保存设置时传来的值）填的会被覆盖。
 	Source string `json:"source,omitempty"`
+	// Sensitive 表示这个 server 的工具会读取私密内容（聊天记录、文档），每次调用都询问，不能被“总是允许”绕过。
+	Sensitive bool `json:"sensitive,omitempty"`
 }
 
 // serverNameRe 限制 server 名：它会成为工具名的一部分，而各厂商要求工具名只含字母、数字、_ 和 -。
@@ -92,6 +94,8 @@ type ToolAdapter struct {
 	Info   ToolInfo
 	Client Client
 	Risk   permission.Risk
+	// Sensitive 见 ServerConfig.Sensitive。
+	Sensitive bool
 }
 
 // QualifiedName 返回带 server 前缀的工具名，例如 mcp__github__create_issue。
@@ -122,6 +126,7 @@ func (a *ToolAdapter) Spec() tool.Spec {
 		Description: fmt.Sprintf("[MCP: %s] %s", a.Server, a.Info.Description),
 		InputSchema: schema,
 		Risk:        risk,
+		Sensitive:   a.Sensitive,
 	}
 }
 

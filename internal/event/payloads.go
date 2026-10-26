@@ -127,10 +127,12 @@ type ToolResult struct {
 // PermissionRequest 请求用户确认一次工具调用。
 // 前端弹窗后调用 RespondPermission(request_id, decision) 回复；在回复之前 agent 循环处于阻塞等待状态。
 type PermissionRequest struct {
-	RequestID string          `json:"request_id"`
-	CallID    string          `json:"call_id"`
-	Tool      string          `json:"tool"`
-	Risk      string          `json:"risk"`
+	RequestID string `json:"request_id"`
+	CallID    string `json:"call_id"`
+	Tool      string `json:"tool"`
+	Risk      string `json:"risk"`
+	// Sensitive：工具会读取私密内容，每次都要确认，界面不提供“本会话总是允许”。
+	Sensitive bool            `json:"sensitive,omitempty"`
 	Summary   string          `json:"summary"` // 工具生成的人类可读摘要，例如"写入 notes.md（120 字节）"
 	Input     json.RawMessage `json:"input"`
 }
