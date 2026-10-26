@@ -95,23 +95,31 @@ function renderMermaid(code: string): Promise<string> {
   return job;
 }
 
-/** ```mermaid 代码块：按需加载 mermaid（体积大，只在第一次用到时下载），渲染失败时显示源码和错误。 */
-export function MermaidDiagram({ code }: { code: string }) {
+// Graphviz（DOT 语言）：用 @viz-js/viz（Graphviz 编译成 WebAssembly），在本地渲染，不联网。体积不小，只在第一次用到时才加载。
+let vizPromise: Promise<{ renderString(src: string, opts?: { format?: string }): string }> | null = null;
+async function renderDot(code: string): Promise<string> {
+  vizPromise ??= import("@viz-js/viz").then((m) => m.instance());
+  return (await vizPromise).renderString(code, { format: "svg" });
+}
+
+/** 把一段图的源码渲染成 SVG 并显示；失败时显示源码和错误，可以切换查看源码。 */
+function RenderedDiagram({ title, code, render }: { title: string; code: string; render: (code: string) => Promise<string> }) {
   const [state, setState] = useState<{ svg?: string; error?: string }>({});
   const [showSource, setShowSource] = useState(false);
   useEffect(() => {
     let alive = true;
-    renderMermaid(code)
+    setState({});
+    render(code)
       .then((svg) => alive && setState({ svg }))
       .catch((e) => alive && setState({ error: String(e instanceof Error ? e.message : e) }));
     return () => {
       alive = false;
     };
-  }, [code]);
+  }, [code, render]);
   return (
     <div className="not-prose my-2 rounded-lg border border-line bg-panel px-3 py-2">
       <div className="mb-1 flex text-[11px] text-muted">
-        <span>{t("Mermaid 图")}</span>
+        <span>{title}</span>
         <div className="flex-1" />
         <button className="hover:text-fg" onClick={() => setShowSource(!showSource)}>
           {showSource ? t("显示图") : t("显示源码")}
@@ -123,12 +131,22 @@ export function MermaidDiagram({ code }: { code: string }) {
           <code>{code}</code>
         </pre>
       ) : state.svg ? (
-        <ZoomableImage src={svgDataURL(state.svg)} alt={t("Mermaid 图")} />
+        <ZoomableImage src={svgDataURL(state.svg)} alt={title} />
       ) : (
         <div className="text-xs text-muted">{t("正在渲染图…")}</div>
       )}
     </div>
   );
+}
+
+/** ```mermaid 代码块：按需加载 mermaid（体积大，只在第一次用到时下载），渲染失败时显示源码和错误。 */
+export function MermaidDiagram({ code }: { code: string }) {
+  return <RenderedDiagram title={t("Mermaid 图")} code={code} render={renderMermaid} />;
+}
+
+/** ```dot / ```graphviz 代码块：Graphviz 图（流程图、依赖图、状态机等）。 */
+export function GraphvizDiagram({ code }: { code: string }) {
+  return <RenderedDiagram title={t("Graphviz 图")} code={code} render={renderDot} />;
 }
 
 /** ```svg 代码块（或内容是 <svg> 的 xml/html 代码块）：显示图，可以切换到源码。 */

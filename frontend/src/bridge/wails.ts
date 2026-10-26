@@ -11,7 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
-  GitOverview, GitCommit, GitCommitDetail, GitDiff,
+  WorkspaceFile, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -41,6 +41,8 @@ interface GoApp {
   TestProvider(input: ProviderInput): Promise<TestResult>;
   FetchModels(input: ProviderInput): Promise<string[] | null>;
   GetWorkspaceInfo(): Promise<WorkspaceInfo>;
+  ReadWorkspaceText(path: string): Promise<WorkspaceFile>;
+  OpenWorkspaceFile(path: string): Promise<void>;
   GitOverview(): Promise<GitOverview>;
   GitLog(skip: number, limit: number): Promise<GitCommit[] | null>;
   GitCommit(hash: string): Promise<GitCommitDetail>;
@@ -136,6 +138,8 @@ export function createWailsBackend(): Backend {
     deleteSession: (id) => app.DeleteSession(id),
     renameSession: (id, title) => app.RenameSession(id, title),
     readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),
+    readWorkspaceText: (path) => app.ReadWorkspaceText(path),
+    openWorkspaceFile: (path) => app.OpenWorkspaceFile(path),
     openExternalURL: (url) => app.OpenExternalURL(url),
     setModel: (p, m) => app.SetModel(p, m),
     send: (sid, t, atts) => app.SendToSession(sid, t, atts ?? []),

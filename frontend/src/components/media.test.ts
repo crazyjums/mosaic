@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { IMAGE_EXT, isLocalPath, normalizeLocalPath, svgDataURL } from "./MediaView";
-import { isTitleOnly } from "./ThinkingCard";
+import { describe, expect, it, vi } from "vitest";
+
+// 渲染组件会（经 FileLink）引入 chatStore，store 创建时会选择后端；测试环境没有 window，用一个空后端顶替。
+vi.mock("../bridge", () => ({ backend: () => ({ kind: "demo", onEvent: () => () => {} }) }));
+const { IMAGE_EXT, isLocalPath, normalizeLocalPath, svgDataURL } = await import("./MediaView");
+const { isTitleOnly } = await import("./ThinkingCard");
 
 describe("聊天里的图片", () => {
   it("区分本地路径和网址", () => {

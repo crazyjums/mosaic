@@ -328,6 +328,10 @@ export interface Backend {
   renameSession(id: string, title: string): Promise<void>;
   /** 读取当前会话工作区内的图片，返回 data URL（聊天里显示模型生成的 SVG / PNG） */
   readWorkspaceImage(path: string): Promise<string>;
+  /** 读取工作区内的文本文件（网页、SVG、Markdown、Mermaid、DOT 等）做预览；path 是相对工作区或工作区内的绝对路径 */
+  readWorkspaceText(path: string): Promise<WorkspaceFile>;
+  /** 用系统默认程序打开工作区内的文件（.html 在默认浏览器里打开）；只允许安全的文档/网页/图片类型 */
+  openWorkspaceFile(path: string): Promise<void>;
   /** 在系统浏览器中打开 http / https 链接 */
   openExternalURL(url: string): Promise<void>;
   setModel(profile: string, model: string): Promise<Status>;
@@ -644,4 +648,12 @@ export interface GitDiff {
   truncated?: boolean;
   binary?: boolean;
   note?: string;
+}
+
+/** 产物预览读出的文本文件。path 是它在电脑上的绝对路径。 */
+export interface WorkspaceFile {
+  path: string;
+  text: string;
+  size: number;
+  truncated?: boolean;
 }
