@@ -51,6 +51,7 @@
 
 **看得见、管得住**
 
+- 📦 **产物面板**：agent 写出的网页（沙箱预览）、SVG、Mermaid / Graphviz 流程图、Markdown 都能直接预览，文件路径点击用默认浏览器 / 程序打开，悬停显示绝对路径
 - 👀 **可视化**：思考过程（折叠时也能看到真实的“思考摘要”）、工具调用、权限确认、模型生成的 SVG / PNG / Mermaid 图、上下文明细面板
 - 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关；每个会话只能读写自己的工作区
 - 🌿 **Git 窗口**：点击状态栏的分支，打开只读的 Git 窗口——分支图、提交历史、提交详情与着色 diff、工作区变更
@@ -70,6 +71,8 @@
 | --- | --- |
 | ![发送队列与附件](docs/images/queue-attachments.png) | ![Git 窗口](docs/images/git-window.png) |
 | **发送队列与附件**：agent 工作时继续输入，消息排队等候；附件以卡片和缩略图随消息显示；折叠的过程里露出真实的“思考摘要” | **Git 窗口**：分支图、提交历史、提交详情与 diff、工作区变更；全程只读 |
+| ![产物面板](docs/images/artifacts-panel.png) | |
+| **产物面板**：右侧标签页（上下文 / 产物，可折叠），点文件预览网页、流程图、文档 | |
 | ![权限确认弹窗](docs/images/chat-permission.png) | ![浅色主题](docs/images/chat-done-light.png) |
 | **权限确认**：写文件、执行命令前停下来等你确认；本会话总是允许、拒绝后模型会换个办法继续 | **浅色主题**：思考过程默认在输出结束后折叠 |
 | ![用 ChatGPT 账号登录](docs/images/settings-chatgpt.png) | ![MCP 服务器](docs/images/settings-mcp.png) |
