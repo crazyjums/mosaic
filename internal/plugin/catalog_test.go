@@ -20,7 +20,7 @@ func newCatalogHost(t *testing.T, registryURL string) (*Host, string) {
 	root := t.TempDir()
 	h, err := NewHost(HostOptions{
 		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
-		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.5.0",
+		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.6.0",
 		Catalog: catalog.FS, RegistryURL: registryURL,
 	})
 	if err != nil {
@@ -45,6 +45,19 @@ func TestCatalogBuiltinAndInstall(t *testing.T) {
 	}
 	if e, _ := findEntry(h.Catalog(), "hello-skill"); !e.Installed || e.InstalledVersion == "" {
 		t.Fatalf("装好后应标记已安装: %+v", e)
+	}
+	if e, _ := findEntry(h.Catalog(), "hello-skill"); e.Version == "" || e.UpdateAvailable {
+		t.Fatalf("刚装好的版本和市场一致，不应提示更新: %+v", e)
+	}
+	// 市场里的版本和已安装的不同：提示更新；重新安装后恢复。
+	manifest := filepath.Join(h.opts.Dir, "hello-skill", FileName)
+	data, _ := os.ReadFile(manifest)
+	must(t, os.WriteFile(manifest, []byte(strings.Replace(string(data), `"version": "0.1.0"`, `"version": "0.0.1"`, 1)), 0o644))
+	h.mu.Lock()
+	h.scan()
+	h.mu.Unlock()
+	if e, _ := findEntry(h.Catalog(), "hello-skill"); !e.UpdateAvailable || e.InstalledVersion != "0.0.1" {
+		t.Fatalf("应提示更新: %+v", e)
 	}
 	if _, err := h.PreviewCatalog("nope"); err == nil {
 		t.Fatal("不存在的 id 应报错")

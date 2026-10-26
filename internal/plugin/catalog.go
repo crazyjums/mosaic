@@ -42,6 +42,10 @@ type CatalogEntry struct {
 	// Installed 表示已经装了同 ID 的插件，InstalledVersion 是它的版本。
 	Installed        bool   `json:"installed"`
 	InstalledVersion string `json:"installed_version,omitempty"`
+	// Version 是市场里这一项的版本（内置插件读它自己的 plugin.json）；已安装的版本和它不同时 UpdateAvailable 为 true，
+	// 界面显示“更新”：重新安装会覆盖旧版本并保留配置。
+	Version         string `json:"version,omitempty"`
+	UpdateAvailable bool   `json:"update_available,omitempty"`
 }
 
 type registryFile struct {
@@ -208,13 +212,34 @@ func (h *Host) catalogLocked() []CatalogEntry {
 		c := CatalogEntry{ID: e.ID, Name: e.Name, Summary: e.Summary, Kind: "git", Git: e.Git, Ref: e.Ref, Subdir: e.Subdir}
 		if e.Bundled != "" {
 			c.Kind = "bundled"
+			c.Version = h.bundledVersion(e.Bundled)
 		}
 		if l, ok := h.plugins[id]; ok && l.m != nil {
 			c.Installed, c.InstalledVersion = true, l.m.Version
+			c.UpdateAvailable = c.Version != "" && c.Version != l.m.Version
 		}
 		out = append(out, c)
 	}
 	return out
+}
+
+// bundledVersion 读取内置插件自己的 plugin.json 里的版本；读不到返回空串。
+func (h *Host) bundledVersion(name string) string {
+	sub, err := h.bundledFS(name)
+	if err != nil {
+		return ""
+	}
+	data, err := fs.ReadFile(sub, FileName)
+	if err != nil {
+		return ""
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(data, &v) != nil {
+		return ""
+	}
+	return v.Version
 }
 
 // builtinRegistry 读取随应用发布的列表；读不到（没有嵌入、格式坏了）就当作没有。
