@@ -220,6 +220,29 @@ func TestPreviewGitWithoutGit(t *testing.T) {
 	}
 }
 
+// 卡片上的信息：分类、精选、带来什么，都来自 registry.json 和内置插件自己的清单。
+func TestCatalogCardInfo(t *testing.T) {
+	h, _ := newCatalogHost(t, "")
+	list := h.Catalog()
+	fe, ok := findEntry(list, "feishu")
+	if !ok || !fe.Featured || fe.Category != "office" || !fe.Sensitive || fe.Servers != 1 || fe.Skills != 1 || fe.Commands != 2 || len(fe.Requires) != 2 {
+		t.Fatalf("%+v", fe)
+	}
+	if cr, _ := findEntry(list, "code-review"); cr.Featured || cr.Category != "dev" || cr.Sensitive || cr.Servers != 0 {
+		t.Fatalf("%+v", cr)
+	}
+	for _, e := range list {
+		if e.Category == "" {
+			t.Errorf("%s 没有分类", e.ID)
+		}
+	}
+	// 不认识的分类当作没有分类，但条目本身保留。
+	got := h.parseRegistry([]byte(`{"version":1,"plugins":[{"id":"x","name":"X","git":"https://github.com/a/x","category":"weird","featured":true}]}`))
+	if len(got) != 1 || got[0].Category != "" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func findEntry(list []CatalogEntry, id string) (CatalogEntry, bool) {
 	for _, e := range list {
 		if e.ID == id {

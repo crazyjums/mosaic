@@ -24,9 +24,19 @@ const feishu = (): PluginInfo => ({
   requires: [{ command: "lark-cli", found: false }, { command: "python3", found: true }], network: ["open.feishu.cn"],
 });
 
+// 演示市场：几项内置的、一项 Git 来源的（飞书），用来预览卡片、精选位和分类。
+const simple = (id: string, name: string, description: string, skills: string[], commands: string[]): PluginInfo => ({
+  id, name, version: "0.1.0", description, enabled: false, skills, commands: commands.map((c) => ({ name: c, description: "" })),
+  servers: [], config: [], has_status: false, actions: [], requires: [], network: [],
+});
 const catalog = (): Omit<PluginCatalogEntry, "installed" | "installed_version">[] => [
-  { id: "hello", name: "问候示例", kind: "bundled", summary: { zh: "一个技能加一个 /hello 命令，用来熟悉插件怎么用。", en: "A skill plus a /hello command, to get familiar with plugins." } },
-  { id: "feishu", name: "飞书", kind: "git", git: "https://github.com/example/mosaic-feishu", ref: "v0.1.0", summary: { zh: "读取飞书文档和群消息（示例）。", en: "Read Feishu docs and chats (demo)." } },
+  { id: "feishu", name: "飞书", kind: "git", git: "https://github.com/example/mosaic-feishu", ref: "v0.1.0", version: "0.1.0", category: "office", featured: true, skills: 1, commands: 2, servers: 1, requires: ["python3", "lark-cli"], sensitive: true,
+    summary: { zh: "用你的飞书账号登录，让模型读取你的飞书文档和群消息（只读，每次读取都会询问）。", en: "Sign in with your Feishu account so the model can read your docs and group chats (read-only; every read asks first)." } },
+  { id: "code-review", name: "代码评审", kind: "bundled", version: "0.1.0", category: "dev", skills: 1, commands: 1, summary: { zh: "评审清单加 /review 命令：按正确性、边界、安全、测试分级给意见。", en: "A review checklist plus /review: feedback graded by correctness, edge cases, security and tests." } },
+  { id: "git-assistant", name: "Git 助手", kind: "bundled", version: "0.1.0", category: "dev", skills: 1, commands: 2, summary: { zh: "/commit-msg 写提交信息，/pr-desc 写 PR 描述，先参考仓库已有的风格。", en: "/commit-msg and /pr-desc, following the repo's style." } },
+  { id: "writing-kit", name: "写作工具箱", kind: "bundled", version: "0.1.0", category: "writing", skills: 1, commands: 4, summary: { zh: "周报、会议纪要、润色、翻译四个命令。", en: "Weekly report, meeting minutes, polishing and translation." } },
+  { id: "sql-helper", name: "SQL 助手", kind: "bundled", version: "0.1.0", category: "data", skills: 1, commands: 2, summary: { zh: "/sql 写和解释 SQL，/sql-tune 分析慢查询；不连接任何数据库。", en: "/sql writes and explains SQL, /sql-tune analyses slow queries; never connects to a database." } },
+  { id: "hello", name: "问候示例", kind: "bundled", version: "0.1.0", category: "demo", skills: 1, commands: 1, summary: { zh: "一个技能加一个 /hello 命令，用来熟悉插件怎么用。", en: "A skill plus a /hello command, to get familiar with plugins." } },
 ];
 
 export function createDemoPlugins() {
@@ -96,7 +106,8 @@ export function createDemoPlugins() {
     refreshPluginCatalog: async (): Promise<PluginCatalogEntry[]> => withState(),
     previewCatalogPlugin: async (id: string): Promise<PluginPreview> => {
       if (!catalog().some((c) => c.id === id)) throw new Error(`市场里没有插件 "${id}"`);
-      return stage(id === "hello" ? hello() : feishu());
+      const c = catalog().find((x) => x.id === id)!;
+      return stage(id === "hello" ? hello() : id === "feishu" ? feishu() : simple(id, c.name, c.summary?.zh ?? "", ["skill"], Array.from({ length: c.commands ?? 0 }, (_, n) => `${id}-${n + 1}`)));
     },
     listPlugins: async (): Promise<PluginInfo[]> => installed.map(warn),
     previewPlugin: async (src: string): Promise<PluginPreview> => {

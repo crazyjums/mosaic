@@ -69,13 +69,15 @@ describe("演示模式的插件", () => {
   it("插件市场：列出内置和 Git 来源，装好后标记已安装；Git 地址只收 https", async () => {
     const b = createDemoPlugins();
     const list = await b.listPluginCatalog();
-    expect(list.map((c) => [c.id, c.kind, c.installed])).toEqual([["hello", "bundled", false], ["feishu", "git", false]]);
+    expect(list.map((c) => [c.id, c.kind, c.installed]).slice(0, 2)).toEqual([["feishu", "git", false], ["code-review", "bundled", false]]);
+    expect(list.find((c) => c.featured)?.id).toBe("feishu");
+    expect(list.every((c) => !!c.category)).toBe(true);
 
     const p = await b.previewCatalogPlugin("hello");
     expect(await b.listPlugins()).toHaveLength(0); // 预览不生效
     await b.installPlugin(p.token, []);
     const after = await b.refreshPluginCatalog();
-    expect(after[0]).toMatchObject({ installed: true, installed_version: "0.1.0" });
+    expect(after.find((c) => c.id === "hello")).toMatchObject({ installed: true, installed_version: "0.1.0" });
     await expect(b.previewCatalogPlugin("nope")).rejects.toThrow("没有插件");
 
     await expect(b.previewPlugin("http://github.com/a/b")).rejects.toThrow("https://");

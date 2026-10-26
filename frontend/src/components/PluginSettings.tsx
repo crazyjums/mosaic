@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
-import { language, t } from "../i18n";
+import { t } from "../i18n";
 import PluginInstallDialog from "./PluginInstallDialog";
+import { CATEGORIES, FeaturedCard, PluginCard, PluginIcon, matches } from "./PluginMarket";
 
 // 设置 → 插件：已安装的插件列表 + 详情（设置表单、状态、操作按钮、依赖、提供的内容）。
 //
 // 界面完全由插件清单“声明”出来（表单字段、状态检查、按钮），插件本身不能往界面里注入任何代码。
 
 const errMsg = (e: unknown) => String(e instanceof Error ? e.message : e);
+
+type Tab = "market" | "installed";
+type Panel = "git" | "new" | null;
+
+const DOCS_URL = "https://github.com/crazyjums/mosaic/blob/master/docs/plugin-development.md";
 
 export default function PluginSettings() {
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
@@ -19,10 +25,13 @@ export default function PluginSettings() {
   const [market, setMarket] = useState<PluginCatalogEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [marketError, setMarketError] = useState("");
-  const [gitOpen, setGitOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("market");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [panel, setPanel] = useState<Panel>(null);
   const [gitUrl, setGitUrl] = useState("");
   const [fetching, setFetching] = useState("");
-  const [newOpen, setNewOpen] = useState(false);
   const [newId, setNewId] = useState("");
   const [created, setCreated] = useState("");
 
@@ -61,13 +70,14 @@ export default function PluginSettings() {
       const p = await get();
       setInstallError("");
       setPreview(p);
-      setGitOpen(false);
+      setPanel(null);
     } catch (e) {
       setError(errMsg(e));
     } finally {
       setFetching("");
     }
   };
+  const getFromMarket = (c: PluginCatalogEntry) => void startPreview(c.id, () => backend().previewCatalogPlugin(c.id));
 
   const startInstall = async (kind: "dir" | "zip") => {
     setError("");
@@ -103,6 +113,7 @@ export default function PluginSettings() {
       await reload();
       void loadMarket(false);
       setSelected(info.id);
+      setTab("installed"); // 装好就去看它：设置、登录都在详情里
     } catch (e) {
       setInstallError(errMsg(e));
     } finally {
@@ -113,114 +124,217 @@ export default function PluginSettings() {
     if (preview) void backend().cancelPluginPreview(preview.token).catch(() => {});
     setPreview(null);
   };
+  const openDocs = () => void backend().openExternalURL(DOCS_URL).catch((e) => setError(errMsg(e)));
 
-  const current = plugins?.find((p) => p.id === selected);
   const replace = (p: PluginInfo) => setPlugins((list) => (list ? list.map((x) => (x.id === p.id ? p : x)) : list));
+  const updateOf = (id: string) => market.find((c) => c.id === id && c.update_available);
+  const toggleEnabled = async (p: PluginInfo) => {
+    try {
+      replace(await backend().setPluginEnabled(p.id, !p.enabled));
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
+
+  const shown = market.filter((c) => matches(c, query) && (!category || c.category === category));
+  const featured = category || query ? [] : shown.filter((c) => c.featured);
+  const rest = shown.filter((c) => !featured.includes(c));
+  const usedCategories = CATEGORIES.filter(([k]) => market.some((c) => c.category === k));
+  const installed = (plugins ?? []).filter((p) => !query.trim() || [p.id, p.name, p.description ?? ""].some((x) => x.toLowerCase().includes(query.trim().toLowerCase())));
+  const current = plugins?.find((p) => p.id === selected);
+
+  const menuItem = (label: string, hint: string, run: () => void) => (
+    <button
+      key={label}
+      className="block w-full rounded-ctl px-3 py-2 text-left hover:bg-accent-soft"
+      onClick={() => {
+        setMenuOpen(false);
+        run();
+      }}
+    >
+      <span className="block text-sm">{label}</span>
+      <span className="block text-[11px] text-muted">{hint}</span>
+    </button>
+  );
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-line">
-        <div className="space-y-2 border-b border-line p-3">
-          <div className="flex gap-2">
-            <button className="btn-primary flex-1 px-2 text-xs" onClick={() => void startInstall("dir")} title={t("选择一个插件文件夹（里面有 plugin.json）")}>
-              {t("安装文件夹…")}
-            </button>
-            <button className="btn flex-1 px-2 text-xs" onClick={() => void startInstall("zip")} title={t("选择一个 .zip 插件包")}>
-              {t("安装 zip…")}
-            </button>
-          </div>
-          <button className="btn w-full px-2 text-xs" onClick={() => setGitOpen((v) => !v)} aria-expanded={gitOpen}>
-            {t("从 Git 地址安装…")}
-          </button>
-          <button className="btn w-full px-2 text-xs" onClick={() => setNewOpen((v) => !v)} aria-expanded={newOpen} title={t("生成一个最小的插件模板，用来学习怎么写插件")}>
-            {t("新建插件模板…")}
-          </button>
-          {newOpen && (
-            <form
-              className="space-y-1.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newId.trim()) void createTemplate();
-              }}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center gap-3 border-b border-line px-5 py-3">
+        <div role="tablist" className="flex rounded-ctl bg-panel-2 p-0.5">
+          {(["market", "installed"] as Tab[]).map((k) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={tab === k}
+              className={`rounded-ctl px-4 py-1 text-sm ${tab === k ? "bg-panel font-semibold shadow-sm" : "text-muted hover:text-fg"}`}
+              onClick={() => setTab(k)}
             >
-              <input className="input w-full text-xs" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="my-plugin" aria-label={t("插件 ID")} autoFocus />
-              <button className="btn-primary w-full px-3 text-xs" type="submit" disabled={!newId.trim()}>
-                {t("选择目录并生成")}
-              </button>
-              <p className="text-[11px] leading-snug text-muted">{t("ID 用小写字母、数字和 -。生成后改里面的文字，再用“安装文件夹…”装上试试。")}</p>
-              {created && <p className="break-all text-[11px] leading-snug text-ok">{t("已生成：{path}", { path: created })}</p>}
-            </form>
-          )}
-          {gitOpen && (
-            <form
-              className="space-y-1.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (gitUrl.trim()) void startPreview("git", () => backend().previewPlugin(gitUrl.trim()));
-              }}
-            >
-              <input className="input w-full text-xs" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} placeholder="https://github.com/owner/repo#v1.0" aria-label={t("Git 地址")} autoFocus />
-              <button className="btn-primary w-full px-3 text-xs" type="submit" disabled={!gitUrl.trim() || fetching === "git"}>
-                {fetching === "git" ? t("下载中…") : t("下载并检查")}
-              </button>
-              <p className="text-[11px] leading-snug text-muted">{t("只支持 https:// 地址，可在末尾用 #分支或标签 指定版本；需要电脑上装有 git。")}</p>
-            </form>
+              {k === "market" ? t("市场") : t("已安装")}
+              {k === "installed" && !!plugins?.length && <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 text-[11px] text-accent">{plugins.length}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1" />
+        <input className="input w-52 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("搜索插件…")} aria-label={t("搜索插件…")} />
+        <div className="relative">
+          <button className="btn-primary px-3 text-sm" onClick={() => setMenuOpen((v) => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>
+            ＋ {t("添加")} ▾
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+              <div role="menu" className="shadow-pop absolute right-0 top-full z-20 mt-1 w-64 rounded-modal border border-line bg-panel p-1.5">
+                {menuItem(t("安装文件夹…"), t("选择一个插件文件夹（里面有 plugin.json）"), () => void startInstall("dir"))}
+                {menuItem(t("安装 zip…"), t("选择一个 .zip 插件包"), () => void startInstall("zip"))}
+                {menuItem(t("从 Git 地址安装…"), "https://…#" + t("分支或标签"), () => setPanel("git"))}
+                {menuItem(t("新建插件模板…"), t("生成一个最小的插件模板，用来学习怎么写插件"), () => setPanel("new"))}
+              </div>
+            </>
           )}
         </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto p-2" aria-label={t("已安装的插件")}>
-          {plugins === null && <li className="px-2 py-2 text-xs text-muted">{t("加载中…")}</li>}
-          {plugins?.length === 0 && <li className="px-2 py-2 text-xs leading-relaxed text-muted">{t("还没有安装插件。插件可以提供技能、斜杠命令和外部工具（MCP）。从下面的“插件市场”挑一个装上，或用上面的按钮安装自己的插件。")}</li>}
-          {plugins?.map((p) => (
-            <li key={p.id}>
-              <button className={`flex w-full items-center gap-2 rounded-ctl px-2.5 py-2 text-left text-sm hover:bg-accent-soft ${p.id === selected ? "bg-accent-soft" : ""}`} onClick={() => setSelected(p.id)}>
-                <span className={`h-2 w-2 shrink-0 rounded-full ${p.error ? "bg-danger" : p.warning ? "bg-warn" : p.enabled ? "bg-ok" : "bg-muted/50"}`} aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{p.name}</span>
-                  <span className="block truncate text-[11px] text-muted">
-                    v{p.version} · {p.error ? t("不可用") : p.enabled ? t("已启用") : t("已停用")}
-                  </span>
-                </span>
+      </div>
+
+      {panel === "git" && (
+        <form
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-5 py-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (gitUrl.trim()) void startPreview("git", () => backend().previewPlugin(gitUrl.trim()));
+          }}
+        >
+          <input className="input min-w-[16rem] flex-1 text-sm" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} placeholder="https://github.com/owner/repo#v1.0" aria-label={t("Git 地址")} autoFocus />
+          <button className="btn-primary px-4 text-sm" type="submit" disabled={!gitUrl.trim() || fetching === "git"}>
+            {fetching === "git" ? t("下载中…") : t("下载并检查")}
+          </button>
+          <button className="btn px-3 text-sm" type="button" onClick={() => setPanel(null)}>
+            {t("取消")}
+          </button>
+          <p className="basis-full text-[11px] leading-snug text-muted">{t("只支持 https:// 地址，可在末尾用 #分支或标签 指定版本；需要电脑上装有 git。")}</p>
+        </form>
+      )}
+      {panel === "new" && (
+        <form
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-5 py-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (newId.trim()) void createTemplate();
+          }}
+        >
+          <input className="input w-56 text-sm" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="my-plugin" aria-label={t("插件 ID")} autoFocus />
+          <button className="btn-primary px-4 text-sm" type="submit" disabled={!newId.trim()}>
+            {t("选择目录并生成")}
+          </button>
+          <button className="btn px-3 text-sm" type="button" onClick={() => setPanel(null)}>
+            {t("取消")}
+          </button>
+          <p className="basis-full text-[11px] leading-snug text-muted">{t("ID 用小写字母、数字和 -。生成后改里面的文字，再用“安装文件夹…”装上试试。")}</p>
+          {created && <p className="basis-full break-all text-[11px] leading-snug text-ok">{t("已生成：{path}", { path: created })}</p>}
+        </form>
+      )}
+      {error && <div className="mx-5 mt-3 shrink-0 rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
+
+      {tab === "market" ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 pt-3">
+            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={t("分类")}>
+              {[["", "全部"] as [string, string], ...usedCategories].map(([k, label]) => (
+                <button
+                  key={k || "all"}
+                  aria-pressed={category === k}
+                  className={`rounded-full border px-3 py-0.5 text-xs ${category === k ? "border-fg bg-fg text-bg" : "border-line text-muted hover:text-fg"}`}
+                  onClick={() => setCategory(k)}
+                >
+                  {t(label)}
+                </button>
+              ))}
+            </div>
+            {featured.map((c) => (
+              <FeaturedCard key={c.id} c={c} busy={fetching === c.id} onGet={() => getFromMarket(c)} />
+            ))}
+            {rest.length > 0 && <div className="mb-2 text-xs font-semibold text-muted">{t("全部插件 · {n}", { n: rest.length })}</div>}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {rest.map((c) => (
+                <PluginCard key={c.id} c={c} busy={fetching === c.id} onGet={() => getFromMarket(c)} />
+              ))}
+            </div>
+            {shown.length === 0 && <div className="py-10 text-center text-sm text-muted">{t("没有匹配的插件。")}</div>}
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-line px-5 py-2.5 text-xs text-muted">
+            <span>
+              {t("没找到想要的？")}
+              <button className="ml-1 text-accent hover:underline" onClick={() => setPanel("git")}>
+                {t("从 Git 地址安装")}
               </button>
-            </li>
-          ))}
-        </ul>
-        <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-line p-2" aria-label={t("插件市场")}>
-          <div className="flex items-center justify-between px-2 pb-1">
-            <span className="text-xs font-medium text-muted">{t("插件市场")}</span>
-            <button className="text-[11px] text-accent hover:underline disabled:opacity-50" disabled={refreshing} onClick={() => void loadMarket(true)}>
+            </span>
+            <span>
+              {t("想自己写一个？")}
+              <button className="ml-1 text-accent hover:underline" onClick={openDocs}>
+                {t("插件开发指南")} ↗
+              </button>
+            </span>
+            <span className="flex-1" />
+            {marketError && <span className="text-warn">{t("没能刷新在线列表（{err}），先显示已有的。", { err: marketError })}</span>}
+            <button className="text-accent hover:underline disabled:opacity-50" disabled={refreshing} onClick={() => void loadMarket(true)}>
               {refreshing ? t("刷新中…") : t("刷新")}
             </button>
           </div>
-          {marketError && <div className="px-2 pb-1 text-[11px] leading-snug text-warn">{t("没能刷新在线列表（{err}），先显示已有的。", { err: marketError })}</div>}
-          <ul>
-            {market.map((c) => (
-              <li key={c.id} className="rounded-ctl px-2 py-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
-                  {c.installed && !c.update_available ? (
-                    <span className="shrink-0 text-[11px] text-muted">{t("已安装")}</span>
-                  ) : (
-                    <button className="btn shrink-0 px-2 py-0.5 text-xs" disabled={!!fetching} onClick={() => void startPreview(c.id, () => backend().previewCatalogPlugin(c.id))}>
-                      {fetching === c.id ? t("下载中…") : c.installed ? t("更新到 v{v}", { v: c.version ?? "" }) : t("安装")}
-                    </button>
-                  )}
-                </div>
-                <div className="text-[11px] leading-snug text-muted">{c.summary?.[language()] ?? c.summary?.zh ?? c.summary?.en ?? ""}</div>
-                <div className="text-[10px] text-muted/70">{c.kind === "bundled" ? t("内置") : t("来自 Git 仓库")}</div>
-              </li>
-            ))}
-          </ul>
         </div>
-      </aside>
-
-      <section className="min-w-0 flex-1 overflow-y-auto p-5">
-        {error && <div className="mb-3 rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
-        {current ? (
-          <PluginDetail key={current.id} plugin={current} onChange={replace} onRemoved={() => void reload()} />
-        ) : (
-          <div className="text-sm text-muted">{t("选择左边的插件查看详情，或安装一个新的。")}</div>
-        )}
-      </section>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <aside className="flex w-64 shrink-0 flex-col border-r border-line">
+            <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2" aria-label={t("已安装的插件")}>
+              {plugins === null && <li className="px-2 py-2 text-xs text-muted">{t("加载中…")}</li>}
+              {plugins?.length === 0 && (
+                <li className="px-2 py-3 text-xs leading-relaxed text-muted">
+                  {t("还没有安装插件。插件可以提供技能、斜杠命令和外部工具（MCP）。")}
+                  <button className="mt-2 block text-accent hover:underline" onClick={() => setTab("market")}>
+                    {t("去市场看看")} →
+                  </button>
+                </li>
+              )}
+              {plugins && plugins.length > 0 && installed.length === 0 && <li className="px-2 py-3 text-xs text-muted">{t("没有匹配的插件。")}</li>}
+              {installed.map((p) => (
+                <li key={p.id} className={`flex items-center gap-2 rounded-modal px-2 py-2 ${p.id === selected ? "bg-accent-soft" : "hover:bg-panel-2"} ${p.enabled ? "" : "opacity-70"}`}>
+                  <button className="flex min-w-0 flex-1 items-center gap-2.5 text-left" onClick={() => setSelected(p.id)}>
+                    <PluginIcon id={p.id} name={p.name} size={34} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{p.name}</span>
+                      <span className="flex items-center gap-1.5 truncate text-[11px] text-muted">
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.error ? "bg-danger" : p.warning ? "bg-warn" : p.enabled ? "bg-ok" : "bg-muted/50"}`} aria-hidden="true" />
+                        v{p.version} · {p.error ? t("不可用") : p.enabled ? t("已启用") : t("已停用")}
+                        {updateOf(p.id) && <span className="rounded-full bg-accent-soft px-1.5 text-accent">{t("有更新")}</span>}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    role="switch"
+                    aria-checked={p.enabled}
+                    aria-label={t("启用")}
+                    disabled={!!p.error}
+                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-40 ${p.enabled ? "bg-accent" : "bg-muted/40"}`}
+                    onClick={() => void toggleEnabled(p)}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${p.enabled ? "left-[18px]" : "left-0.5"}`} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </aside>
+          <section className="min-w-0 flex-1 overflow-y-auto p-5">
+            {current ? (
+              <PluginDetail
+                key={current.id}
+                plugin={current}
+                onChange={replace}
+                onRemoved={() => void reload()}
+                update={updateOf(current.id) ? { version: updateOf(current.id)!.version ?? "", busy: fetching === current.id, onUpdate: () => getFromMarket(updateOf(current.id)!) } : undefined}
+              />
+            ) : (
+              <div className="text-sm text-muted">{t("选择左边的插件查看详情，或安装一个新的。")}</div>
+            )}
+          </section>
+        </div>
+      )}
 
       {preview && <PluginInstallDialog preview={preview} busy={installing} error={installError} onConfirm={(a) => void confirmInstall(a)} onCancel={cancelInstall} />}
     </div>
@@ -230,7 +344,7 @@ export default function PluginSettings() {
 const STATUS_DOT: Record<PluginStatus["state"], string> = { ok: "bg-ok", bad: "bg-danger", missing_dependency: "bg-warn", unknown: "bg-warn", none: "" };
 const STATUS_TEXT: Record<PluginStatus["state"], string> = { ok: "状态正常", bad: "状态异常", missing_dependency: "缺少依赖", unknown: "无法判断状态", none: "" };
 
-function PluginDetail({ plugin: p, onChange, onRemoved }: { plugin: PluginInfo; onChange: (p: PluginInfo) => void; onRemoved: () => void }) {
+function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: PluginInfo; onChange: (p: PluginInfo) => void; onRemoved: () => void; update?: { version: string; busy: boolean; onUpdate: () => void } }) {
   const [error, setError] = useState("");
   const [statusTick, setStatusTick] = useState(0); // 登录完成后让“状态”马上重新检查
   const [busy, setBusy] = useState(false);
@@ -272,6 +386,14 @@ function PluginDetail({ plugin: p, onChange, onRemoved }: { plugin: PluginInfo; 
         </label>
       </header>
 
+      {update && (
+        <div className="flex items-center gap-3 rounded-ctl border border-accent/40 bg-accent-soft px-3 py-2 text-sm">
+          <span className="flex-1">{t("插件市场里有新版本 v{v}（当前 v{cur}）。更新会保留你的设置。", { v: update.version, cur: p.version })}</span>
+          <button className="btn-primary px-3 text-xs" disabled={update.busy} onClick={update.onUpdate}>
+            {update.busy ? t("下载中…") : t("更新")}
+          </button>
+        </div>
+      )}
       {p.error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{p.error}</div>}
       {p.warning && <div className="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">{p.warning}</div>}
       {error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
