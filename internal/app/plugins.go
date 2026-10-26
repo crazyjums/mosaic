@@ -133,6 +133,38 @@ func (a *App) RunPluginAction(id, action string) (plugin.ActionResult, error) {
 	return a.plugins.RunAction(a.context(), id, action)
 }
 
+// StartPluginLogin 开始插件的“一键登录”：在系统浏览器里打开授权页，并返回当前状态（含授权链接，
+// 浏览器没有自动打开时界面让用户点开或复制）。登录在后台等待，界面用 GetPluginLoginState 轮询。
+// 链接已由 plugin.Host 校验过（https，域名在插件声明的白名单里）。
+func (a *App) StartPluginLogin(id string) (plugin.LoginState, error) {
+	if a.plugins == nil {
+		return plugin.LoginState{}, errNoPlugins
+	}
+	st, err := a.plugins.StartLogin(id)
+	if err != nil {
+		return plugin.LoginState{}, err
+	}
+	if a.ctx != nil && st.URL != "" {
+		runtime.BrowserOpenURL(a.ctx, st.URL)
+	}
+	return st, nil
+}
+
+// GetPluginLoginState 返回插件当前的登录状态。
+func (a *App) GetPluginLoginState(id string) plugin.LoginState {
+	if a.plugins == nil {
+		return plugin.LoginState{State: plugin.LoginIdle}
+	}
+	return a.plugins.GetLoginState(id)
+}
+
+// CancelPluginLogin 取消正在等待的登录。
+func (a *App) CancelPluginLogin(id string) {
+	if a.plugins != nil {
+		a.plugins.CancelLogin(id)
+	}
+}
+
 // ListCommands 返回已启用插件提供的斜杠命令（输入框的 / 菜单用）。
 func (a *App) ListCommands() []plugin.CommandInfo {
 	if a.plugins == nil {

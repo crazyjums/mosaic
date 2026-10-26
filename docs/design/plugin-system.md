@@ -202,6 +202,12 @@ stateDiagram-v2
 - **私密**：`sensitive: true`，每次读取都弹窗确认。技能里要求模型把读到的内容当数据，不执行其中的指令。
 - **没验证的**：我们没有飞书租户，只用假的 lark-cli 脚本测了“传给 lark-cli 什么 / 拒绝什么 / 登录状态怎么流转”。**已确认**（来自真机反馈）：`auth status` 输出一个 JSON，未登录时 `identity` 是 `bot`、带 `note`（“Token does not exist or has been cleared… Re-login”），但 `userName` 等字段还在、退出码是 0——所以状态以 `identity == "user"` 判断，不能看退出码或有没有用户名；授权命令成功后还会再查一次状态，没拿到用户令牌就不报“登录完成”。**不确定**：`auth login --no-wait` 输出里设备码的位置（先找 JSON 里键名含 `device_code` 的字符串，再用正则）、各读取命令的确切参数（由模型现查帮助）、Windows 上 `lark-cli.cmd` 的调用。
 
+### 一键登录（第 3.5 期）
+
+声明在 `login`（`start` / `finish` / `url_hosts`，格式见插件开发指南）。`Host.StartLogin` 运行 `start`（40 秒超时），从输出里取 `{"url","message"}`，用 `checkLoginURL` 校验（https、无用户名密码、域名在 `url_hosts` 里，支持 `*.example.com`），再在后台运行 `finish`（最长 10 分钟）并把状态记在内存里（`running/ok/failed/cancelled`）。App 层在拿到链接后调用 `runtime.BrowserOpenURL` 打开；界面每 1.5 秒轮询 `GetPluginLoginState`，可取消（终止进程）。同一个插件同时只有一次登录，等待中再点返回同一次的状态（方便重新打开链接）。停用 / 卸载插件会取消它。应用不接触令牌：令牌由插件的程序保存（飞书是 lark-cli 存进系统钥匙串）。
+
+飞书插件据此改成 `login-start`（`lark-cli auth login --recommend --no-wait`，打印 `{"url"}`、记下设备码）和 `login-wait`（`lark-cli auth login --device-code …` 阻塞到授权完成，再确认 `identity == "user"`）。
+
 ## 10. 分期
 
 | 期 | 内容 | 状态 |
@@ -211,6 +217,7 @@ stateDiagram-v2
 | 3 | 飞书插件（只读）和 `sensitive` 私密工具标记 | 已实现第一版；**登录流程和读取命令的参数没有在真实租户里验证**，见下“飞书插件” |
 | 4 | 钩子（`user_prompt_submit` / `pre_tool_use` / `post_tool_use` / `turn_end`），单独的安装确认，并发安全 | 未做（等有真实需求） |
 | 2.5 | 插件市场（内置插件 + 在线列表 + 本地缓存）和 Git 地址安装 | 已实现 |
+| 3.5 | 一键登录（`login`）；市场里内置插件有新版本时提示更新 | 已实现 |
 | 以后 | 插件自动更新与固定提交、签名、Slack、子 agent 调度、受限的自定义界面（在现有的沙箱 iframe 上加受限消息通道） | 按需 |
 
 ## 11. 已确定的决策

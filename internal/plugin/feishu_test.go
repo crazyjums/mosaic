@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/crazyjums/myllmapp/catalog"
 	"github.com/crazyjums/myllmapp/internal/mcp"
@@ -40,8 +41,8 @@ case "$1 $2" in
   if [ -e '` + filepath.Join(bin, "loggedin") + `' ]; then echo '{"appId":"cli_x","brand":"feishu","identity":"user","userName":"小明","userOpenId":"ou_1"}'; else echo '{"appId":"cli_x","brand":"feishu","defaultAs":"auto","identity":"bot","note":"Token does not exist or has been cleared. Only bot (tenant) identity is available. Re-login: lark-cli auth login","userName":"小明","userOpenId":"ou_1"}'; fi; exit 0;;
 "auth login")
   case "$*" in
-  *--no-wait*) echo '{"ok":true,"data":{"verification_url":"https://accounts.example/auth?x=1","device_code":"DEVCODE123456"}}'; exit 0;;
-  *--device-code\ DEVCODE123456*) touch '` + filepath.Join(bin, "loggedin") + `'; echo '{"ok":true}'; exit 0;;
+  *--no-wait*) echo '{"ok":true,"data":{"verification_url":"https://accounts.feishu.cn/auth?x=1","device_code":"DEVCODE123456"}}'; exit 0;;
+  *--device-code\ DEVCODE123456*) if [ -e '` + filepath.Join(bin, "slow") + `' ]; then sleep 20; fi; touch '` + filepath.Join(bin, "loggedin") + `'; echo '{"ok":true}'; exit 0;;
   esac; echo 'bad login args' >&2; exit 1;;
 "config init") echo 'open https://accounts.example/config'; exit 0;;
 esac
@@ -70,7 +71,7 @@ func TestFeishuPlugin(t *testing.T) {
 	root := t.TempDir()
 	h, err := NewHost(HostOptions{
 		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
-		Secrets: secret.NewMemory(), MCP: mgr, AppVersion: "1.5.0", Catalog: catalog.FS,
+		Secrets: secret.NewMemory(), MCP: mgr, AppVersion: "1.6.0", Catalog: catalog.FS,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,18 +154,20 @@ func TestFeishuPlugin(t *testing.T) {
 	if err != nil || st.State != StateBad || !strings.Contains(st.Message, "未登录") || !strings.Contains(st.Message, "Re-login") {
 		t.Fatalf("没登录应是异常，并给出原因: %v %+v", err, st)
 	}
-	if act, err := h.RunAction(context.Background(), "feishu", "login-finish"); err != nil || act.ExitCode == 0 || !strings.Contains(act.Output, "没有进行中的登录") {
-		t.Fatalf("没开始登录就完成应提示: %v %+v", err, act)
+	// 没开始登录就没有等待中的状态。
+	if got := h.GetLoginState("feishu"); got.State != LoginIdle {
+		t.Fatalf("%+v", got)
 	}
-	act, err := h.RunAction(context.Background(), "feishu", "login")
-	if err != nil || act.ExitCode != 0 || !strings.Contains(act.Output, "https://accounts.example/auth?x=1") {
-		t.Fatalf("应显示授权链接: %v %+v", err, act)
+	ls, err := h.StartLogin("feishu")
+	if err != nil || ls.State != LoginRunning || ls.URL != "https://accounts.feishu.cn/auth?x=1" {
+		t.Fatalf("应返回授权链接并进入等待: %v %+v", err, ls)
 	}
 	if _, err := os.Stat(filepath.Join(root, "plugin-data", "feishu", "pending-login.json")); err != nil {
 		t.Fatalf("设备码应记在插件数据目录里: %v", err)
 	}
-	if act, err := h.RunAction(context.Background(), "feishu", "login-finish"); err != nil || act.ExitCode != 0 || !strings.Contains(act.Output, "登录完成") {
-		t.Fatalf("%v %+v", err, act)
+	waitUntil(t, func() bool { return h.GetLoginState("feishu").State == LoginOK })
+	if got := h.GetLoginState("feishu"); !strings.Contains(got.Message, "登录完成") || !strings.Contains(got.Message, "小明") {
+		t.Fatalf("%+v", got)
 	}
 	if st, err := h.Status(context.Background(), "feishu"); err != nil || st.State != StateOK || !strings.Contains(st.Message, "已登录：小明") {
 		t.Fatalf("登录后应正常: %v %+v", err, st)
@@ -187,7 +190,7 @@ func TestFeishuMissingLarkCLI(t *testing.T) {
 	root := t.TempDir()
 	h, err := NewHost(HostOptions{
 		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
-		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.5.0", Catalog: catalog.FS,
+		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.6.0", Catalog: catalog.FS,
 		LookPath: func(name string) (string, error) {
 			if name == "python3" {
 				return "/usr/bin/python3", nil
@@ -238,7 +241,7 @@ func TestFeishuLoginFinishWithoutToken(t *testing.T) {
 	root := t.TempDir()
 	h, err := NewHost(HostOptions{
 		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
-		Secrets: secret.NewMemory(), MCP: mgr, AppVersion: "1.5.0", Catalog: catalog.FS,
+		Secrets: secret.NewMemory(), MCP: mgr, AppVersion: "1.6.0", Catalog: catalog.FS,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -250,11 +253,51 @@ func TestFeishuLoginFinishWithoutToken(t *testing.T) {
 	if _, err := h.Install(p.Token, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.RunAction(context.Background(), "feishu", "login"); err != nil {
+	if _, err := h.StartLogin("feishu"); err != nil {
 		t.Fatal(err)
 	}
-	act, err := h.RunAction(context.Background(), "feishu", "login-finish")
-	if err != nil || act.ExitCode == 0 || strings.Contains(act.Output, "登录完成") || !strings.Contains(act.Output, "仍然没有可用的用户令牌") {
-		t.Fatalf("没拿到令牌时不应报登录完成: %v %+v", err, act)
+	waitUntil(t, func() bool { return h.GetLoginState("feishu").State == LoginFailed })
+	if got := h.GetLoginState("feishu"); strings.Contains(got.Message, "登录完成") || !strings.Contains(got.Message, "仍然没有可用的用户令牌") {
+		t.Fatalf("没拿到令牌时不应报登录完成: %+v", got)
 	}
+}
+
+// 取消：后台等待被终止，状态是已取消，之后还能重新开始。
+func TestFeishuLoginCancel(t *testing.T) {
+	fake := newFakeLark(t)
+	must(t, os.WriteFile(filepath.Join(fake.bin, "slow"), nil, 0o644))
+	root := t.TempDir()
+	h, err := NewHost(HostOptions{
+		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
+		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.6.0", Catalog: catalog.FS,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := h.PreviewCatalog("feishu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Install(p.Token, nil); err != nil {
+		t.Fatal(err)
+	}
+	first, err := h.StartLogin("feishu")
+	if err != nil || first.State != LoginRunning {
+		t.Fatalf("%v %+v", err, first)
+	}
+	if again, _ := h.StartLogin("feishu"); again.State != LoginRunning || again.URL != first.URL {
+		t.Fatalf("等待中再点应返回同一次登录，方便重新打开链接: %+v", again)
+	}
+	h.CancelLogin("feishu")
+	if got := h.GetLoginState("feishu"); got.State != LoginCancelled {
+		t.Fatalf("%+v", got)
+	}
+	time.Sleep(300 * time.Millisecond) // 后台进程被终止后不应把状态改回去
+	if got := h.GetLoginState("feishu"); got.State != LoginCancelled {
+		t.Fatalf("取消后状态不应变化: %+v", got)
+	}
+	if _, err := h.StartLogin("feishu"); err != nil {
+		t.Fatalf("取消后应能重新开始: %v", err)
+	}
+	h.CancelLogin("feishu")
 }

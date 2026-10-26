@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDemoPlugins } from "./demoPlugins";
 
 // 演示后端的插件行为要和真实后端（internal/plugin）一致，界面才能在浏览器里预览和截图。
@@ -49,7 +49,7 @@ describe("演示模式的插件", () => {
     const b = createDemoPlugins();
     await b.installPlugin((await b.previewPlugin("/x/feishu")).token, []);
     expect(await b.getPluginStatus("feishu")).toMatchObject({ state: "missing_dependency", missing: ["lark-cli"] });
-    expect((await b.runPluginAction("feishu", "login")).error).toContain("lark-cli");
+    expect((await b.runPluginAction("feishu", "init")).error).toContain("lark-cli");
     await expect(b.runPluginAction("feishu", "nope")).rejects.toThrow();
   });
 
@@ -86,5 +86,32 @@ describe("演示模式的插件", () => {
     const b = createDemoPlugins();
     await expect(b.scaffoldPlugin("/tmp", "Bad_ID")).rejects.toThrow("插件 ID");
     expect(await b.scaffoldPlugin("/tmp/", "my-plugin")).toBe("/tmp/my-plugin");
+  });
+
+  it("一键登录：点击后等待授权，完成后状态变为已登录；可取消、可重新开始", async () => {
+    vi.useFakeTimers();
+    try {
+      const b = createDemoPlugins();
+      await b.installPlugin((await b.previewPlugin("/x/feishu")).token, []);
+      expect((await b.listPlugins())[0].login).toMatchObject({ label: "登录飞书" });
+      expect(await b.getPluginLoginState("feishu")).toEqual({ state: "idle" });
+
+      const st = await b.startPluginLogin("feishu");
+      expect(st).toMatchObject({ state: "running", url: expect.stringContaining("https://") });
+      expect((await b.startPluginLogin("feishu")).url).toBe(st.url); // 等待中再点：同一次登录
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(await b.getPluginLoginState("feishu")).toMatchObject({ state: "ok" });
+      expect((await b.getPluginStatus("feishu")).message).toContain("已登录");
+
+      await b.startPluginLogin("feishu");
+      await b.cancelPluginLogin("feishu");
+      await vi.advanceTimersByTimeAsync(3000);
+      expect((await b.getPluginLoginState("feishu")).state).toBe("cancelled"); // 取消后不会被定时器改回去
+
+      await b.installPlugin((await b.previewPlugin("/x/hello")).token, []);
+      await expect(b.startPluginLogin("hello")).rejects.toThrow("没有登录流程");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

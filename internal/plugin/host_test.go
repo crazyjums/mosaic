@@ -672,3 +672,56 @@ func TestSkillFoldersFollowEnabled(t *testing.T) {
 		t.Fatalf("%+v", folders)
 	}
 }
+
+// 一键登录的清单校验和链接白名单：插件的程序不能借“登录”让应用打开任意网址。
+func TestLoginURLAllowlist(t *testing.T) {
+	hosts := []string{"*.feishu.cn", "login.example.com"}
+	for _, ok := range []string{"https://accounts.feishu.cn/x?a=1", "https://feishu.cn/", "https://login.example.com/a"} {
+		if err := checkLoginURL(ok, hosts); err != nil {
+			t.Errorf("%s 应放行: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{
+		"http://accounts.feishu.cn/x", "file:///etc/passwd", "javascript:alert(1)", "https://evilfeishu.cn/", "https://feishu.cn.evil.com/",
+		"https://user:pw@accounts.feishu.cn/", "https://other.example.com/", "", "not a url", "https://",
+	} {
+		if checkLoginURL(bad, hosts) == nil {
+			t.Errorf("%q 应拒绝", bad)
+		}
+	}
+	if link, msg, err := parseLoginStart("warn: x\n{\"url\":\"https://accounts.feishu.cn/a\",\"message\":\"请授权\"}\n", hosts); err != nil || link != "https://accounts.feishu.cn/a" || msg != "请授权" {
+		t.Fatalf("%q %q %v", link, msg, err)
+	}
+	for _, bad := range []string{"no json", `{"url":`, `{"url":"https://evil.com/"}`, `{"message":"x"}`} {
+		if _, _, err := parseLoginStart(bad, hosts); err == nil {
+			t.Errorf("%q 应报错", bad)
+		}
+	}
+}
+
+func TestLoginManifestValidation(t *testing.T) {
+	h, _, _, root := newTestHost(t)
+	_ = h
+	base := func(login map[string]any) string {
+		dir := filepath.Join(root, "src-"+strings.ReplaceAll(t.Name(), "/", "_"))
+		m := baseManifest("lg")
+		m["login"] = login
+		writePlugin(t, dir, m)
+		return dir
+	}
+	good := map[string]any{"start": "echo start", "finish": "echo finish", "url_hosts": []string{"*.example.com"}}
+	if _, err := ParseManifest(base(good), "1.6.0"); err != nil {
+		t.Fatalf("合法的登录声明应通过: %v", err)
+	}
+	for name, bad := range map[string]map[string]any{
+		"缺 finish": {"start": "echo", "url_hosts": []string{"a.com"}},
+		"缺域名":      {"start": "echo", "finish": "echo", "url_hosts": []string{}},
+		"通配所有域名":   {"start": "echo", "finish": "echo", "url_hosts": []string{"*"}},
+		"域名不合法":    {"start": "echo", "finish": "echo", "url_hosts": []string{"a b.com"}},
+		"未知变量":     {"start": "echo ${nope}", "finish": "echo", "url_hosts": []string{"a.com"}},
+	} {
+		if _, err := ParseManifest(base(bad), "1.6.0"); err == nil {
+			t.Errorf("%s 应被拒绝", name)
+		}
+	}
+}
