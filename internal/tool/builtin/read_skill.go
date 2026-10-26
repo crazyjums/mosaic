@@ -19,10 +19,21 @@ import (
 type ReadSkill struct {
 	// home 是用户目录；为空表示不搜索个人技能（测试里用）。
 	home string
+	// extra 返回额外的技能文件夹（插件提供的）；为 nil 表示没有。每次调用时取，插件启停立即生效。
+	extra func() []skill.Folder
 }
 
 // NewReadSkill 创建工具。home 通常是 os.UserHomeDir() 的结果。
-func NewReadSkill(home string) *ReadSkill { return &ReadSkill{home: home} }
+func NewReadSkill(home string, extra func() []skill.Folder) *ReadSkill {
+	return &ReadSkill{home: home, extra: extra}
+}
+
+func (t *ReadSkill) folders() []skill.Folder {
+	if t.extra == nil {
+		return nil
+	}
+	return t.extra()
+}
 
 type readSkillInput struct {
 	Name string `json:"name"`
@@ -59,10 +70,10 @@ func (t *ReadSkill) Execute(_ context.Context, call tool.Call) tool.Result {
 	if err := decode(call.Input, &in); err != nil {
 		return tool.Errorf("参数无效：%v", err)
 	}
-	s, ok := skill.Find(call.Workspace, t.home, in.Name)
+	s, ok := skill.Find(call.Workspace, t.home, in.Name, t.folders()...)
 	if !ok {
 		var names []string
-		for _, x := range skill.Discover(call.Workspace, t.home) {
+		for _, x := range skill.Discover(call.Workspace, t.home, t.folders()...) {
 			names = append(names, x.Name)
 		}
 		if len(names) == 0 {

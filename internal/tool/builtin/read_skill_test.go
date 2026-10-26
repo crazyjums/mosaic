@@ -22,7 +22,7 @@ func TestReadSkillTool(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "scripts/run.sh"), []byte("echo hi"), 0o644)
 	os.WriteFile(filepath.Join(home, "secret"), []byte("机密"), 0o644)
 
-	rs := NewReadSkill(home)
+	rs := NewReadSkill(home, nil)
 	run := func(in string) tool.Result {
 		return rs.Execute(context.Background(), tool.Call{Input: json.RawMessage(in), Workspace: ws})
 	}
@@ -43,7 +43,7 @@ func TestReadSkillTool(t *testing.T) {
 	if r := run(`{"name":"nope"}`); !r.IsError || !strings.Contains(r.Output, "report") {
 		t.Fatalf("找不到时应列出可用技能: %+v", r)
 	}
-	if r := NewReadSkill("").Execute(context.Background(), tool.Call{Input: json.RawMessage(`{"name":"x"}`), Workspace: ws}); !r.IsError || !strings.Contains(r.Output, "没有任何可用") {
+	if r := NewReadSkill("", nil).Execute(context.Background(), tool.Call{Input: json.RawMessage(`{"name":"x"}`), Workspace: ws}); !r.IsError || !strings.Contains(r.Output, "没有任何可用") {
 		t.Fatalf("没有技能: %+v", r)
 	}
 }

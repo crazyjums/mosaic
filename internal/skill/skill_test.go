@@ -132,3 +132,35 @@ func TestDiscoverIsBounded(t *testing.T) {
 		t.Fatalf("应限制数量: %d", len(got))
 	}
 }
+
+// 插件提供的技能文件夹：参与发现，但同名时不覆盖用户自己的技能；清单里不存在的目录直接跳过。
+func TestDiscoverExtraFolders(t *testing.T) {
+	ws, home, plug := t.TempDir(), t.TempDir(), t.TempDir()
+	write(t, filepath.Join(ws, ".myllmapp", "skills", "report", "SKILL.md"), "---\nname: report\ndescription: 用户的\n---\n用户版")
+	write(t, filepath.Join(plug, "skills", "report", "SKILL.md"), "---\nname: report\ndescription: 插件的\n---\n插件版")
+	write(t, filepath.Join(plug, "skills", "docs", "SKILL.md"), "---\nname: feishu-docs\ndescription: 读飞书文档\n---\n正文")
+	extra := []Folder{
+		{Dir: filepath.Join(plug, "skills", "report"), Source: "plugin:feishu", Origin: "feishu"},
+		{Dir: filepath.Join(plug, "skills", "docs"), Source: "plugin:feishu", Origin: "feishu"},
+		{Dir: filepath.Join(plug, "skills", "不存在"), Source: "plugin:feishu", Origin: "feishu"},
+	}
+	got := map[string]Info{}
+	for _, s := range Discover(ws, home, extra...) {
+		got[s.Name] = s
+	}
+	if len(got) != 2 || got["report"].Description != "用户的" || got["report"].Source != SourceProject {
+		t.Fatalf("同名时用户的技能优先: %+v", got)
+	}
+	if d := got["feishu-docs"]; d.Source != "plugin:feishu" || d.Origin != "feishu" || d.Dir != filepath.Join(plug, "skills", "docs") {
+		t.Fatalf("插件技能的来源: %+v", d)
+	}
+	if _, ok := Find(ws, home, "/Feishu-Docs", extra...); !ok {
+		t.Fatal("Find 应能找到插件技能（不区分大小写）")
+	}
+	if _, ok := Find(ws, home, "feishu-docs"); ok {
+		t.Fatal("不传额外目录时找不到插件技能（停用插件后立即消失）")
+	}
+	if p := Prompt(ws, home, extra...); !strings.Contains(p, "feishu-docs: 读飞书文档") {
+		t.Fatalf("提示词里应列出插件技能: %q", p)
+	}
+}

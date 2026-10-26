@@ -40,11 +40,21 @@ const (
 type Info struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	// Source：project 或 user。Origin 是它所在的根目录，例如 ".myllmapp/skills"，用来区分同名时哪个生效。
+	// Source：project、user，或 "plugin:<id>"（插件带来的）。Origin 是它所在的根目录，例如 ".myllmapp/skills"，用来区分同名时哪个生效。
 	Source string `json:"source"`
 	Origin string `json:"origin"`
 	// Dir 是技能文件夹的绝对路径。
 	Dir string `json:"dir"`
+}
+
+// Folder 是调用方额外提供的一个技能文件夹（里面有 SKILL.md），例如插件带来的技能。
+// 和 root 不同：root 是“装着很多技能文件夹的目录”，Folder 直接就是技能文件夹本身。
+type Folder struct {
+	// Dir 是技能文件夹的绝对路径。
+	Dir string
+	// Source 标明来源，例如 "plugin:feishu"；Origin 是界面上显示的出处，例如插件名。
+	Source string
+	Origin string
 }
 
 // root 是一个搜索位置。
@@ -68,7 +78,9 @@ func roots(workspace, home string) []root {
 
 // Discover 找出可用的技能，按名字排序。workspace 或 home 可以为空。
 // 读不了的目录、格式不对的技能都直接跳过（技能是锦上添花，不能因为一个坏文件让整个应用报错）。
-func Discover(workspace, home string) []Info {
+//
+// extra 是额外的技能文件夹（插件提供的），排在所有目录之后：同名时项目和个人的技能优先，插件不会覆盖用户自己写的技能。
+func Discover(workspace, home string, extra ...Folder) []Info {
 	seen := map[string]bool{}
 	var out []Info
 	for _, r := range roots(workspace, home) {
@@ -94,14 +106,29 @@ func Discover(workspace, home string) []Info {
 			out = append(out, info)
 		}
 	}
+	for _, f := range extra {
+		if len(out) >= maxSkills {
+			break
+		}
+		if fi, err := os.Stat(f.Dir); err != nil || !fi.IsDir() {
+			continue
+		}
+		info, err := readInfo(f.Dir, filepath.Base(f.Dir))
+		if err != nil || seen[info.Name] {
+			continue
+		}
+		info.Source, info.Origin = f.Source, f.Origin
+		seen[info.Name] = true
+		out = append(out, info)
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
 // Find 按名字找技能（名字不区分大小写）。
-func Find(workspace, home, name string) (Info, bool) {
+func Find(workspace, home, name string, extra ...Folder) (Info, bool) {
 	name = strings.TrimSpace(strings.TrimPrefix(name, "/"))
-	for _, s := range Discover(workspace, home) {
+	for _, s := range Discover(workspace, home, extra...) {
 		if strings.EqualFold(s.Name, name) {
 			return s, true
 		}
@@ -331,8 +358,8 @@ func ReadResource(s Info, rel string) (string, error) {
 }
 
 // Prompt 生成追加到系统提示词后面的技能清单；没有任何技能时返回空串（不改变提示词，也不影响提示缓存）。
-func Prompt(workspace, home string) string {
-	list := Discover(workspace, home)
+func Prompt(workspace, home string, extra ...Folder) string {
+	list := Discover(workspace, home, extra...)
 	if len(list) == 0 {
 		return ""
 	}
