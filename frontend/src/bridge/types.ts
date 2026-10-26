@@ -713,6 +713,8 @@ export interface PluginServerView {
   /** 要启动的命令行（安装确认时让用户看清） */
   command: string;
   declared_risk: "read" | "write" | "exec";
+  /** 工具会读取私密内容：每次调用都询问 */
+  sensitive?: boolean;
   /** 实际生效的风险；没经用户确认时一律是 exec */
   effective_risk: "read" | "write" | "exec";
   approved: boolean;

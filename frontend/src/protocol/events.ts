@@ -55,6 +55,8 @@ export interface PayloadMap {
     call_id: string;
     tool: string;
     risk: Risk;
+    /** 工具会读取私密内容：每次都要确认，不提供“本会话总是允许” */
+    sensitive?: boolean;
     summary: string;
     input: unknown;
   };

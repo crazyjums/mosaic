@@ -59,6 +59,7 @@ export default function PermissionDialog() {
             {t("工具")} <span className="font-mono">{req.tool}</span> · {RISK_TEXT[req.risk] ? t(RISK_TEXT[req.risk]) : req.risk}
           </div>
         </div>
+        {req.sensitive && <div className="border-b border-line bg-warn/10 px-5 py-2 text-xs text-warn">{t("这个工具会读取私密内容（例如文档、聊天记录），读到的内容会发给你选择的模型厂商；每次都需要你确认。")}</div>}
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words bg-code px-5 py-3 font-mono text-xs text-muted">
           {JSON.stringify(req.input, null, 2)}
         </pre>
@@ -69,9 +70,11 @@ export default function PermissionDialog() {
           <button className="rounded-ctl px-3 py-1.5 text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-danger" onClick={() => answer("deny")}>
             {t("拒绝")} <kbd className="ml-1 text-[10px] opacity-60">Esc</kbd>
           </button>
-          <button className="btn" onClick={() => answer("allow_session")}>
-            {t("本会话总是允许")}
-          </button>
+          {!req.sensitive && (
+            <button className="btn" onClick={() => answer("allow_session")}>
+              {t("本会话总是允许")}
+            </button>
+          )}
           <button className="btn-primary" onClick={() => answer("allow")}>
             {t("允许")} <kbd className="ml-1 text-[10px] opacity-70">Enter</kbd>
           </button>

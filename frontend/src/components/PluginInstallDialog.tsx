@@ -48,7 +48,8 @@ export default function PluginInstallDialog({ preview, busy, error, onConfirm, o
                   <span className="rounded-full border border-line px-1.5 text-[10px] text-muted">{s.transport}</span>
                 </div>
                 <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-all rounded-sm bg-code px-2 py-1.5 font-mono text-[11px]">{s.command}</pre>
-                {s.declared_risk !== "exec" ? (
+                {s.sensitive && <div className="mt-2 text-xs text-warn">{t("它读取的是私密内容，每次调用都会询问你，不能设为“总是允许”")}</div>}
+                {s.declared_risk !== "exec" && !s.sensitive ? (
                   <label className="mt-2 flex cursor-pointer items-start gap-2 text-xs">
                     <input type="checkbox" className="mt-0.5" checked={approved.includes(s.name)} onChange={() => toggle(s.name)} />
                     <span>
@@ -57,7 +58,7 @@ export default function PluginInstallDialog({ preview, busy, error, onConfirm, o
                     </span>
                   </label>
                 ) : (
-                  <div className="mt-2 text-xs text-muted">{t("它的工具每次调用都会先询问你。")}</div>
+                  !s.sensitive && <div className="mt-2 text-xs text-muted">{t("它的工具每次调用都会先询问你。")}</div>
                 )}
               </div>
             ))}

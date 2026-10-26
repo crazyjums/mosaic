@@ -463,6 +463,8 @@ export const EN: Record<string, string> = {
   "ID 用小写字母、数字和 -。生成后改里面的文字，再用“安装文件夹…”装上试试。": "Use lowercase letters, digits and -. Edit the generated files, then try them with “Install folder…”.",
   "已生成：{path}": "Created: {path}",
 
+  "这个工具会读取私密内容（例如文档、聊天记录），读到的内容会发给你选择的模型厂商；每次都需要你确认。": "This tool reads private content (e.g. documents, chats). What it reads is sent to your chosen model provider, and every call needs your confirmation.",
+  "它读取的是私密内容，每次调用都会询问你，不能设为“总是允许”": "It reads private content: every call asks you and can't be set to “always allow”",
   "从 Git 地址安装…": "Install from Git URL…",
   "Git 地址": "Git URL",
   "下载中…": "Downloading…",
