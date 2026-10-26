@@ -62,7 +62,7 @@ describe("演示模式的插件", () => {
     await b.setPluginEnabled("hello", false);
     expect(await b.listCommands()).toEqual([]);
     expect((await b.expandCommand("hello", "")).found).toBe(false);
-    await b.uninstallPlugin("hello", true);
+    await b.uninstallPlugin("hello");
     expect(await b.listPlugins()).toEqual([]);
   });
 });
