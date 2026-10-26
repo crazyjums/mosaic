@@ -353,6 +353,8 @@ export interface Backend {
   getWorkspaceInfo(): Promise<WorkspaceInfo>;
   // ---- 插件（见 docs/design/plugin-system.md）----
   listPlugins(): Promise<PluginInfo[]>;
+  /** 在 parentDir 下生成一个可以直接安装的最小插件模板，返回新目录的路径 */
+  scaffoldPlugin(parentDir: string, id: string): Promise<string>;
   /** 插件市场的列表（内置的加上上次刷新到的在线列表），不联网 */
   listPluginCatalog(): Promise<PluginCatalogEntry[]>;
   /** 联网刷新在线列表；失败时抛错，界面继续显示原来的列表 */
@@ -711,6 +713,8 @@ export interface PluginServerView {
   /** 要启动的命令行（安装确认时让用户看清） */
   command: string;
   declared_risk: "read" | "write" | "exec";
+  /** 工具会读取私密内容：每次调用都询问 */
+  sensitive?: boolean;
   /** 实际生效的风险；没经用户确认时一律是 exec */
   effective_risk: "read" | "write" | "exec";
   approved: boolean;

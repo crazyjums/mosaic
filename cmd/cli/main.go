@@ -193,7 +193,12 @@ func (c *cli) turn(text string) {
 
 // askPermission 等待用户对一个权限请求的回答。等待期间如果本轮结束（被取消）就放弃。
 func (c *cli) askPermission(p event.PermissionRequest, done chan error) {
-	fmt.Fprint(c.info, "   允许吗？[y] 允许一次  [a] 本会话总是允许  [n] 拒绝 › ")
+	if p.Sensitive {
+		// 私密工具每次都问，没有“总是允许”（内核也不会记住它）。
+		fmt.Fprint(c.info, "   这个工具会读取私密内容，读到的会发给模型厂商。允许吗？[y] 允许一次  [n] 拒绝 › ")
+	} else {
+		fmt.Fprint(c.info, "   允许吗？[y] 允许一次  [a] 本会话总是允许  [n] 拒绝 › ")
+	}
 	select {
 	case line, ok := <-c.lines:
 		decision := "deny"
@@ -202,6 +207,9 @@ func (c *cli) askPermission(p event.PermissionRequest, done chan error) {
 			decision = "allow"
 		case "a", "always":
 			decision = "allow_session"
+			if p.Sensitive {
+				decision = "allow" // 没提供这个选项，按允许一次处理，不记住
+			}
 		}
 		if !ok {
 			decision = "deny" // 输入已结束（管道读完），保守地拒绝

@@ -1,0 +1,15 @@
+{
+  "id": "writing-kit",
+  "name": "写作工具箱",
+  "version": "0.1.0",
+  "description": "周报、会议纪要、润色、翻译四个命令，加一份写作的通用准则。没有任何可执行代码。",
+  "min_app_version": "1.3.2",
+  "protocol": 1,
+  "skills": [{ "path": "skills/writing-style" }],
+  "commands": [
+    { "name": "weekly", "path": "commands/weekly.md", "description": "把零散记录整理成周报" },
+    { "name": "minutes", "path": "commands/minutes.md", "description": "把会议记录整理成纪要" },
+    { "name": "polish", "path": "commands/polish.md", "description": "润色一段文字，保持原意" },
+    { "name": "translate", "path": "commands/translate.md", "description": "中英互译" }
+  ]
+}

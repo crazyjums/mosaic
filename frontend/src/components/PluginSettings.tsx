@@ -22,6 +22,9 @@ export default function PluginSettings() {
   const [gitOpen, setGitOpen] = useState(false);
   const [gitUrl, setGitUrl] = useState("");
   const [fetching, setFetching] = useState("");
+  const [newOpen, setNewOpen] = useState(false);
+  const [newId, setNewId] = useState("");
+  const [created, setCreated] = useState("");
 
   const reload = useCallback(async () => {
     try {
@@ -77,6 +80,19 @@ export default function PluginSettings() {
       setError(errMsg(e));
     }
   };
+  // 新建插件模板：先选放在哪个目录，再生成；生成后提示路径，作者改完用“安装文件夹…”装上试。
+  const createTemplate = async () => {
+    setError("");
+    setCreated("");
+    try {
+      const parent = await backend().chooseDirectory("");
+      if (!parent) return;
+      setCreated(await backend().scaffoldPlugin(parent, newId.trim()));
+      setNewId("");
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  };
   const confirmInstall = async (approved: string[]) => {
     if (!preview) return;
     setInstalling(true);
@@ -116,6 +132,25 @@ export default function PluginSettings() {
           <button className="btn w-full px-2 text-xs" onClick={() => setGitOpen((v) => !v)} aria-expanded={gitOpen}>
             {t("从 Git 地址安装…")}
           </button>
+          <button className="btn w-full px-2 text-xs" onClick={() => setNewOpen((v) => !v)} aria-expanded={newOpen} title={t("生成一个最小的插件模板，用来学习怎么写插件")}>
+            {t("新建插件模板…")}
+          </button>
+          {newOpen && (
+            <form
+              className="space-y-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newId.trim()) void createTemplate();
+              }}
+            >
+              <input className="input w-full text-xs" value={newId} onChange={(e) => setNewId(e.target.value)} placeholder="my-plugin" aria-label={t("插件 ID")} autoFocus />
+              <button className="btn-primary w-full px-3 text-xs" type="submit" disabled={!newId.trim()}>
+                {t("选择目录并生成")}
+              </button>
+              <p className="text-[11px] leading-snug text-muted">{t("ID 用小写字母、数字和 -。生成后改里面的文字，再用“安装文件夹…”装上试试。")}</p>
+              {created && <p className="break-all text-[11px] leading-snug text-ok">{t("已生成：{path}", { path: created })}</p>}
+            </form>
+          )}
           {gitOpen && (
             <form
               className="space-y-1.5"

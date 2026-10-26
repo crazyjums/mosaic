@@ -64,7 +64,12 @@ func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (resu
 	spec := t.Spec()
 
 	// 步骤 2：权限裁决。
-	switch a.cfg.Policy.Evaluate(spec.Name, spec.Risk, c.ToolInput) {
+	verdict := a.cfg.Policy.Evaluate(spec.Name, spec.Risk, c.ToolInput)
+	// 私密工具永远要问：档位放行、规则放行、本会话已允许都不算数。拒绝仍然是拒绝。
+	if spec.Sensitive && verdict == permission.Allow {
+		verdict = permission.Ask
+	}
+	switch verdict {
 	case permission.Deny:
 		return tool.Errorf("permission denied by policy: %s tools are not allowed in the current mode", spec.Risk)
 	case permission.Ask:
@@ -92,12 +97,13 @@ func (a *Agent) runTool(ctx context.Context, em emitter, c provider.Block) (resu
 func (a *Agent) askPermission(ctx context.Context, em emitter, c provider.Block, t tool.Tool) (bool, string) {
 	spec := t.Spec()
 	req := permission.Request{
-		ID:      event.NewID("perm"),
-		CallID:  c.ToolCallID,
-		Tool:    spec.Name,
-		Risk:    spec.Risk,
-		Summary: t.Summarize(c.ToolInput),
-		Input:   c.ToolInput,
+		ID:        event.NewID("perm"),
+		CallID:    c.ToolCallID,
+		Tool:      spec.Name,
+		Risk:      spec.Risk,
+		Sensitive: spec.Sensitive,
+		Summary:   t.Summarize(c.ToolInput),
+		Input:     c.ToolInput,
 	}
 
 	// 先登记、后通知（由 Broker.Request 保证），通知就是发 permission_request 事件。
@@ -107,6 +113,7 @@ func (a *Agent) askPermission(ctx context.Context, em emitter, c provider.Block,
 			CallID:    r.CallID,
 			Tool:      r.Tool,
 			Risk:      string(r.Risk),
+			Sensitive: r.Sensitive,
 			Summary:   r.Summary,
 			Input:     r.Input,
 		})
@@ -122,6 +129,8 @@ func (a *Agent) askPermission(ctx context.Context, em emitter, c provider.Block,
 	if err != nil {
 		return false, fmt.Sprintf(" (%v)", err)
 	}
-	a.cfg.Policy.Remember(spec.Name, decision)
+	if !spec.Sensitive {
+		a.cfg.Policy.Remember(spec.Name, decision)
+	}
 	return decision.Allowed(), ""
 }

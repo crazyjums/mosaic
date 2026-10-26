@@ -19,6 +19,9 @@ type Spec struct {
 	// schema 是写给模型看的"文档"，手写能精确控制描述文字，也少一个依赖。
 	InputSchema json.RawMessage
 	Risk        permission.Risk
+	// Sensitive 表示这个工具读到的内容很私密（聊天记录、文档正文），会作为工具结果发给模型厂商：
+	// 无论权限档位、规则还是“本会话总是允许”怎么设置，每次调用都要询问用户（被明确拒绝的仍然是拒绝）。
+	Sensitive bool
 }
 
 // Call 是一次工具调用的上下文。

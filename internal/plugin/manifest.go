@@ -90,6 +90,9 @@ type MCPSpec struct {
 	Headers   map[string]string `json:"headers,omitempty"`
 	// Risk 是作者声明的风险等级。只是“申请”：用户在安装确认里勾选之后才生效，否则一律按 exec（每次询问）。
 	Risk permission.Risk `json:"risk,omitempty"`
+	// Sensitive 声明这个服务的工具会读取私密内容（聊天记录、文档正文）：每次调用都询问，不能被“总是允许”绕过。
+	// 这只会让流程更严格，所以不需要用户确认；安装确认里会如实告诉用户。
+	Sensitive bool `json:"sensitive,omitempty"`
 }
 
 // ConfigField 是设置表单里的一项。

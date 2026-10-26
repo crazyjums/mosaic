@@ -204,7 +204,7 @@ func TestPluginsWired(t *testing.T) {
 		t.Fatal("插件目录应在数据目录下创建")
 	}
 
-	if c := b.Plugins.Catalog(); len(c) < 2 || c[0].Kind != "bundled" {
+	if c := b.Plugins.Catalog(); len(c) < 2 || c[len(c)-1].Kind != "bundled" {
 		t.Fatalf("市场里应有随应用发布的内置插件: %+v", c)
 	}
 

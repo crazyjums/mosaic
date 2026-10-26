@@ -2,15 +2,75 @@
   "version": 1,
   "plugins": [
     {
+      "id": "feishu",
+      "name": "飞书",
+      "summary": {
+        "zh": "用你的飞书账号登录，让模型读取你的飞书文档和群消息（只读，每次读取都会询问）。需要 lark-cli。",
+        "en": "Sign in with your Feishu account so the model can read your docs and group chats (read-only; every read asks first). Needs lark-cli."
+      },
+      "bundled": "feishu"
+    },
+    {
+      "id": "code-review",
+      "name": "代码评审",
+      "summary": {
+        "zh": "评审清单加 /review 命令：按正确性、边界、安全、测试分级给意见。",
+        "en": "A review checklist plus /review: feedback graded by correctness, edge cases, security and tests."
+      },
+      "bundled": "code-review"
+    },
+    {
+      "id": "git-assistant",
+      "name": "Git 助手",
+      "summary": {
+        "zh": "/commit-msg 写提交信息，/pr-desc 写 PR 描述，先参考仓库已有的风格。",
+        "en": "/commit-msg writes commit messages and /pr-desc writes PR descriptions, following the repo's style."
+      },
+      "bundled": "git-assistant"
+    },
+    {
+      "id": "writing-kit",
+      "name": "写作工具箱",
+      "summary": {
+        "zh": "周报、会议纪要、润色、翻译四个命令。",
+        "en": "Weekly report, meeting minutes, polishing and translation commands."
+      },
+      "bundled": "writing-kit"
+    },
+    {
+      "id": "debug-helper",
+      "name": "排查助手",
+      "summary": {
+        "zh": "/debug：先复现、再缩小范围、确认根因后才改代码。",
+        "en": "/debug: reproduce first, narrow down, and only change code once the root cause is confirmed."
+      },
+      "bundled": "debug-helper"
+    },
+    {
+      "id": "sql-helper",
+      "name": "SQL 助手",
+      "summary": {
+        "zh": "/sql 写和解释 SQL，/sql-tune 分析慢查询；不连接任何数据库。",
+        "en": "/sql writes and explains SQL, /sql-tune analyses slow queries; never connects to a database."
+      },
+      "bundled": "sql-helper"
+    },
+    {
       "id": "hello-skill",
       "name": "问候示例",
-      "summary": { "zh": "一个技能加一个 /hello 命令，用来熟悉插件怎么用。", "en": "A skill plus a /hello command, to get familiar with plugins." },
+      "summary": {
+        "zh": "一个技能加一个 /hello 命令，用来熟悉插件怎么用。",
+        "en": "A skill plus a /hello command, to get familiar with plugins."
+      },
       "bundled": "hello-skill"
     },
     {
       "id": "echo-mcp",
       "name": "回声工具示例",
-      "summary": { "zh": "最小的 MCP 工具插件，演示配置表单、状态检查和操作按钮（需要 python3）。", "en": "A minimal MCP tool plugin showing the settings form, status check and actions (needs python3)." },
+      "summary": {
+        "zh": "最小的 MCP 工具插件，演示配置表单、状态检查和操作按钮（需要 python3）。",
+        "en": "A minimal MCP tool plugin showing the settings form, status check and actions (needs python3)."
+      },
       "bundled": "echo-mcp"
     }
   ]

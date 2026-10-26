@@ -172,7 +172,7 @@ flowchart LR
 
 已完成：多厂商与 ChatGPT 账号、权限与规则、MCP、技能、用量与故障转移、自动更新、皮肤、发送队列、多会话同时运行、图片 / 文本附件、上下文压缩、Git 窗口。
 
-已完成（续）：插件系统（技能 / 斜杠命令 / MCP 工具，设置 → 插件）。
+已完成（续）：飞书插件（只读）、插件系统（技能 / 斜杠命令 / MCP 工具，设置 → 插件）。
 
 计划中：子 agent 与后台任务、更多附件类型（PDF 等）、飞书插件与钩子。完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
 
@@ -322,6 +322,7 @@ go vet ./... && go test ./...
 | [docs/design/persistence.md](docs/design/persistence.md) | SQLite 表结构、迁移、写入策略 |
 | [docs/design/frontend-state.md](docs/design/frontend-state.md) | 前端分层、reducer、工具状态机、演示模式 |
 | [docs/design/settings.md](docs/design/settings.md) | 界面设置：两层配置的合并规则、热更新、密钥与钥匙串、规则 / MCP / 状态栏脚本的持久化 |
+| [docs/plugin-development.md](docs/plugin-development.md) | 插件开发指南：5 分钟上手、清单字段、技能 / 命令 / MCP / 配置表单、分发到市场 |
 | [docs/design/plugin-system.md](docs/design/plugin-system.md) | 插件系统：plugin.json 格式、安装确认、MCP 来源管理、密钥与安全边界 |
 | [docs/extending.md](docs/extending.md) | 如何新增厂商 / 工具 / 子 agent / 界面 |
 | [docs/design/mosaic-ui.md](docs/design/mosaic-ui.md) | Mosaic 品牌与界面设计：Logo、皮肤、状态动效 |

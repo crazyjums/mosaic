@@ -1,0 +1,13 @@
+{
+  "id": "sql-helper",
+  "name": "SQL 助手",
+  "version": "0.1.0",
+  "description": "/sql 帮你写和解释 SQL，/sql-tune 帮你分析慢查询。只提供方法和提示词，不连接任何数据库。",
+  "min_app_version": "1.3.2",
+  "protocol": 1,
+  "skills": [{ "path": "skills/sql-tuning" }],
+  "commands": [
+    { "name": "sql", "path": "commands/sql.md", "description": "写或解释一条 SQL" },
+    { "name": "sql-tune", "path": "commands/sql-tune.md", "description": "分析一条慢查询" }
+  ]
+}
