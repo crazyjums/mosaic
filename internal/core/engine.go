@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
@@ -54,18 +55,67 @@ type EngineConfig struct {
 // CLI 和 Wails 绑定层都只依赖这两样，所以它们可以非常薄；
 // 也正因为如此，内核可以完全脱离 Wails 运行（见 cmd/cli）。
 //
-// Engine 同一时间只运行一个会话的一轮对话（第一阶段的范围），用 running 标志保护。
+// 多会话并发：每个会话各自可以有一轮在运行（runs 按会话 ID 记录），不同会话之间互不阻塞；
+// 同一个会话内同一时间仍然只跑一轮，再发就是 ErrBusy。
+//
+// “当前会话”（session）是界面正在看的那个，状态栏、上下文面板、改模型/工作区都针对它；
+// 切换当前会话不会打断别的会话的运行——后台会话继续跑，事件照常带着自己的 session_id 发出。
+//
+// 什么操作要等运行结束：只影响某个会话的（改它的模型/工作区、删除它）等“那个会话”结束；
+// 会换掉全局资源的（替换厂商目录、清空全部历史）要等“所有会话”结束。
 type Engine struct {
 	cfg    EngineConfig
 	bus    *event.Bus
 	broker *permission.Broker
+	grants *grantBook
 
 	mu      sync.Mutex
 	session *Session
 	// hist 记录界面已经加载了当前会话历史的哪一段，见 LoadSessionTail。
-	hist    histWindow
-	running bool
-	cancel  context.CancelFunc
+	hist histWindow
+	// runs 是正在运行的会话（按会话 ID）。运行中的会话对象一定在这里，所以切走再切回来拿到的是同一个内存对象，
+	// 而不是数据库里的旧副本。
+	runs map[string]*run
+}
+
+// run 是一个会话正在进行的一轮。
+type run struct {
+	sess   *Session
+	cancel context.CancelFunc
+}
+
+// currentRunningLocked 当前会话是否在运行。调用方需持有 e.mu。
+func (e *Engine) currentRunningLocked() bool {
+	_, ok := e.runs[e.session.ID]
+	return ok
+}
+
+// runningIDsLocked 返回所有正在运行的会话 ID（有序，便于测试和界面稳定显示）。调用方需持有 e.mu。
+func (e *Engine) runningIDsLocked() []string {
+	ids := make([]string, 0, len(e.runs))
+	for id := range e.runs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// RunningSessions 返回正在运行的会话 ID。
+func (e *Engine) RunningSessions() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.runningIDsLocked()
+}
+
+// IsRunning 报告某个会话是否正在运行；id 为空表示当前会话。
+func (e *Engine) IsRunning(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if id == "" {
+		id = e.session.ID
+	}
+	_, ok := e.runs[id]
+	return ok
 }
 
 // 常见错误，界面可以据此给出友好提示。
@@ -87,7 +137,7 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 	if cfg.Subagents == nil {
 		cfg.Subagents = NewSubagentRegistry()
 	}
-	e := &Engine{cfg: cfg, bus: event.NewBus(), broker: permission.NewBroker()}
+	e := &Engine{cfg: cfg, bus: event.NewBus(), broker: permission.NewBroker(), grants: newGrantBook(), runs: map[string]*run{}}
 
 	profile, model, err := e.resolveModel(cfg.DefaultProfile, cfg.DefaultModel)
 	if errors.Is(err, ErrNoProvider) {
@@ -145,7 +195,9 @@ type Status struct {
 	Provider  string         `json:"provider"`
 	Model     string         `json:"model"`
 	Usage     provider.Usage `json:"usage"`
-	Running   bool           `json:"running"`
+	// Running 是当前会话是否在运行；RunningSessions 是所有正在运行的会话（含后台的），界面据此在会话列表里标记。
+	Running         bool     `json:"running"`
+	RunningSessions []string `json:"running_sessions"`
 	// Workspace 是当前会话实际使用的工作区。
 	Workspace string `json:"workspace"`
 	// WorkspaceIsDefault 为 true 表示当前会话没有单独选过工作区，跟随默认工作区。
@@ -162,7 +214,7 @@ type Status struct {
 
 func (e *Engine) Status() Status {
 	e.mu.Lock()
-	sess, running := e.session, e.running
+	sess, running, runningIDs := e.session, e.currentRunningLocked(), e.runningIDsLocked()
 	workspace, isDefault := e.workspaceLocked(sess)
 	locked := e.cfg.WorkspaceLocked
 	e.mu.Unlock()
@@ -177,6 +229,7 @@ func (e *Engine) Status() Status {
 		Model:              snap.Model,
 		Usage:              snap.Usage,
 		Running:            running,
+		RunningSessions:    runningIDs,
 		Workspace:          workspace,
 		PendingPermissions: e.broker.PendingIDs(),
 		PermissionMode:     e.permissionMode(),
@@ -244,9 +297,9 @@ func isDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// runtimeLocked 返回本轮实际使用的参数：工作区取当前会话的，补上默认值、展开默认提示词。调用方需持有 e.mu。
-func (e *Engine) runtimeLocked() RuntimeConfig {
-	ws, _ := e.workspaceLocked(e.session)
+// runtimeLocked 返回本轮实际使用的参数：工作区取该会话的，补上默认值、展开默认提示词。调用方需持有 e.mu。
+func (e *Engine) runtimeLocked(s *Session) RuntimeConfig {
+	ws, _ := e.workspaceLocked(s)
 	rt := RuntimeConfig{Workspace: ws, SystemPrompt: e.cfg.SystemPrompt, MaxSteps: e.cfg.MaxSteps, MaxTokens: e.cfg.MaxTokens, TitleMode: e.cfg.TitleMode}
 	if rt.SystemPrompt == "" {
 		rt.SystemPrompt = DefaultSystemPrompt(rt.Workspace)
@@ -264,7 +317,8 @@ func (e *Engine) runtimeLocked() RuntimeConfig {
 func (e *Engine) UpdateRuntime(rt RuntimeConfig) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.running {
+	// 只挡“当前会话在运行”：后台会话的本轮参数在开始时已经取了副本，不受影响。
+	if e.currentRunningLocked() {
 		return ErrBusy
 	}
 	if rt.Workspace == "" {
@@ -273,7 +327,7 @@ func (e *Engine) UpdateRuntime(rt RuntimeConfig) error {
 	// 换了工作区，之前"本会话总是允许"的授权是针对旧目录给的，不应该带到新目录。
 	// （只有当前会话跟随默认工作区时，它的工作区才真的变了。）
 	if _, isDefault := e.workspaceLocked(e.session); rt.Workspace != e.cfg.Workspace && isDefault {
-		e.cfg.Policy.Reset()
+		e.grants.resetAll()
 	}
 	e.cfg.Workspace, e.cfg.SystemPrompt, e.cfg.MaxSteps, e.cfg.MaxTokens = rt.Workspace, rt.SystemPrompt, rt.MaxSteps, rt.MaxTokens
 	e.cfg.TitleMode = rt.TitleMode
@@ -290,7 +344,7 @@ func (e *Engine) ReplaceCatalog(c *provider.Catalog) error {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.running {
+	if len(e.runs) > 0 { // 任何会话在运行都不换：它们还持有旧目录里的 Provider
 		return ErrBusy
 	}
 	// 回落失败（新目录里没有可用的配置档）时恢复原目录，引擎保持原状，
@@ -319,7 +373,7 @@ func (e *Engine) ReplaceCatalog(c *provider.Catalog) error {
 func (e *Engine) SetModel(profile, model string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.running {
+	if e.currentRunningLocked() {
 		return ErrBusy
 	}
 	p, m, err := e.resolveModel(profile, model)
@@ -333,15 +387,13 @@ func (e *Engine) SetModel(profile, model string) error {
 // NewSession 开启一个新的空会话，沿用当前会话的厂商、模型和工作区。
 //
 // 沿用工作区：在一个代码仓库里工作时，新开的会话通常还是同一个仓库；要换仓库，在新会话里重新选择即可。
+//
+// 当前会话正在运行也可以新建：它转入后台继续跑。
 func (e *Engine) NewSession() (Status, error) {
 	e.mu.Lock()
-	if e.running {
-		e.mu.Unlock()
-		return Status{}, ErrBusy
-	}
 	e.session = e.freshSessionLocked()
+	e.hist = histWindow{}
 	e.mu.Unlock()
-	e.cfg.Policy.Reset()
 	return e.Status(), nil
 }
 
@@ -362,15 +414,28 @@ func (e *Engine) compactorFor(p provider.Provider, cfg provider.ProfileConfig, m
 	return &SummaryCompactor{Provider: p, Model: model, Window: provider.ParseModelMeta(cfg.Options)[model].ContextWindow}
 }
 
-// SendInput 和 Send 一样，但发言可以带附件（图片、文本文件），见 attachment.go。
+// SendInput 和 Send 一样，但发言可以带附件（图片、文本文件），见 attachment.go。发给当前会话。
 func (e *Engine) SendInput(ctx context.Context, in UserInput) (TurnResult, error) {
-	// 步骤 1：占用运行权，准备好本轮要用的依赖。
+	return e.SendInputTo(ctx, "", in)
+}
+
+// SendInputTo 把发言发给指定会话；id 为空表示当前会话。
+//
+// 能发给“不是当前会话”的会话，是为了后台会话的发送队列：A 会话在后台跑完一轮后，
+// 队列里的下一条要接着发给 A，即使用户此时正看着 B。
+func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (TurnResult, error) {
+	// 步骤 1：占用该会话的运行权，准备好本轮要用的依赖。
 	e.mu.Lock()
-	if e.running {
+	sess, err := e.sessionForSendLocked(ctx, id)
+	if err != nil {
+		e.mu.Unlock()
+		return TurnResult{}, err
+	}
+	sid := sess.ID
+	if _, busy := e.runs[sid]; busy {
 		e.mu.Unlock()
 		return TurnResult{}, ErrBusy
 	}
-	sess := e.session
 	snap := sess.Snapshot()
 	if snap.Provider == "" {
 		e.mu.Unlock()
@@ -382,22 +447,21 @@ func (e *Engine) SendInput(ctx context.Context, in UserInput) (TurnResult, error
 		return TurnResult{}, err
 	}
 	// 运行参数在持锁时取一份副本：UpdateRuntime 可能在本轮结束后修改它们。
-	rt := e.runtimeLocked()
+	rt := e.runtimeLocked(sess)
 	// 空表示没有配置工作区（只在测试里出现：没有工具时不需要工作区），不当作"目录不存在"。
 	if rt.Workspace != "" && !isDir(rt.Workspace) {
 		e.mu.Unlock()
 		return TurnResult{}, fmt.Errorf("工作区 %s 不存在（可能被移动或删除了），请在状态栏上重新选择工作区", rt.Workspace)
 	}
 	disabled := e.disabledLocked()
-	sid := e.session.ID
 	ctx, cancel := context.WithCancel(ctx)
-	e.running, e.cancel = true, cancel
+	e.runs[sid] = &run{sess: sess, cancel: cancel}
 	e.mu.Unlock()
 
 	defer func() {
 		cancel()
 		e.mu.Lock()
-		e.running, e.cancel = false, nil
+		delete(e.runs, sid)
 		e.mu.Unlock()
 	}()
 
@@ -411,7 +475,7 @@ func (e *Engine) SendInput(ctx context.Context, in UserInput) (TurnResult, error
 		MaxTokens: rt.MaxTokens,
 		MaxSteps:  rt.MaxSteps,
 		Tools:     e.cfg.Tools,
-		Policy:    e.cfg.Policy,
+		Policy:    &sessionPolicy{Policy: e.cfg.Policy, grants: e.grants, sid: sid},
 		Broker:    e.broker,
 		Publisher: e.bus,
 		Compactor: e.compactorFor(p, pcfg, snap.Model),
@@ -456,12 +520,52 @@ func (e *Engine) save(sess *Session) {
 	}
 }
 
-// Cancel 取消正在运行的一轮（如果有）。正在等待的权限确认会按拒绝处理。
-func (e *Engine) Cancel() {
+// Cancel 取消当前会话正在运行的一轮（如果有）。正在等待的权限确认会按拒绝处理。
+func (e *Engine) Cancel() { e.CancelSession("") }
+
+// CancelSession 取消指定会话正在运行的一轮；id 为空表示当前会话。只影响这一个会话。
+func (e *Engine) CancelSession(id string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.cancel != nil {
-		e.cancel()
+	if id == "" {
+		id = e.session.ID
+	}
+	if r, ok := e.runs[id]; ok {
+		r.cancel()
+	}
+}
+
+// sessionForSendLocked 找到要发送的会话：当前会话、正在运行的会话（内存里的最新状态），或者从存储里读出来。
+// 读出来的会话不会变成当前会话。调用方需持有 e.mu（读存储是一次本地数据库查询，持锁很短，
+// 换来的是“不会有两个内存副本同时被发送”的简单保证）。
+func (e *Engine) sessionForSendLocked(ctx context.Context, id string) (*Session, error) {
+	if id == "" || id == e.session.ID {
+		return e.session, nil
+	}
+	if r, ok := e.runs[id]; ok {
+		return r.sess, nil
+	}
+	if e.cfg.Store == nil {
+		return nil, fmt.Errorf("会话 %s 不存在", id)
+	}
+	s, err := e.cfg.Store.LoadSession(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	e.fallbackProviderLocked(s)
+	return s, nil
+}
+
+// fallbackProviderLocked：会话里记录的厂商配置档可能已经被删掉了；此时回落到默认配置档，历史仍然可读。
+func (e *Engine) fallbackProviderLocked(s *Session) {
+	if _, _, err := e.cfg.Catalog.Get(s.Provider); err != nil {
+		p, m, err2 := e.resolveModel("", "")
+		if errors.Is(err2, ErrNoProvider) {
+			p, m, err2 = "", "", nil // 一个厂商都没有了：回到"未配置"状态，发送时给出明确的提示
+		}
+		if err2 == nil {
+			s.Provider, s.Model = p, m
+		}
 	}
 }
 
@@ -491,38 +595,34 @@ func (e *Engine) LoadSession(ctx context.Context, id string) (Status, error) {
 	return e.Status(), nil
 }
 
-// openSession 把 id 对应的历史会话设为当前会话（不重放）。运行中返回 ErrBusy。
+// openSession 把 id 对应的会话设为当前会话（不重放）。
+//
+// 该会话正在运行（在后台跑着）时用内存里的对象，而不是存储里的旧副本；当前会话在运行也可以切走，它转入后台。
 func (e *Engine) openSession(ctx context.Context, id string) (*Session, error) {
+	e.mu.Lock()
+	if r, ok := e.runs[id]; ok {
+		e.session = r.sess
+		e.hist = histWindow{}
+		e.mu.Unlock()
+		return r.sess, nil
+	}
+	e.mu.Unlock()
 	if e.cfg.Store == nil {
 		return nil, fmt.Errorf("engine: no session store configured")
-	}
-	// 先快速检查一次，运行中就不必去读数据库；下面替换会话前还会在锁内再检查一次。
-	if e.Status().Running {
-		return nil, ErrBusy
 	}
 	s, err := e.cfg.Store.LoadSession(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	e.mu.Lock()
-	if e.running {
-		e.mu.Unlock()
-		return nil, ErrBusy
-	}
-	// 会话里记录的厂商配置档可能已经被删掉了；此时回落到默认配置档，历史仍然可读。
-	if _, _, err := e.cfg.Catalog.Get(s.Provider); err != nil {
-		p, m, err2 := e.resolveModel("", "")
-		if errors.Is(err2, ErrNoProvider) {
-			p, m, err2 = "", "", nil // 一个厂商都没有了：回到"未配置"状态，发送时给出明确的提示
-		}
-		if err2 == nil {
-			s.Provider, s.Model = p, m
-		}
+	defer e.mu.Unlock()
+	if r, ok := e.runs[id]; ok { // 读存储期间它开始运行了：以内存里的为准
+		s = r.sess
+	} else {
+		e.fallbackProviderLocked(s)
 	}
 	e.session = s
 	e.hist = histWindow{}
-	e.mu.Unlock()
-	e.cfg.Policy.Reset()
 	return s, nil
 }
 
@@ -536,24 +636,22 @@ func (e *Engine) riskOf(name string) permission.Risk {
 // DeleteSession 删除一个已保存的会话。
 //
 // 删除的是当前会话时，切换到一个新的空会话：否则内存里的会话还在，下一轮结束时
-// SaveSession 会把它重新写回数据库，"删掉的会话又回来了"。运行中不允许删除当前会话。
+// SaveSession 会把它重新写回数据库，"删掉的会话又回来了"。运行中的会话不允许删除。
 func (e *Engine) DeleteSession(ctx context.Context, id string) error {
 	if e.cfg.Store == nil {
 		return nil
 	}
 	e.mu.Lock()
-	isCurrent := e.session.ID == id
-	if isCurrent && e.running {
+	if _, running := e.runs[id]; running { // 正在运行的会话（不论是不是当前的）不能删：删了它结束时又会被保存回去
 		e.mu.Unlock()
 		return ErrBusy
 	}
-	if isCurrent {
+	if e.session.ID == id {
 		e.session = e.freshSessionLocked()
+		e.hist = histWindow{}
 	}
 	e.mu.Unlock()
-	if isCurrent {
-		e.cfg.Policy.Reset()
-	}
+	e.grants.reset(id)
 	return e.cfg.Store.DeleteSession(ctx, id)
 }
 
@@ -620,7 +718,7 @@ type compacter interface {
 func (e *Engine) DeleteAllSessions(ctx context.Context) (int, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.running {
+	if len(e.runs) > 0 {
 		return 0, ErrBusy
 	}
 	n := 0
@@ -643,7 +741,8 @@ func (e *Engine) DeleteAllSessions(ctx context.Context) (int, error) {
 	}
 	// 当前会话也在被清空之列：换成新的空会话，否则下一轮结束时它又会被保存回去。
 	e.session = e.freshSessionLocked()
-	e.cfg.Policy.Reset()
+	e.hist = histWindow{}
+	e.grants.resetAll()
 	return n, nil
 }
 
@@ -661,7 +760,7 @@ func (e *Engine) freshSessionLocked() *Session {
 // 这样在会话列表里也能看到新的工作区；空会话等第一轮结束时再保存。
 func (e *Engine) SetSessionWorkspace(ctx context.Context, dir string) (Status, error) {
 	e.mu.Lock()
-	if e.running {
+	if e.currentRunningLocked() {
 		e.mu.Unlock()
 		return Status{}, ErrBusy
 	}
@@ -677,7 +776,7 @@ func (e *Engine) SetSessionWorkspace(ctx context.Context, dir string) (Status, e
 
 	// 换了目录，"本会话总是允许"的授权是针对旧目录给的，清掉。
 	if after != before {
-		e.cfg.Policy.Reset()
+		e.grants.reset(sess.ID)
 	}
 	if e.cfg.Store != nil && len(sess.messages()) > 0 {
 		if err := e.cfg.Store.SaveSession(ctx, sess.Snapshot()); err != nil {
@@ -701,6 +800,9 @@ func (e *Engine) RenameSession(ctx context.Context, id, title string) error {
 	}
 	e.mu.Lock()
 	sess := e.session
+	if r, ok := e.runs[id]; ok { // 后台运行的会话：改内存里的，存储里的是旧副本
+		sess = r.sess
+	}
 	e.mu.Unlock()
 	if sess.ID != id {
 		if e.cfg.Store == nil {

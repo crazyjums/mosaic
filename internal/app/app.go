@@ -369,29 +369,43 @@ func (a *App) SetUseKeychain(on bool) (settings.KeychainStatus, error) {
 // 期间还需要调用 RespondPermission；异步返回让前端的调用模型保持简单（"发出去，然后听事件"）。
 func (a *App) Send(text string) error { return a.SendMessage(text, nil) }
 
-// SendMessage 发送一条带附件的消息（图片、文本文件）。附件的校验在内核里（core.buildUserMessage）：
+// SendMessage 发送一条带附件的消息（图片、文本文件）给当前会话。附件的校验在内核里（core.buildUserMessage）：
 // 不合格时发一个 attachment_error 事件，这一轮不会开始。
 func (a *App) SendMessage(text string, attachments []core.Attachment) error {
-	if a.engine.Status().Running {
+	return a.SendToSession("", text, attachments)
+}
+
+// SendToSession 把消息发给指定会话（空表示当前会话）。
+//
+// 多个会话可以同时运行：只有目标会话自己正在运行时才返回 ErrBusy。能指定会话，是因为后台会话的
+// 发送队列要在它跑完一轮后接着发，而此时用户可能正在看另一个会话。
+func (a *App) SendToSession(sessionID, text string, attachments []core.Attachment) error {
+	if sessionID == "" {
+		sessionID = a.engine.Status().SessionID
+	}
+	if a.engine.IsRunning(sessionID) {
 		return core.ErrBusy
 	}
 	go func() {
 		// 极少数情况下两次 Send 几乎同时到达，第二次会在这里拿到 ErrBusy，通过错误事件告知前端。
-		if _, err := a.engine.SendInput(a.context(), core.UserInput{Text: text, Attachments: attachments}); err != nil {
+		if _, err := a.engine.SendInputTo(a.context(), sessionID, core.UserInput{Text: text, Attachments: attachments}); err != nil {
 			code := "send_failed"
 			if errors.Is(err, core.ErrBusy) {
 				code = "busy"
 			}
-			// 发布到总线即可，Startup 中的订阅会把它转发给前端。
-			st := a.engine.Status()
-			a.engine.Bus().Publish(event.New(st.SessionID, event.RootAgentID, "",
+			// 发布到总线即可，Startup 中的订阅会把它转发给前端。事件归属目标会话，而不是此刻恰好在看的会话。
+			a.engine.Bus().Publish(event.New(sessionID, event.RootAgentID, "",
 				event.Error{Code: code, Message: err.Error(), Fatal: true}))
 		}
 	}()
 	return nil
 }
 
+// Cancel 取消当前会话正在运行的一轮。
 func (a *App) Cancel() { a.engine.Cancel() }
+
+// CancelSession 取消指定会话正在运行的一轮，不影响其他会话。
+func (a *App) CancelSession(sessionID string) { a.engine.CancelSession(sessionID) }
 
 func (a *App) RespondPermission(requestID, decision string) error {
 	return a.engine.RespondPermission(requestID, decision)
