@@ -216,22 +216,40 @@ def serve():
 
 # ---------------------------------------------------------------- 状态与登录（给清单里的 status / actions）
 
-NOT_LOGGED_HINTS = ("not logged", "not login", "no token", "unauthenticated", "expired", "未登录", "未授权", "已过期", "请先登录", "auth login")
+NOT_LOGGED_HINTS = ("not logged", "not login", "no token", "unauthenticated", "token does not exist", "has been cleared", "re-login", "未登录", "未授权", "已过期", "请先登录")
+
+
+def read_status():
+    """读取 lark-cli auth status，返回 (是否以用户身份登录, 给人看的一句话, 原始输出)。
+
+    真实输出（未登录时）是这样的 JSON：{"appId": …, "identity": "bot", "note": "Token does not exist or has been
+    cleared. Only bot (tenant) identity is available. Re-login: lark-cli auth login", "userName": …}。
+    关键是 identity：读用户自己的文档和消息必须是 "user"；只有 "bot" 说明没有可用的用户令牌（没登录、过期或被清除）。
+    """
+    code, out, err = run_lark(["auth", "status"], 20)
+    text = (out + "\n" + err).strip()
+    data = None
+    try:
+        data = json.loads(out)
+    except ValueError:
+        pass
+    if code != 0:
+        return False, "lark-cli auth status 失败（退出码 %d）：%s" % (code, (err or out).strip()[:200]), text
+    if isinstance(data, dict) and isinstance(data.get("identity"), str):
+        if data["identity"].lower() == "user" and not any(h in str(data.get("note", "")).lower() for h in NOT_LOGGED_HINTS):
+            who = data.get("userName") or data.get("userOpenId") or ""
+            return True, "已登录" + ("：%s" % who if who else ""), text
+        note = str(data.get("note") or "").strip()
+        return False, "未登录（当前只有机器人身份，读不到你的文档和消息）。" + (note and "lark-cli 说：" + note), text
+    # 输出不是预期的 JSON：只能用关键字推断，不确定时按未登录处理（宁可让用户多点一次登录，也不假装已登录）。
+    if any(h in text.lower() for h in NOT_LOGGED_HINTS):
+        return False, "未登录：" + text[:200], text
+    return False, "无法判断登录状态（lark-cli 输出的格式和预期不同）：" + text[:200], text
 
 
 def cmd_status():
-    code, out, err = run_lark(["auth", "status"], 20)
-    text = (out + "\n" + err).strip()
-    ok = code == 0
-    try:  # 如果输出是 JSON 信封，以它的 ok 为准
-        data = json.loads(out)
-        if isinstance(data, dict) and isinstance(data.get("ok"), bool):
-            ok = ok and data["ok"]
-    except ValueError:
-        pass
-    if ok and any(h in text.lower() for h in NOT_LOGGED_HINTS):
-        ok = False
-    print(json.dumps({"ok": ok, "exit_code": code, "detail": text[:600]}, ensure_ascii=False))
+    ok, message, raw = read_status()
+    print(json.dumps({"ok": ok, "message": message, "detail": raw[:600]}, ensure_ascii=False))
 
 
 def pending_file(data_dir):
@@ -307,7 +325,14 @@ def cmd_login_finish(data_dir):
             os.remove(path)
         except OSError:
             pass
-        print("\n登录完成。")
+        # 授权命令成功不等于拿到了用户令牌：再查一次状态，把真实结果告诉用户。
+        ok, message, _ = read_status()
+        if ok:
+            print("\n登录完成。" + message)
+        else:
+            print("\n授权命令已结束，但 lark-cli 仍然没有可用的用户令牌：" + message)
+            print("可能原因：授权页里没有点“同意”、授权的是别的应用、或系统钥匙串不可用。请重新点“登录飞书”再试；仍然不行请把这段输出反馈给我们。")
+            return 1
     else:
         print("\n还没有完成。请确认已在浏览器里同意授权，然后再点一次“完成登录”；授权链接过期的话重新点“登录飞书”。")
     return code
