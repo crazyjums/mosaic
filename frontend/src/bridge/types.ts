@@ -353,7 +353,13 @@ export interface Backend {
   getWorkspaceInfo(): Promise<WorkspaceInfo>;
   // ---- 插件（见 docs/design/plugin-system.md）----
   listPlugins(): Promise<PluginInfo[]>;
-  /** 校验插件目录或 .zip，返回安装前要给用户确认的内容；此时什么都没有生效 */
+  /** 插件市场的列表（内置的加上上次刷新到的在线列表），不联网 */
+  listPluginCatalog(): Promise<PluginCatalogEntry[]>;
+  /** 联网刷新在线列表；失败时抛错，界面继续显示原来的列表 */
+  refreshPluginCatalog(): Promise<PluginCatalogEntry[]>;
+  /** 取市场里的一个插件，返回安装前要给用户确认的内容（之后和 previewPlugin 的流程相同） */
+  previewCatalogPlugin(id: string): Promise<PluginPreview>;
+  /** 校验插件目录、.zip 或 https:// 开头的 Git 地址（末尾可用 #分支或标签），返回安装前要给用户确认的内容；此时什么都没有生效 */
   previewPlugin(src: string): Promise<PluginPreview>;
   /** approved：用户勾选的、同意按作者声明的风险等级运行的 MCP 服务名（没勾选的一律每次询问） */
   installPlugin(token: string, approved: string[]): Promise<PluginInfo>;
@@ -730,6 +736,20 @@ export interface PluginInfo {
   requires: { command: string; found: boolean }[];
   network: string[];
   installed_at?: string;
+}
+
+/** 插件市场里的一项 */
+export interface PluginCatalogEntry {
+  id: string;
+  name: string;
+  /** 语言（zh / en）→ 简介 */
+  summary?: Record<string, string>;
+  /** bundled：随应用发布；git：来自 Git 仓库 */
+  kind: "bundled" | "git";
+  git?: string;
+  ref?: string;
+  installed: boolean;
+  installed_version?: string;
 }
 
 export interface PluginPreview {

@@ -7,7 +7,7 @@ import { createWailsBackend, isWails } from "./wails";
 export type {
   Backend, ChatGPTStatus, ChatGPTUsage, Quota, QuotaWindow, ContextBreakdown, ContextItem, ContextPart, DataInfo, General, GeneralView, Attachment, SkillInfo, HistoryPage, LoadedSession, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, GroupConfig, GroupInput, GroupMember, GroupStatus, GroupStrategy, GroupView, MemberState, MemberStatus, ProxyView, UsageBy, UsageNode, UsageRange, UsageReport, UsageRequest, UsageTotals, ReleaseNotes, ChangeKind, UpdateInfo, UpdateStatus, WorkspaceInfo,
-  WorkspaceFile, PluginInfo, PluginPreview, PluginStatus, PluginActionResult, PluginConfigView, PluginServerView, SlashCommandInfo, GitBranch, GitChangedFile, GitCommit, GitCommitDetail, GitDiff, GitFileChange, GitOverview, GitRef, GitStatus,
+  WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginStatus, PluginActionResult, PluginConfigView, PluginServerView, SlashCommandInfo, GitBranch, GitChangedFile, GitCommit, GitCommitDetail, GitDiff, GitFileChange, GitOverview, GitRef, GitStatus,
 } from "./types";
 
 let instance: Backend | null = null;

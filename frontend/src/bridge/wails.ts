@@ -11,7 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
-  WorkspaceFile, PluginInfo, PluginPreview, PluginStatus, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
+  WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginStatus, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -44,6 +44,9 @@ interface GoApp {
   ReadWorkspaceText(path: string): Promise<WorkspaceFile>;
   OpenWorkspaceFile(path: string): Promise<void>;
   ListPlugins(): Promise<PluginInfo[] | null>;
+  ListPluginCatalog(): Promise<PluginCatalogEntry[] | null>;
+  RefreshPluginCatalog(): Promise<PluginCatalogEntry[] | null>;
+  PreviewCatalogPlugin(id: string): Promise<PluginPreview>;
   PreviewPlugin(src: string): Promise<PluginPreview>;
   InstallPlugin(token: string, approved: string[]): Promise<PluginInfo>;
   CancelPluginPreview(token: string): Promise<void>;
@@ -165,6 +168,9 @@ export function createWailsBackend(): Backend {
     fetchModels: async (input) => (await app.FetchModels(input)) ?? [],
     getWorkspaceInfo: () => app.GetWorkspaceInfo(),
     listPlugins: async () => (await app.ListPlugins()) ?? [],
+    listPluginCatalog: async () => (await app.ListPluginCatalog()) ?? [],
+    refreshPluginCatalog: async () => (await app.RefreshPluginCatalog()) ?? [],
+    previewCatalogPlugin: (id) => app.PreviewCatalogPlugin(id),
     previewPlugin: (src) => app.PreviewPlugin(src),
     installPlugin: (token, approved) => app.InstallPlugin(token, approved),
     cancelPluginPreview: (token) => app.CancelPluginPreview(token),
