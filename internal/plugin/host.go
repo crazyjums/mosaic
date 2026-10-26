@@ -57,6 +57,8 @@ type Host struct {
 	warn    map[string]string
 	// remote 是在线列表里（上次刷新的）条目，见 catalog.go。
 	remote []registryEntry
+	// logins 是各插件正在进行或刚结束的登录，见 login.go。
+	logins map[string]*loginRun
 }
 
 type stateFile struct {
@@ -109,7 +111,7 @@ func NewHost(opts HostOptions) (*Host, error) {
 			return nil, fmt.Errorf("plugin: %w", err)
 		}
 	}
-	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, warn: map[string]string{}}
+	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, warn: map[string]string{}, logins: map[string]*loginRun{}}
 	h.cleanLeftovers()
 	h.loadState()
 	h.loadRegistryCache()
@@ -205,12 +207,14 @@ type Info struct {
 	Warning string `json:"warning,omitempty"`
 	Source  string `json:"source,omitempty"`
 
-	Skills      []string      `json:"skills"`
-	Commands    []CommandView `json:"commands"`
-	Servers     []ServerView  `json:"servers"`
-	Config      []ConfigView  `json:"config"`
-	HasStatus   bool          `json:"has_status"`
-	Actions     []ActionView  `json:"actions"`
+	Skills    []string      `json:"skills"`
+	Commands  []CommandView `json:"commands"`
+	Servers   []ServerView  `json:"servers"`
+	Config    []ConfigView  `json:"config"`
+	HasStatus bool          `json:"has_status"`
+	Actions   []ActionView  `json:"actions"`
+	// Login 不为空表示这个插件有“一键登录”按钮。
+	Login       *LoginView    `json:"login,omitempty"`
 	Requires    []Requirement `json:"requires"`
 	Network     []string      `json:"network"`
 	InstalledAt time.Time     `json:"installed_at,omitempty"`
@@ -339,6 +343,13 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 	}
 	for _, a := range m.Actions {
 		info.Actions = append(info.Actions, ActionView{ID: a.ID, Label: a.Label})
+	}
+	if m.Login != nil {
+		label := m.Login.Label
+		if label == "" {
+			label = "登录"
+		}
+		info.Login = &LoginView{Label: label, Hosts: append([]string{}, m.Login.URLHosts...)}
 	}
 	for _, c := range m.Requires.Commands {
 		_, err := h.opts.LookPath(c)
@@ -502,6 +513,9 @@ func (h *Host) Install(token string, approved []string) (Info, error) {
 
 // SetEnabled 启用或停用插件。停用时摘掉它的技能、命令和 MCP 工具（子进程随之停止），配置和密钥保留。
 func (h *Host) SetEnabled(id string, on bool) (Info, error) {
+	if !on {
+		h.CancelLogin(id) // 停用后不再等待授权
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	l, ok := h.plugins[id]
@@ -531,6 +545,7 @@ func (h *Host) stateLocked(id string) *pluginState {
 
 // Uninstall 卸载插件。purge 为 true 时一并清除配置、钥匙串里的密钥和插件的运行时数据。
 func (h *Host) Uninstall(id string, purge bool) error {
+	h.CancelLogin(id)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	l, ok := h.plugins[id]

@@ -56,7 +56,9 @@ type Manifest struct {
 	Config   []ConfigField `json:"config,omitempty"`
 	Status   *StatusSpec   `json:"status,omitempty"`
 	Actions  []ActionSpec  `json:"actions,omitempty"`
-	Requires Requires      `json:"requires,omitempty"`
+	// Login 声明一个“一键登录”流程（在浏览器里授权）：见 LoginSpec。
+	Login    *LoginSpec `json:"login,omitempty"`
+	Requires Requires   `json:"requires,omitempty"`
 	// Network 是声明会访问的域名：只用于安装确认，不做强制拦截。
 	Network []string `json:"network,omitempty"`
 
@@ -127,6 +129,21 @@ type ActionSpec struct {
 	ID      string `json:"id"`
 	Label   string `json:"label"`
 	Command string `json:"command"`
+}
+
+// LoginSpec 声明一个“在浏览器里登录”的流程，界面上是一个按钮：点击后应用运行 Start，拿到授权链接并在
+// 系统浏览器里打开，同时在后台运行 Finish 等用户授权完成。令牌由插件自己的程序保存（例如 lark-cli 存进系统钥匙串），
+// 应用不接触。
+type LoginSpec struct {
+	// Label 是按钮上的字；为空时用“登录”。
+	Label string `json:"label,omitempty"`
+	// Start 运行后在标准输出打印一个 JSON：{"url": "授权链接", "message": "给用户看的一句话（可选）"}；退出码非 0 表示没能开始。
+	Start string `json:"start"`
+	// Finish 会一直运行到用户授权完成（最长 10 分钟）：退出码 0 表示登录成功，输出显示给用户；用户取消时被终止。
+	Finish string `json:"finish"`
+	// URLHosts 是授权链接允许的域名（可用 *.example.com）。应用只会打开 https 且域名在这里的链接，
+	// 所以插件的程序不能借“登录”让应用打开任意网址。
+	URLHosts []string `json:"url_hosts"`
 }
 
 // Requires 是插件依赖的外部条件。
@@ -289,6 +306,27 @@ func (m *Manifest) validate(dir string) error {
 		ids[a.ID] = true
 		if err := checkVars(a.Command, keys); err != nil {
 			return fmt.Errorf("action %q 的 command：%v", a.ID, err)
+		}
+	}
+	if l := m.Login; l != nil {
+		if strings.TrimSpace(l.Start) == "" || strings.TrimSpace(l.Finish) == "" {
+			return errors.New("login.start 和 login.finish 不能为空")
+		}
+		for name, cmd := range map[string]string{"start": l.Start, "finish": l.Finish} {
+			if err := checkVars(cmd, keys); err != nil {
+				return fmt.Errorf("login.%s：%v", name, err)
+			}
+		}
+		if len(l.URLHosts) == 0 || len(l.URLHosts) > 10 {
+			return errors.New("login.url_hosts 要写 1 到 10 个允许的域名")
+		}
+		for _, h := range l.URLHosts {
+			if h == "*" || !hostRe.MatchString(h) {
+				return fmt.Errorf("login.url_hosts 里的 %q 不是合法的域名（不能只写 *）", h)
+			}
+		}
+		if len([]rune(l.Label)) > 30 {
+			return errors.New("login.label 太长")
 		}
 	}
 	for _, c := range m.Requires.Commands {
