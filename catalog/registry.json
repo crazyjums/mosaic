@@ -2,6 +2,15 @@
   "version": 1,
   "plugins": [
     {
+      "id": "feishu",
+      "name": "飞书",
+      "summary": {
+        "zh": "用你的飞书账号登录，让模型读取你的飞书文档和群消息（只读，每次读取都会询问）。需要 lark-cli。",
+        "en": "Sign in with your Feishu account so the model can read your docs and group chats (read-only; every read asks first). Needs lark-cli."
+      },
+      "bundled": "feishu"
+    },
+    {
       "id": "code-review",
       "name": "代码评审",
       "summary": {

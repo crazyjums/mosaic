@@ -20,7 +20,7 @@ func newCatalogHost(t *testing.T, registryURL string) (*Host, string) {
 	root := t.TempDir()
 	h, err := NewHost(HostOptions{
 		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
-		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.3.2",
+		Secrets: secret.NewMemory(), MCP: newFakeMCP(), AppVersion: "1.5.0",
 		Catalog: catalog.FS, RegistryURL: registryURL,
 	})
 	if err != nil {
@@ -220,8 +220,8 @@ func findEntry(list []CatalogEntry, id string) (CatalogEntry, bool) {
 func TestEveryBundledPluginInstalls(t *testing.T) {
 	h, _ := newCatalogHost(t, "")
 	list := h.Catalog()
-	if len(list) < 7 {
-		t.Fatalf("内置插件应不少于 7 个: %d", len(list))
+	if len(list) < 8 {
+		t.Fatalf("内置插件应不少于 8 个: %d", len(list))
 	}
 	for _, e := range list {
 		if e.Kind != "bundled" {
@@ -253,7 +253,7 @@ func TestEveryBundledPluginInstalls(t *testing.T) {
 			t.Errorf("技能 %s 缺少 description", sk.Name)
 		}
 	}
-	for _, want := range []string{"code-review", "git-conventions", "writing-style", "bug-triage", "sql-tuning", "greeting"} {
+	for _, want := range []string{"code-review", "git-conventions", "writing-style", "bug-triage", "sql-tuning", "greeting", "feishu"} {
 		if !got[want] {
 			t.Errorf("没有发现技能 %s: %v", want, got)
 		}
