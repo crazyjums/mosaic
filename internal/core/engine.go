@@ -614,12 +614,43 @@ func (e *Engine) RespondPermission(requestID, decision string) error {
 	return e.broker.Resolve(requestID, permission.Decision(decision))
 }
 
-// ListSessions 列出已保存的会话。
+// ListSessions 列出已保存的会话，加上正在运行但还没保存的会话。
+//
+// 会话在一轮结束时才保存，所以一个全新的会话在第一轮运行期间还不在存储里；多个会话同时运行时，
+// 用户切到别的会话后需要能在列表里找到它、点回去。运行中的会话以内存里的为准（标题、消息数更新）。
 func (e *Engine) ListSessions(ctx context.Context) ([]SessionSummary, error) {
-	if e.cfg.Store == nil {
-		return nil, nil
+	var list []SessionSummary
+	if e.cfg.Store != nil {
+		var err error
+		if list, err = e.cfg.Store.ListSessions(ctx); err != nil {
+			return nil, err
+		}
 	}
-	return e.cfg.Store.ListSessions(ctx)
+	e.mu.Lock()
+	live := make([]*Session, 0, len(e.runs))
+	for _, r := range e.runs {
+		live = append(live, r.sess)
+	}
+	e.mu.Unlock()
+	if len(live) == 0 {
+		return list, nil
+	}
+	byID := map[string]int{}
+	for i, s := range list {
+		byID[s.ID] = i
+	}
+	for _, ls := range live {
+		snap := ls.Snapshot()
+		sum := SessionSummary{ID: snap.ID, Title: snap.Title, Provider: snap.Provider, Model: snap.Model, Workspace: snap.Workspace,
+			MessageCount: len(snap.Messages), CreatedAt: snap.CreatedAt, UpdatedAt: snap.UpdatedAt}
+		if i, ok := byID[snap.ID]; ok {
+			list[i] = sum
+		} else {
+			list = append(list, sum)
+		}
+	}
+	sort.SliceStable(list, func(i, j int) bool { return list[i].UpdatedAt.After(list[j].UpdatedAt) })
+	return list, nil
 }
 
 // LoadSession 加载一个历史会话作为当前会话，并把历史重放成事件发到总线上。

@@ -346,3 +346,27 @@ func TestSendRightAfterTurnEnd(t *testing.T) {
 		t.Fatalf("应保存 %d 轮，实际 %d: %v", rounds, len(got), got)
 	}
 }
+
+// 还没保存的运行中会话也要出现在会话列表里，用户切走之后才能点回去。
+func TestListSessionsIncludesRunningUnsaved(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, nil)
+	w := watchPerms(h)
+	ctx := context.Background()
+
+	a := h.engine.Status().SessionID
+	doneA := sendAsync(h, "", "任务A")
+	reqA := w.wait(t, a, 1)
+	_ = mustNew(t, h)
+
+	list, err := h.engine.ListSessions(ctx)
+	if err != nil || len(list) != 1 || list[0].ID != a || list[0].Title != "任务A" || list[0].MessageCount == 0 {
+		t.Fatalf("存储里还没有 A，但列表里应有运行中的 A: %v %+v", err, list)
+	}
+	_ = h.engine.RespondPermission(reqA, "allow")
+	_ = h.engine.RespondPermission(w.wait(t, a, 2), "allow")
+	waitDone(t, doneA)
+	list, _ = h.engine.ListSessions(ctx)
+	if len(list) != 1 || list[0].ID != a {
+		t.Fatalf("结束后以存储为准，不重复: %+v", list)
+	}
+}
