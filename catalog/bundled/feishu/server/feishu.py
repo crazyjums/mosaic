@@ -7,8 +7,8 @@
     python3 feishu.py mcp                       作为 MCP 服务运行（应用这样启动它）
     python3 feishu.py status                    检查是否已登录，打印 JSON（给清单里的 status 用）
     python3 feishu.py init                      初始化飞书应用配置（lark-cli config init --new）
-    python3 feishu.py login --data-dir DIR      开始登录：打印授权链接，把设备码记在 DIR 里
-    python3 feishu.py login-finish --data-dir DIR  在浏览器里授权完成后，用记下的设备码完成登录
+    python3 feishu.py login-start --data-dir DIR  开始登录：打印 {"url": 授权链接}，把设备码记在 DIR 里（应用会在浏览器里打开链接）
+    python3 feishu.py login-wait --data-dir DIR   等用户在浏览器里授权完成，并确认拿到了用户令牌（应用在后台运行）
 
 为什么只读：这个插件的用途是“让模型读你的文档和群消息”。写操作（发消息、改文档）风险高得多，
 也不是这个插件要解决的问题，所以只放行名字里带“读”类动词、不带“写”类动词的命令（见 check_command）。
@@ -293,49 +293,69 @@ def cmd_init():
     return code
 
 
-def cmd_login(data_dir):
-    code, out, err = run_lark(["auth", "login", "--recommend", "--no-wait"], LOGIN_TIMEOUT)
-    print((out + err).strip() or "（没有输出）")
+def pick_login_url(out):
+    """从 `auth login --no-wait` 的输出里找授权链接：优先带用户码的完整链接，其次普通的验证链接，最后任何 https 链接。"""
+    try:
+        data = json.loads(out)
+    except ValueError:
+        data = None
+    if data is not None:
+        for needle in ("verification_uri_complete", "verification_url_complete", "verification_url", "verification_uri", "url"):
+            found = find_key(data, needle)
+            if found and found.startswith("https://"):
+                return found
+    m = re.search(r"https://[^\s\"'<>]+", out)
+    return m.group(0) if m else None
+
+
+def cmd_login_start(data_dir):
+    """给应用的“登录飞书”按钮：开始授权，打印 {"url": …}，应用会在浏览器里打开它，同时在后台运行 login-wait。"""
+    code, out, err = run_lark(["auth", "login", "--recommend", "--no-wait"], 30)
+    text = (out + err).strip()
     if code != 0:
-        print("\n登录没有开始。如果提示还没配置应用，请先点“初始化应用配置”。")
+        print(text or "（没有输出）")
+        print("登录没有开始。如果提示还没配置应用，请先点“初始化应用配置”。")
         return code
+    link = pick_login_url(out)
     device = parse_device_code(out)
-    if device and data_dir:
-        os.makedirs(data_dir, exist_ok=True)
-        with open(pending_file(data_dir), "w", encoding="utf-8") as f:
-            json.dump({"device_code": device}, f)
-        print("\n请在浏览器里打开上面的授权链接并同意；完成后回来点“完成登录”。")
-    else:
-        print("\n没能从输出里识别出设备码。请在终端里运行：lark-cli auth login --recommend，按提示完成登录。")
+    if not link or not device or not data_dir:
+        print(text or "（没有输出）")
+        print("没能从 lark-cli 的输出里识别出授权链接或设备码，请把上面的输出反馈给我们；也可以先在终端里运行 lark-cli auth login --recommend 完成登录。")
+        return 1
+    os.makedirs(data_dir, exist_ok=True)
+    with open(pending_file(data_dir), "w", encoding="utf-8") as f:
+        json.dump({"device_code": device}, f)
+    print(json.dumps({"url": link, "message": "已在浏览器里打开飞书授权页，请用你的飞书账号登录并同意授权。"}, ensure_ascii=False))
     return 0
 
 
-def cmd_login_finish(data_dir):
+def cmd_login_wait(data_dir):
+    """给应用在后台运行：等用户在浏览器里授权完成（lark-cli 会一直轮询到完成或超时），再确认是否真的拿到了用户令牌。"""
     path = pending_file(data_dir)
     try:
         with open(path, encoding="utf-8") as f:
             device = json.load(f)["device_code"]
     except (OSError, ValueError, KeyError):
-        print("没有进行中的登录。请先点“登录飞书”。")
+        print("没有进行中的登录，请重新点“登录飞书”。")
         return 1
-    code, out, err = run_lark(["auth", "login", "--device-code", device], LOGIN_TIMEOUT)
-    print((out + err).strip() or "（没有输出）")
-    if code == 0:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-        # 授权命令成功不等于拿到了用户令牌：再查一次状态，把真实结果告诉用户。
-        ok, message, _ = read_status()
-        if ok:
-            print("\n登录完成。" + message)
-        else:
-            print("\n授权命令已结束，但 lark-cli 仍然没有可用的用户令牌：" + message)
-            print("可能原因：授权页里没有点“同意”、授权的是别的应用、或系统钥匙串不可用。请重新点“登录飞书”再试；仍然不行请把这段输出反馈给我们。")
-            return 1
-    else:
-        print("\n还没有完成。请确认已在浏览器里同意授权，然后再点一次“完成登录”；授权链接过期的话重新点“登录飞书”。")
-    return code
+    code, out, err = run_lark(["auth", "login", "--device-code", device], 600)
+    text = (out + err).strip()
+    if code != 0:
+        print(text or "（没有输出）")
+        print("授权没有完成（可能链接过期、没有点同意，或已取消）。请重新点“登录飞书”。")
+        return code
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    # 授权命令成功不等于拿到了用户令牌：再查一次状态，把真实结果告诉用户。
+    ok, message, _ = read_status()
+    if ok:
+        print("登录完成。" + message)
+        return 0
+    print("授权命令已结束，但 lark-cli 仍然没有可用的用户令牌：" + message)
+    print("可能原因：授权页里没有点“同意”、授权的是别的应用、或系统钥匙串不可用。请重新点“登录飞书”再试；仍然不行请把这段输出反馈给我们。")
+    return 1
 
 
 def main():
@@ -348,10 +368,10 @@ def main():
         cmd_status()
     elif mode == "init":
         sys.exit(cmd_init())
-    elif mode == "login":
-        sys.exit(cmd_login(data_dir))
-    elif mode == "login-finish":
-        sys.exit(cmd_login_finish(data_dir))
+    elif mode == "login-start":
+        sys.exit(cmd_login_start(data_dir))
+    elif mode == "login-wait":
+        sys.exit(cmd_login_wait(data_dir))
     else:
         print("未知子命令：%s" % mode)
         sys.exit(2)
