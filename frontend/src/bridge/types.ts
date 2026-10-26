@@ -764,6 +764,17 @@ export interface PluginCatalogEntry {
   version?: string;
   /** 市场里的版本和已安装的不同：显示“更新” */
   update_available?: boolean;
+  /** dev / writing / office / data / demo */
+  category?: string;
+  /** 显示在市场顶部的“精选”位 */
+  featured?: boolean;
+  /** 卡片上的“它带来什么”（内置插件才有） */
+  skills?: number;
+  commands?: number;
+  servers?: number;
+  requires?: string[];
+  /** 会读取私密内容：每次调用都询问 */
+  sensitive?: boolean;
 }
 
 export interface PluginLoginState {
