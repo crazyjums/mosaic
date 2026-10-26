@@ -32,6 +32,8 @@ interface GoApp {
   SetModel(profile: string, model: string): Promise<Status>;
   Send(text: string): Promise<void>;
   Cancel(): Promise<void>;
+  CancelSession(sessionId: string): Promise<void>;
+  SendToSession(sessionId: string, text: string, attachments: Attachment[]): Promise<void>;
   RespondPermission(requestId: string, decision: string): Promise<void>;
   ListProviders(): Promise<ProviderView[] | null>;
   SaveProvider(input: ProviderInput): Promise<void>;
@@ -136,8 +138,8 @@ export function createWailsBackend(): Backend {
     readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),
     openExternalURL: (url) => app.OpenExternalURL(url),
     setModel: (p, m) => app.SetModel(p, m),
-    send: (t, atts) => (atts?.length ? app.SendMessage(t, atts) : app.Send(t)),
-    cancel: () => app.Cancel(),
+    send: (sid, t, atts) => app.SendToSession(sid, t, atts ?? []),
+    cancel: (sid) => (sid ? app.CancelSession(sid) : app.Cancel()),
     respondPermission: (id, d: Decision) => app.RespondPermission(id, d),
     listProviders: async () => (await app.ListProviders()) ?? [],
     saveProvider: (input) => app.SaveProvider(input),

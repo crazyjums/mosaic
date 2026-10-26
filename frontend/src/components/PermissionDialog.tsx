@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Decision } from "../protocol/events";
 import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
@@ -15,12 +15,15 @@ const RISK_TEXT: Record<string, string> = {
 export default function PermissionDialog() {
   const req = useChat((s) => s.permissions[0]);
   const respond = useChat((s) => s.respondPermission);
+  // “稍后处理”：多个会话同时运行时，用户可能想先去看别的会话。弹窗收起成一条不挡操作的提示条，请求仍在等待。
+  const [snoozed, setSnoozed] = useState<string | null>(null);
+  const hidden = !!req && snoozed === req.request_id;
 
   const answer = (d: Decision) => req && void respond(req.request_id, d);
 
   // 键盘快捷键：Enter 允许，Esc 拒绝。
   useEffect(() => {
-    if (!req) return;
+    if (!req || hidden) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") answer("deny");
       if (e.key === "Enter" && !e.shiftKey) {
@@ -33,6 +36,17 @@ export default function PermissionDialog() {
   });
 
   if (!req) return null;
+  if (hidden) {
+    return (
+      <div className="fixed bottom-24 left-1/2 z-30 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-full border border-warn/40 bg-panel px-4 py-2 text-sm shadow-pop" role="status">
+        <MosaicMark size="xs" state="problem" />
+        <span className="min-w-0 truncate">{t("有一个权限请求在等你：{summary}", { summary: req.summary })}</span>
+        <button className="btn-primary shrink-0 px-3 py-1 text-xs" onClick={() => setSnoozed(null)}>
+          {t("处理")}
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-6" role="alertdialog" aria-modal="true" aria-label={t("需要你的确认")}>
       <div className="shadow-pop w-full max-w-lg rounded-modal border border-line bg-panel">
@@ -49,6 +63,9 @@ export default function PermissionDialog() {
           {JSON.stringify(req.input, null, 2)}
         </pre>
         <div className="flex justify-end gap-2 border-t border-line px-5 py-3 text-sm">
+          <button className="mr-auto rounded-ctl px-3 py-1.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => setSnoozed(req.request_id)} title={t("先去看别的会话，这个请求继续等你")}>
+            {t("稍后处理")}
+          </button>
           <button className="rounded-ctl px-3 py-1.5 text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-danger" onClick={() => answer("deny")}>
             {t("拒绝")} <kbd className="ml-1 text-[10px] opacity-60">Esc</kbd>
           </button>

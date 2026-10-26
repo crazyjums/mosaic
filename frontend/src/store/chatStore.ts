@@ -14,8 +14,16 @@ import type { Decision } from "../protocol/events";
 import { applyEvent, foldEvents, initialState, prependHistory, type ChatState } from "./reducer";
 import { t } from "../i18n";
 import * as Q from "./queue";
+import { applyActivity, reconcileRunning, type SessionActivity } from "./activity";
+
+/** 离开一个会话时它的完整界面状态（只为"还在运行或有待发送消息"的会话保存），后台事件继续往里累积。 */
+export type Stashed = ChatState & { earlier: number; title: string; paged: boolean };
 
 interface Store extends ChatState, Q.QueueState {
+  /** 后台会话的界面状态：多个会话可以同时运行，切走时它们继续跑，事件累积在这里，切回来原样恢复 */
+  stash: Record<string, Stashed>;
+  /** 非当前会话的运行情况（运行中 / 待确认 / 有新结果），会话列表据此显示标记 */
+  activity: Record<string, SessionActivity>;
   backendKind: "wails" | "demo";
   profiles: ProfileInfo[];
   sessions: SessionSummary[];
@@ -46,6 +54,7 @@ interface Store extends ChatState, Q.QueueState {
   moveQueuedFirst(id: string): void;
   /** 暂停之后继续发送队列 */
   resumeQueue(): Promise<void>;
+  /** 取消当前会话正在运行的一轮（其他会话不受影响） */
   cancel(): Promise<void>;
   respondPermission(requestId: string, decision: Decision): Promise<void>;
   newSession(): Promise<void>;
@@ -77,6 +86,22 @@ const wsFrom = (st: Status) => ({
   workspaceMissing: st.workspace_missing ?? false,
 });
 
+/** 对象去掉一个键（不修改原对象）。 */
+const omit = <T,>(o: Record<string, T>, k: string): Record<string, T> => {
+  const { [k]: _drop, ...rest } = o;
+  void _drop;
+  return rest;
+};
+
+/** 从整个 store 里取出会话界面状态（ChatState 的字段）。 */
+const VIEW_KEYS: (keyof ChatState)[] = ["sessionId", "timeline", "tools", "permissions", "running", "provider", "model", "sessionUsage", "agents", "tasks", "lastSeq", "versionWarning", "turnStartedAt", "lastTurnMs"];
+const pickView = (s: ChatState): ChatState => Object.fromEntries(VIEW_KEYS.map((k) => [k, s[k]])) as unknown as ChatState;
+
+const withActivity = (act: Record<string, SessionActivity>, sid: string, ev: Parameters<typeof applyActivity>[1]) => {
+  const next = applyActivity(act[sid], ev);
+  return next === act[sid] ? act : next ? { ...act, [sid]: next } : act;
+};
+
 export const useChat = create<Store>((set, get) => {
   /** 包一层错误处理：任何动作失败都变成 toast，而不是未捕获的 Promise 异常。 */
   const guard = async (fn: () => Promise<void>) => {
@@ -87,39 +112,47 @@ export const useChat = create<Store>((set, get) => {
     }
   };
 
-  // 运行中切换会话 / 新建会话：后端一次只跑一轮（运行中会返回 busy），所以先确认、停止当前这一轮，
-  // 等后端真正停下来（最多几秒）再继续。返回 false 表示用户取消了。
-  const stopRunning = async (): Promise<boolean> => {
-    if (!get().running && !Q.hasSending(get())) return true;
-    // 待发送的消息属于这个会话，会保留；说清楚，免得用户以为被丢了
-    const queued = Q.countFor(get(), get().sessionId ?? "");
-    const note = queued > 0 ? t("（待发送的 {n} 条消息会保留，回到这个会话后可以继续发送）", { n: queued }) : "";
-    if (!confirm(t("当前会话还在运行。停止它并继续？") + note)) return false;
-    await backend().cancel();
-    for (let i = 0; i < 50; i++) {
-      if (!(await backend().getStatus()).running) {
-        set({ running: false });
-        return true;
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    throw new Error(t("停止超时，请稍后再试"));
-  };
-
-  /**
-   * 发送队列的出口：取出当前会话该发的下一条，交给后端。
-   * 关键：先同步地把它标成"发送中"再 await，这样重复的 turn_end 事件、连续的入队调用再进来时，
-   * nextToSend 看到有"发送中"的就不会再发（不会重复发送、也不会乱序）。
-   */
-  const drain = async () => {
+  // 切换会话不再要求停止当前会话：多个会话可以同时运行，离开的会话转入后台继续跑。
+  // 离开时如果它还在运行、有待确认的权限或待发送的消息，把完整的界面状态存进 stash，之后的事件继续累积到里面。
+  const leaveCurrent = () => {
     const s = get();
     const sid = s.sessionId;
     if (!sid) return;
-    const next = Q.nextToSend(s, sid, s.running);
+    const keep = s.running || s.permissions.length > 0 || Q.countFor(s, sid) > 0;
+    const { [sid]: _drop, ...restStash } = s.stash;
+    const { [sid]: _a, ...restAct } = s.activity;
+    if (!keep) return set({ stash: restStash, activity: restAct });
+    const { stash: _s, activity: _ac, ...rest } = s;
+    void _s; void _ac;
+    const view = pickView(rest as unknown as ChatState);
+    set({
+      stash: { ...restStash, [sid]: { ...view, earlier: s.earlier, title: s.title, paged: s.prependTick > 0 } },
+      activity: { ...restAct, [sid]: { running: s.running, waiting: s.permissions.length, unread: false } },
+    });
+  };
+
+  /** 进入一个会话时丢掉它的后台记录（stash 在调用方取走用于恢复） */
+  const enter = (id: string) => {
+    const { [id]: _drop, ...restStash } = get().stash;
+    const { [id]: _a, ...restAct } = get().activity;
+    set({ stash: restStash, activity: restAct });
+  };
+
+  /**
+   * 发送队列的出口：取出某个会话该发的下一条，交给后端。
+   * 关键：先同步地把它标成"发送中"再 await，这样重复的 turn_end 事件、连续的入队调用再进来时，
+   * nextToSend 看到有"发送中"的就不会再发（不会重复发送、也不会乱序）。
+   * 后台会话的队列同样会在它跑完一轮后接着发——用户此时可能正看着别的会话。
+   */
+  const drain = async (sid: string | null = get().sessionId) => {
+    const s = get();
+    if (!sid) return;
+    const running = sid === s.sessionId ? s.running : (s.activity[sid]?.running ?? false);
+    const next = Q.nextToSend(s, sid, running);
     if (!next) return;
     set(Q.markSending(s, next.id));
     try {
-      await backend().send(next.text, next.attachments.length ? next.attachments : undefined);
+      await backend().send(sid, next.text, next.attachments.length ? next.attachments : undefined);
     } catch (e) {
       set((cur) => Q.markFailed(cur, next.id, String(e instanceof Error ? e.message : e)));
     }
@@ -128,10 +161,11 @@ export const useChat = create<Store>((set, get) => {
   const refreshMeta = async () => {
     const b = backend();
     const [st, sessions, profiles] = await Promise.all([b.getStatus(), b.listSessions(), b.getProfiles()]);
-    set({
+    set((cur) => ({
       title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, sessions, profiles,
       ...wsFrom(st), permissionMode: st.permission_mode,
-    });
+      activity: reconcileRunning(cur.activity, st.running_sessions ?? [], cur.sessionId),
+    }));
   };
 
   return {
@@ -148,6 +182,8 @@ export const useChat = create<Store>((set, get) => {
     permissionMode: "default",
     toast: null,
     ...Q.emptyQueue(),
+    stash: {},
+    activity: {},
     earlier: 0,
     loadingEarlier: false,
     prependTick: 0,
@@ -157,19 +193,38 @@ export const useChat = create<Store>((set, get) => {
       initialized = true;
       const b = backend();
 
-      // 所有事件都流经 reducer。一轮结束后刷新会话列表和状态栏数据。
+      // 所有事件都流经这里。当前会话的事件进 reducer；其他会话（后台运行的）的事件累积到它的 stash，
+      // 并更新会话列表用的活动状态。一轮结束后刷新会话列表和状态栏数据。
       b.onEvent((ev) => {
-        set((s) => applyEvent(s, ev));
-        // 发送队列跟着真实事件走：后端开始新一轮 = 那条消息送达；后端拒绝 = 标记失败；一轮结束 = 轮到下一条。
-        // 只处理当前会话的事件（队列里的消息都绑定了会话）。
+        const sid = ev.session_id;
         const cur = get().sessionId;
-        if (cur && ev.session_id === cur) {
-          if (ev.type === "turn_start" && !ev.data.replay) set((s) => Q.onTurnStarted(s, cur));
-          else if (ev.type === "error" && ["send_failed", "busy", "attachment_error"].includes(ev.data.code)) set((s) => Q.onSendRejected(s, cur, ev.data.message));
-          else if (ev.type === "turn_end" && !ev.data.replay) {
-            set((s) => Q.onTurnEnded(s, cur, ev.data.reason));
-            void drain();
+        if (!cur || sid === cur) {
+          set((s) => applyEvent(s, ev));
+        } else {
+          set((s) => ({
+            stash: s.stash[sid] ? { ...s.stash, [sid]: { ...s.stash[sid], ...applyEvent(s.stash[sid], ev) } } : s.stash,
+            activity: withActivity(s.activity, sid, ev),
+          }));
+          if (ev.type === "permission_request") {
+            const name = get().sessions.find((x) => x.id === sid)?.title || t("另一个会话");
+            set({ toast: t("会话「{name}」在等你确认权限，点会话列表里的它即可处理", { name }) });
           }
+        }
+        // 发送队列跟着真实事件走：后端开始新一轮 = 那条消息送达；后端拒绝 = 标记失败；一轮结束 = 轮到下一条。
+        // 队列里的消息都绑定了会话，所以后台会话的事件也要处理。
+        if (ev.type === "turn_start" && !ev.data.replay) {
+          set((s) => Q.onTurnStarted(s, sid));
+          void refreshMeta(); // 新会话的第一轮开始后就出现在会话列表里（后端把运行中的会话也列出来）
+        }
+        else if (ev.type === "error" && ["send_failed", "busy", "attachment_error"].includes(ev.data.code)) set((s) => Q.onSendRejected(s, sid, ev.data.message));
+        else if (ev.type === "turn_end" && !ev.data.replay) {
+          set((s) => {
+            const q = Q.onTurnEnded(s, sid, ev.data.reason);
+            // 后台会话跑完、队列里也没有后续消息：丢掉它的 stash，再打开时从后端重新加载（历史与翻页都是完整的）。
+            const done = sid !== s.sessionId && !!s.stash[sid] && !s.queue.some((m) => m.sessionId === sid);
+            return done ? { ...q, stash: omit(s.stash, sid) } : q;
+          });
+          void drain(sid);
         }
         if (ev.type === "session_updated") {
           if (ev.session_id === get().sessionId) set({ title: ev.data.title });
@@ -197,6 +252,7 @@ export const useChat = create<Store>((set, get) => {
           permissionMode: st.permission_mode,
           profiles,
           sessions,
+          activity: reconcileRunning({}, st.running_sessions ?? [], st.session_id),
         });
       });
     },
@@ -222,32 +278,46 @@ export const useChat = create<Store>((set, get) => {
         if (sid) set((s) => Q.resume(s, sid));
         await drain();
       }),
-    cancel: () => guard(() => backend().cancel()),
+    cancel: () => guard(() => backend().cancel(get().sessionId ?? undefined)),
     respondPermission: (id, decision) => guard(() => backend().respondPermission(id, decision)),
 
     newSession: () =>
       guard(async () => {
-        if (!(await stopRunning())) return;
         const st = await backend().newSession();
+        leaveCurrent();
         set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", earlier: 0, loadingEarlier: false, ...wsFrom(st) });
+        enter(st.session_id);
         void get().refreshWorkspace();
       }),
 
     loadSession: (id) =>
       guard(async () => {
-        if (!(await stopRunning())) return;
-        // 先切换到目标会话再调用后端：这样加载期间旧会话残留的实时事件会被 reducer 丢弃。
+        if (id === get().sessionId) return;
+        // 先切换到目标会话再调用后端：这样加载期间旧会话残留的实时事件会被归到它自己的 stash，不会混进新会话的界面。
         const prev = get();
+        const stashed = prev.stash[id];
+        leaveCurrent();
         set({ ...initialState(id), provider: prev.provider, model: prev.model, earlier: 0, loadingEarlier: false });
         try {
-          // 历史作为返回值一次性给出（只有最近几轮）：折叠完再 set 一次，界面只渲染一次。
           const r = await backend().loadSession(id);
           const st = r.status;
-          set((s) => ({
-            ...foldEvents(s, r.events),
-            title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, earlier: r.earlier,
-            ...wsFrom(st),
-          }));
+          if (stashed) {
+            // 这个会话在后台跑过：用后台累积的完整界面状态（包含正在输出的内容），不用后端的重放（那里没有流式到一半的消息）。
+            // 后台期间历史可能超出后端的分页窗口，翻页的游标对不上，所以不再提供"加载更早"。
+            const latest = get().stash[id] ?? stashed;
+            const { earlier: _e, title: _t, paged: _p, ...view } = latest;
+            void _e; void _t; void _p;
+            set({ ...view, running: st.running, title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, earlier: 0, ...wsFrom(st) });
+          } else {
+            // 历史作为返回值一次性给出（只有最近几轮）：折叠完再 set 一次，界面只渲染一次。
+            set((s) => ({
+              ...foldEvents(s, r.events),
+              running: st.running || s.running,
+              title: st.title, provider: st.provider, model: st.model, sessionUsage: st.usage, earlier: r.earlier,
+              ...wsFrom(st),
+            }));
+          }
+          enter(id);
           void get().refreshWorkspace(); // 不同会话的工作区不同，git 信息要重新取
         } catch (e) {
           // 加载失败时后端仍停留在原会话：恢复原来的界面状态，否则 sessionId 指向一个没加载成功的会话，
@@ -262,7 +332,9 @@ export const useChat = create<Store>((set, get) => {
             tasks: prev.tasks,
             lastSeq: prev.lastSeq,
             earlier: prev.earlier,
+            running: prev.running,
           });
+          if (prev.sessionId) enter(prev.sessionId);
           throw e;
         }
       }),
@@ -284,7 +356,7 @@ export const useChat = create<Store>((set, get) => {
     deleteSession: (id) =>
       guard(async () => {
         await backend().deleteSession(id);
-        set((s) => ({ queue: s.queue.filter((m) => m.sessionId !== id) })); // 会话没了，它的待发送消息也没有去处
+        set((s) => ({ queue: s.queue.filter((m) => m.sessionId !== id), stash: omit(s.stash, id), activity: omit(s.activity, id) })); // 会话没了，它的待发送消息也没有去处
         // 删除的是当前会话时，后端已切换到一个新的空会话，界面跟着切换。
         if (id === get().sessionId) {
           const st = await backend().getStatus();
@@ -329,7 +401,7 @@ export const useChat = create<Store>((set, get) => {
       guard(async () => {
         const st = await backend().getStatus();
         // 清空历史之后所有旧会话都没了，待发送的消息一并丢弃
-        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, earlier: 0, loadingEarlier: false, ...wsFrom(st), ...Q.emptyQueue() });
+        set({ ...initialState(st.session_id), provider: st.provider, model: st.model, title: "", sessionUsage: st.usage, earlier: 0, loadingEarlier: false, ...wsFrom(st), ...Q.emptyQueue(), stash: {}, activity: {} });
         await refreshMeta();
       }),
 

@@ -232,6 +232,8 @@ function GitItem() {
 function RunningItem() {
   const running = useChat((s) => s.running);
   const waiting = useChat((s) => s.permissions.length > 0);
+  // 其他会话在后台运行的数量：多个会话可以同时运行，状态栏提醒一下，别让用户以为它们停了
+  const background = useChat((s) => Object.values(s.activity).filter((a) => a.running).length);
   const [label, dot, color] = waiting
     ? [t("等待确认"), "bg-warn animate-pulse", "text-warn"]
     : running
@@ -241,6 +243,7 @@ function RunningItem() {
     <span className={`flex items-center gap-1 whitespace-nowrap ${color}`}>
       <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />
       {label}
+      {background > 0 && <span className="text-muted" title={t("另有 {n} 个会话在后台运行", { n: background })}>+{background}</span>}
     </span>
   );
 }

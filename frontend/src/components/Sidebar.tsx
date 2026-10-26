@@ -23,9 +23,29 @@ function fmtTime(iso: string): string {
   return sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString([], { month: "numeric", day: "numeric" });
 }
 
+/** 会话行右侧的运行标记：待确认 > 运行中 > 有新结果 */
+function ActivityMark({ act }: { act: { running: boolean; waiting: number; unread: boolean } }) {
+  if (act.waiting > 0)
+    return (
+      <span className="ml-1.5 shrink-0 self-center rounded-full bg-warn/15 px-1.5 text-[10px] font-medium text-warn" title={t("这个会话在等你确认权限")}>
+        {t("待确认")}
+      </span>
+    );
+  if (act.running)
+    return (
+      <span className="ml-1.5 flex shrink-0 items-center gap-1 self-center text-[10px] text-accent" title={t("这个会话正在运行")}>
+        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+        {t("运行中")}
+      </span>
+    );
+  return <span className="ml-1.5 inline-block h-1.5 w-1.5 shrink-0 self-center rounded-full bg-ok" title={t("有新的结果")} />;
+}
+
 export default function Sidebar() {
   const { sessions, sessionId, newSession, loadSession, deleteSession, renameSession, running, backendKind } = useChat();
   const queue = useChat((s) => s.queue);
+  const activity = useChat((s) => s.activity);
+  const waitingHere = useChat((s) => s.permissions.length);
   const openSettings = useSettings((s) => s.show);
   const collapsed = useUIPrefs((s) => s.prefs.sidebarCollapsed);
   const updatePrefs = useUIPrefs((s) => s.update);
@@ -116,6 +136,8 @@ export default function Sidebar() {
             <div className="px-2 pb-1 pt-2 text-[11px] font-medium text-muted">{t(GROUP_LABELS[g.key])}</div>
             {g.items.map((s) => {
               const active = s.id === sessionId;
+              // 多个会话可以同时运行：当前会话看 running / permissions，后台会话看事件累积出来的活动状态
+              const act = active ? { running, waiting: waitingHere, unread: false } : activity[s.id];
               return (
                 <div
                   key={s.id}
@@ -135,6 +157,7 @@ export default function Sidebar() {
                         onSave={(title) => renameSession(s.id, title)}
                         className={active ? "font-medium" : ""}
                       />
+                      {act && (act.waiting > 0 || act.running || act.unread) && <ActivityMark act={act} />}
                     </div>
                     <div className="truncate text-[11px] text-muted" title={`${s.workspace ? s.workspace + "\n" : ""}${s.provider}/${s.model} · ${new Date(s.updated_at).toLocaleString()}`}>
                       {queue.some((m) => m.sessionId === s.id) && <span className="mr-1 rounded-full bg-accent-soft px-1.5 text-[10px] font-medium text-accent">{t("待发送 {n} 条", { n: queue.filter((m) => m.sessionId === s.id).length })}</span>}
@@ -158,7 +181,7 @@ export default function Sidebar() {
                       <button
                         className="rounded px-1 text-xs text-muted hover:text-danger disabled:opacity-40"
                         title={t("删除")}
-                        disabled={running && s.id === sessionId}
+                        disabled={!!act?.running}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (confirm(t("删除会话「{title}」？", { title: s.title }))) void deleteSession(s.id);

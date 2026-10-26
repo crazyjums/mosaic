@@ -1,7 +1,7 @@
 // 发送队列：agent 运行时用户可以继续输入，新消息先排队，当前这一轮结束后按先进先出依次发送。
 //
 // 为什么在界面层做、而不是让内核排队：内核同一时间只跑一轮（Engine.Send 运行中返回 ErrBusy），
-// 这是有意的简化；排队只是"把用户的话先存着"，不改变内核的行为，也不抢占正在运行的请求。
+// 这是有意的简化（不同会话之间可以同时运行，同一会话内一次一轮）；排队只是"把用户的话先存着"，不改变内核的行为，也不抢占正在运行的请求。
 //
 // 这里全是纯函数（输入旧状态、输出新状态），状态机的每个分支都能单测；chatStore 只负责把它们接到事件和后端调用上。
 //
@@ -42,7 +42,7 @@ export function enqueue(s: QueueState, m: Omit<QueuedMessage, "status" | "error"
 /** 下一条该发送的消息；现在不该发送时返回 null。 */
 export function nextToSend(s: QueueState, sessionId: string, running: boolean): QueuedMessage | null {
   if (running || s.paused[sessionId]) return null;
-  if (s.queue.some((m) => m.status === "sending")) return null; // 已经有一条交给后端了，等它开始
+  if (s.queue.some((m) => m.sessionId === sessionId && m.status === "sending")) return null; // 这个会话已经有一条交给后端了，等它开始
   const first = s.queue.find((m) => m.sessionId === sessionId);
   return first && first.status === "queued" ? first : null; // 队首失败：等用户处理
 }

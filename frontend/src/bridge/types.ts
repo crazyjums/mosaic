@@ -19,6 +19,8 @@ export interface Status {
   model: string;
   usage: Usage;
   running: boolean;
+  /** 所有正在运行的会话（含后台的），会话列表据此标记 */
+  running_sessions?: string[];
   /** 当前会话实际使用的工作区 */
   workspace: string;
   /** 当前会话没有单独选过工作区，跟随默认工作区 */
@@ -331,8 +333,9 @@ export interface Backend {
   setModel(profile: string, model: string): Promise<Status>;
   /** 立即返回；对话过程通过 onEvent 推送 */
   /** 发送一条消息；可带附件（图片、文本文件）。后端同一时间只跑一轮，排队由界面的发送队列负责（store/queue.ts） */
-  send(text: string, attachments?: Attachment[]): Promise<void>;
-  cancel(): Promise<void>;
+  send(sessionId: string, text: string, attachments?: Attachment[]): Promise<void>;
+  /** 取消指定会话正在运行的一轮（不影响其他会话）；不传表示当前会话 */
+  cancel(sessionId?: string): Promise<void>;
   respondPermission(requestId: string, decision: Decision): Promise<void>;
   // ---- 设置：厂商配置 ----
   listProviders(): Promise<ProviderView[]>;

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // 发送队列接到真实事件上的集成测试：用一个假后端，手动"发出"后端事件，验证 FIFO、按会话隔离、失败重试、停止后暂停。
 type Handler = (ev: unknown) => void;
 let handler: Handler = () => {};
-const sent: { text: string; attachments?: unknown[] }[] = [];
+const sent: { sessionId: string; text: string; attachments?: unknown[] }[] = [];
 let failNext: string | null = null;
 
 const status = (sid: string) => ({ session_id: sid, provider: "p", model: "m", title: "", usage: { input_tokens: 0, output_tokens: 0 }, running: false, permission_mode: "default" });
@@ -18,13 +18,13 @@ const fake = {
   getProfiles: vi.fn(async () => []),
   listSessions: vi.fn(async () => []),
   getWorkspaceInfo: vi.fn(async () => null),
-  send: vi.fn(async (text: string, attachments?: unknown[]) => {
+  send: vi.fn(async (sessionId: string, text: string, attachments?: unknown[]) => {
     if (failNext) {
       const e = failNext;
       failNext = null;
       throw new Error(e);
     }
-    sent.push({ text, attachments });
+    sent.push({ sessionId, text, attachments });
   }),
   cancel: vi.fn(async () => {}),
 };
@@ -75,7 +75,7 @@ describe("发送队列（接到事件上）", () => {
 
   it("消息带着附件一起发送", async () => {
     await useChat.getState().send("看看", [{ name: "a.md", text: "x" }]);
-    expect(sent[0]).toEqual({ text: "看看", attachments: [{ name: "a.md", text: "x" }] });
+    expect(sent[0]).toEqual({ sessionId: "A", text: "看看", attachments: [{ name: "a.md", text: "x" }] });
   });
 
   it("后端拒绝（如没有可用厂商）：消息保留、标记失败，重试后发出", async () => {
@@ -108,23 +108,23 @@ describe("发送队列（接到事件上）", () => {
     expect(sent.map((s) => s.text)).toEqual(["one", "two"]);
   });
 
-  it("消息属于提交时的会话：切换会话后不会发给另一个会话", async () => {
+  it("消息属于提交时的会话：切到别的会话后，后台会话跑完一轮会接着发它自己的队列，不会发给当前会话", async () => {
     await useChat.getState().send("one");
     turnStart();
     await useChat.getState().send("for-A");
-    // 用户切到会话 B（真实流程里要先停止）
+    // 用户切到会话 B：A 转入后台继续运行（不再需要先停止）
     currentSession = "B";
-    useChat.setState({ sessionId: "B", running: false });
-    turnEnd("completed", "A"); // A 的结束事件：不是当前会话，不处理
+    useChat.setState({ sessionId: "B", running: false, activity: { A: { running: true, waiting: 0, unread: false } } });
+    turnEnd("completed", "A"); // A 在后台跑完一轮：它的队列接着发，而且是发给 A
     await flush();
-    expect(sent.map((s) => s.text)).toEqual(["one"]);
-    expect(useChat.getState().queue.map((m) => `${m.sessionId}:${m.text}`)).toEqual(["A:for-A"]);
-    // 在 B 里发消息：只发 B 的
+    expect(sent.map((s) => `${s.sessionId}:${s.text}`)).toEqual(["A:one", "A:for-A"]);
+    expect(useChat.getState().queue.map((m) => `${m.sessionId}:${m.text}`)).toEqual(["A:for-A"]); // 已交给后端、等它开始新一轮
+    // 在 B 里发消息：只发给 B
     await useChat.getState().send("for-B");
-    expect(sent.map((s) => s.text)).toEqual(["one", "for-B"]);
-    // 回到 A 后，A 的队列还在
-    useChat.setState({ sessionId: "A" });
-    expect(useChat.getState().queue.some((m) => m.text === "for-A")).toBe(true);
+    expect(sent.map((s) => `${s.sessionId}:${s.text}`)).toEqual(["A:one", "A:for-A", "B:for-B"]);
+    // A 的新一轮开始后，那条从队列里去掉
+    turnStart("A");
+    expect(useChat.getState().queue.some((m) => m.text === "for-A")).toBe(false);
   });
 
   it("删除、置前", async () => {

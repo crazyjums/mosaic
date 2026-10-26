@@ -72,7 +72,7 @@ const maxLargest = 8
 func (e *Engine) ContextBreakdown() ContextBreakdown {
 	e.mu.Lock()
 	sess := e.session
-	rt := e.runtimeLocked()
+	rt := e.runtimeLocked(sess)
 	disabled := e.disabledLocked()
 	e.mu.Unlock()
 
