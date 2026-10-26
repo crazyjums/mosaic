@@ -274,3 +274,35 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// 脚手架生成的插件必须马上就能装、命令能用；已存在的目录不能被覆盖。
+func TestScaffoldInstallsAsIs(t *testing.T) {
+	h, _ := newCatalogHost(t, "")
+	parent := t.TempDir()
+	dir, err := Scaffold(parent, "my-plugin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := h.Preview(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := h.Install(p.Token, nil)
+	if err != nil || len(info.Skills) != 1 || len(info.Commands) != 1 {
+		t.Fatalf("%+v %v", info, err)
+	}
+	if text, ok, _ := h.ExpandCommand("my-plugin", "你好"); !ok || !strings.Contains(text, "你好") {
+		t.Fatalf("%q %v", text, ok)
+	}
+	if _, err := Scaffold(parent, "my-plugin"); err == nil || !strings.Contains(err.Error(), "已经存在") {
+		t.Fatalf("不应覆盖已有目录: %v", err)
+	}
+	for _, bad := range []string{"", "Bad_ID", "../x", "a/b", strings.Repeat("a", 25)} {
+		if _, err := Scaffold(parent, bad); err == nil {
+			t.Errorf("%q 应被拒绝", bad)
+		}
+	}
+	if _, err := Scaffold(filepath.Join(parent, "nope"), "ok"); err == nil {
+		t.Fatal("目录不存在应报错")
+	}
+}

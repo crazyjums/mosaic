@@ -67,6 +67,11 @@ func (a *App) PreviewCatalogPlugin(id string) (plugin.Preview, error) {
 	return a.plugins.PreviewCatalog(id)
 }
 
+// ScaffoldPlugin 在 parentDir 下生成一个可以直接安装的最小插件模板，返回新目录的路径。
+func (a *App) ScaffoldPlugin(parentDir, id string) (string, error) {
+	return plugin.Scaffold(parentDir, id)
+}
+
 // InstallPlugin 安装确认过的插件。approved 是用户勾选的、同意按作者声明的风险等级运行的 MCP 服务名。
 func (a *App) InstallPlugin(token string, approved []string) (plugin.Info, error) {
 	if a.plugins == nil {
