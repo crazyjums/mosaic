@@ -8,6 +8,7 @@
 //     暂不支持的字段明确拒绝）；
 //   - host.go：Host——扫描已安装的插件，Preview / Install / SetEnabled / Uninstall / SetConfig，
 //     以及 SkillFolders、Commands、ExpandCommand、Status、RunAction；
+//   - catalog.go：插件市场（内置插件、在线列表及其本地缓存）和从 Git 仓库取插件；列表只提供来源，装之前仍走 Preview 确认；
 //   - archive.go：zip 解压和目录复制，防 zip slip、符号链接、压缩炸弹；
 //   - vars.go / run.go：命令行拆分与变量展开（先拆后展开，不经过 shell），状态检查和操作按钮的运行；
 //   - command.go：斜杠命令的提示词模板；

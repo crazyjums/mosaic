@@ -1,4 +1,4 @@
-import type { PluginActionResult, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
+import type { PluginActionResult, PluginCatalogEntry, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
 
 // 演示模式（浏览器预览 / 截图 / 测试）里的插件：内存里的假实现，行为尽量和后端 internal/plugin 一致。
 // 选择路径里带 "hello" 得到一个只有技能和命令的插件，带 "bad" 得到校验失败，其余得到一个带 MCP 工具和配置表单的“飞书”示例。
@@ -23,6 +23,11 @@ const feishu = (): PluginInfo => ({
   requires: [{ command: "lark-cli", found: false }, { command: "node", found: true }], network: ["open.feishu.cn"],
 });
 
+const catalog = (): Omit<PluginCatalogEntry, "installed" | "installed_version">[] => [
+  { id: "hello", name: "问候示例", kind: "bundled", summary: { zh: "一个技能加一个 /hello 命令，用来熟悉插件怎么用。", en: "A skill plus a /hello command, to get familiar with plugins." } },
+  { id: "feishu", name: "飞书", kind: "git", git: "https://github.com/example/mosaic-feishu", ref: "v0.1.0", summary: { zh: "读取飞书文档和群消息（示例）。", en: "Read Feishu docs and chats (demo)." } },
+];
+
 export function createDemoPlugins() {
   let installed: PluginInfo[] = [];
   const staged = new Map<string, PluginPreview>();
@@ -41,16 +46,31 @@ export function createDemoPlugins() {
     return { ...p, warning: p.enabled && missing ? `还没有填写必填项「${missing.label}」` : undefined };
   };
 
+  const withState = (): PluginCatalogEntry[] =>
+    catalog().map((c) => {
+      const p = installed.find((x) => x.id === c.id);
+      return { ...c, installed: !!p, installed_version: p?.version };
+    });
+  const stage = (plugin: PluginInfo): PluginPreview => {
+    const existing = installed.find((x) => x.id === plugin.id);
+    const token = `tok${++n}`;
+    const p: PluginPreview = { token, plugin, existing: existing && warn(existing) };
+    staged.set(token, p);
+    return p;
+  };
+
   return {
+    listPluginCatalog: async (): Promise<PluginCatalogEntry[]> => withState(),
+    refreshPluginCatalog: async (): Promise<PluginCatalogEntry[]> => withState(),
+    previewCatalogPlugin: async (id: string): Promise<PluginPreview> => {
+      if (!catalog().some((c) => c.id === id)) throw new Error(`市场里没有插件 "${id}"`);
+      return stage(id === "hello" ? hello() : feishu());
+    },
     listPlugins: async (): Promise<PluginInfo[]> => installed.map(warn),
     previewPlugin: async (src: string): Promise<PluginPreview> => {
+      if (/^https:\/\//i.test(src.trim()) === false && /^[a-z][a-z0-9+.-]*:\/\//i.test(src.trim())) throw new Error("Git 地址必须是 https:// 开头的完整地址");
       if (src.includes("bad")) throw new Error("plugin.json 不是合法的 JSON：invalid character '}' looking for beginning of object key string");
-      const plugin = src.includes("hello") ? hello() : feishu();
-      const existing = installed.find((x) => x.id === plugin.id);
-      const token = `tok${++n}`;
-      const p: PluginPreview = { token, plugin, existing: existing && warn(existing) };
-      staged.set(token, p);
-      return p;
+      return stage(src.includes("hello") ? hello() : feishu());
     },
     installPlugin: async (token: string, approved: string[]): Promise<PluginInfo> => {
       const p = staged.get(token);

@@ -181,6 +181,15 @@ stateDiagram-v2
 - **命令展开**：`{{args}}`、重名加前缀、前置块解析。
 - **前端**：插件页、安装确认、`/` 菜单混排的单元测试；浏览器演示模式带示例插件，用 Playwright 走一遍“安装 → 配置 → 停用”。
 
+### 插件市场与 Git 安装（第 2.5 期）
+
+参考了 magpie 的做法：一份列表（`catalog/registry.json`）加 PR 审核，应用定时刷新、内置一份兜底。
+
+- **列表只提供来源，不提供信任。** 每项是 `bundled`（随应用嵌入的 `catalog/bundled/<目录>`）或 `git`（https 地址，可带 `ref`、`subdir`）。无论从哪里来，装之前都走同一条 `Preview` → 用户确认 → `Install`，所以被篡改的列表最多让用户看到一个陌生插件的确认框，不能替用户装任何东西。
+- **刷新**：启动时界面先显示内置列表加上次缓存（`plugin-registry.json`），再在后台拉一次 `RegistryURL`（仓库里的 `catalog/registry.json`）；同 id 的在线项覆盖内置项。拉取有 10 秒超时和 1MB 上限，失败不影响使用，逐项校验，坏的项直接丢掉；`bundled` 项必须指向已嵌入的目录。
+- **Git 安装**（`PreviewGit`，输入框里的 `https://…#分支或标签` 也走它）：只接受 https、不带用户名密码；`ref` 不能以 `-` 开头；地址用 `--` 与选项隔开传给 `git`。浅克隆（`--depth 1 --single-branch`），`protocol.allow=never` 再单独放开 https，所以不会拉子模块、不走 ssh 或 file://；`core.symlinks=false`，之后用 `copyDir` 复制（拒绝符号链接、跳过 `.git`、有数量和大小上限）。git 子进程用白名单环境变量、`GIT_TERMINAL_PROMPT=0`、2 分钟超时。没有 git 时给出明确提示。
+- **没做**：自动更新（仍是“重新安装即更新”，确认框会显示已存在的版本）、固定提交、签名。
+
 ## 10. 分期
 
 | 期 | 内容 | 状态 |
@@ -189,7 +198,8 @@ stateDiagram-v2
 | 2 | MCP 按来源管理与白名单环境、风险确认、`config` 表单（含 secret）、`status`、`actions`、`requires` | 已实现 |
 | 3 | 飞书插件：先在真实租户里验证 `lark-cli` 的子命令和权限，再做只读工具；`sensitive` 工具标记 | 未做（需要真实环境验证） |
 | 4 | 钩子（`user_prompt_submit` / `pre_tool_use` / `post_tool_use` / `turn_end`），单独的安装确认，并发安全 | 未做（等有真实需求） |
-| 以后 | Git 地址安装、插件索引仓库、签名、Slack、子 agent 调度、受限的自定义界面（在现有的沙箱 iframe 上加受限消息通道） | 按需 |
+| 2.5 | 插件市场（内置插件 + 在线列表 + 本地缓存）和 Git 地址安装 | 已实现 |
+| 以后 | 插件自动更新与固定提交、签名、Slack、子 agent 调度、受限的自定义界面（在现有的沙箱 iframe 上加受限消息通道） | 按需 |
 
 ## 11. 已确定的决策
 
@@ -205,7 +215,7 @@ stateDiagram-v2
 
 ## 12. 示例
 
-`examples/plugins/` 里有两个可以直接安装的示例：
+`catalog/bundled/` 里有两个可以直接安装的示例：
 
 - `hello-skill`：只有一个技能和一个斜杠命令（第 1 期，无可执行代码）。
 - `echo-mcp`：一个用 Python 写的最小 MCP 服务（`echo` 工具），带配置表单、状态检查和操作按钮（第 2 期）。

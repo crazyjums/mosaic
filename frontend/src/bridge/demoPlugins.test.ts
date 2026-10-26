@@ -65,4 +65,20 @@ describe("演示模式的插件", () => {
     await b.uninstallPlugin("hello");
     expect(await b.listPlugins()).toEqual([]);
   });
+
+  it("插件市场：列出内置和 Git 来源，装好后标记已安装；Git 地址只收 https", async () => {
+    const b = createDemoPlugins();
+    const list = await b.listPluginCatalog();
+    expect(list.map((c) => [c.id, c.kind, c.installed])).toEqual([["hello", "bundled", false], ["feishu", "git", false]]);
+
+    const p = await b.previewCatalogPlugin("hello");
+    expect(await b.listPlugins()).toHaveLength(0); // 预览不生效
+    await b.installPlugin(p.token, []);
+    const after = await b.refreshPluginCatalog();
+    expect(after[0]).toMatchObject({ installed: true, installed_version: "0.1.0" });
+    await expect(b.previewCatalogPlugin("nope")).rejects.toThrow("没有插件");
+
+    await expect(b.previewPlugin("http://github.com/a/b")).rejects.toThrow("https://");
+    expect((await b.previewPlugin("https://github.com/a/feishu#v1")).plugin.id).toBe("feishu");
+  });
 });

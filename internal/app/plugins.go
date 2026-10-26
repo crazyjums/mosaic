@@ -41,6 +41,32 @@ func (a *App) PreviewPlugin(src string) (plugin.Preview, error) {
 	return a.plugins.Preview(src)
 }
 
+// PreviewPlugin 的来源也可以是 https:// 开头的 Git 地址（可在末尾用 #分支或标签 指定版本）。
+
+// ListPluginCatalog 返回插件市场的列表（内置的加上上次刷新到的在线列表），马上返回，不联网。
+func (a *App) ListPluginCatalog() []plugin.CatalogEntry {
+	if a.plugins == nil {
+		return []plugin.CatalogEntry{}
+	}
+	return a.plugins.Catalog()
+}
+
+// RefreshPluginCatalog 联网刷新在线列表；失败时返回错误，界面继续显示原来的列表。
+func (a *App) RefreshPluginCatalog() ([]plugin.CatalogEntry, error) {
+	if a.plugins == nil {
+		return []plugin.CatalogEntry{}, errNoPlugins
+	}
+	return a.plugins.RefreshCatalog(a.context())
+}
+
+// PreviewCatalogPlugin 取市场里的一个插件，返回安装前要给用户确认的内容（和 PreviewPlugin 之后的流程相同）。
+func (a *App) PreviewCatalogPlugin(id string) (plugin.Preview, error) {
+	if a.plugins == nil {
+		return plugin.Preview{}, errNoPlugins
+	}
+	return a.plugins.PreviewCatalog(id)
+}
+
 // InstallPlugin 安装确认过的插件。approved 是用户勾选的、同意按作者声明的风险等级运行的 MCP 服务名。
 func (a *App) InstallPlugin(token string, approved []string) (plugin.Info, error) {
 	if a.plugins == nil {

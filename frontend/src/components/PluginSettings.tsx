@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { backend, type PluginActionResult, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
-import { t } from "../i18n";
+import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
+import { language, t } from "../i18n";
 import PluginInstallDialog from "./PluginInstallDialog";
 
 // 设置 → 插件：已安装的插件列表 + 详情（设置表单、状态、操作按钮、依赖、提供的内容）。
@@ -16,6 +16,12 @@ export default function PluginSettings() {
   const [preview, setPreview] = useState<PluginPreview | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState("");
+  const [market, setMarket] = useState<PluginCatalogEntry[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [marketError, setMarketError] = useState("");
+  const [gitOpen, setGitOpen] = useState(false);
+  const [gitUrl, setGitUrl] = useState("");
+  const [fetching, setFetching] = useState("");
 
   const reload = useCallback(async () => {
     try {
@@ -27,6 +33,38 @@ export default function PluginSettings() {
     }
   }, []);
   useEffect(() => void reload(), [reload]);
+
+  // 市场：先显示本地已有的列表（内置的加上上次刷新的），再在后台刷新一次在线列表；离线时刷新失败不影响使用。
+  const loadMarket = useCallback(async (online: boolean) => {
+    try {
+      setMarket(await backend().listPluginCatalog());
+      if (!online) return;
+      setRefreshing(true);
+      setMarketError("");
+      setMarket(await backend().refreshPluginCatalog());
+    } catch (e) {
+      setMarketError(errMsg(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+  useEffect(() => void loadMarket(true), [loadMarket]);
+
+  // 取来源（下载 / 解压 / 校验）可能要几秒；fetching 标记正在取的是哪一项，避免重复点击。
+  const startPreview = async (key: string, get: () => Promise<PluginPreview>) => {
+    setError("");
+    setFetching(key);
+    try {
+      const p = await get();
+      setInstallError("");
+      setPreview(p);
+      setGitOpen(false);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setFetching("");
+    }
+  };
 
   const startInstall = async (kind: "dir" | "zip") => {
     setError("");
@@ -47,6 +85,7 @@ export default function PluginSettings() {
       const info = await backend().installPlugin(preview.token, approved);
       setPreview(null);
       await reload();
+      void loadMarket(false);
       setSelected(info.id);
     } catch (e) {
       setInstallError(errMsg(e));
@@ -65,17 +104,37 @@ export default function PluginSettings() {
   return (
     <div className="flex min-h-0 flex-1">
       <aside className="flex w-64 shrink-0 flex-col border-r border-line">
-        <div className="flex gap-2 border-b border-line p-3">
-          <button className="btn-primary flex-1 px-2 text-xs" onClick={() => void startInstall("dir")} title={t("选择一个插件文件夹（里面有 plugin.json）")}>
-            {t("安装文件夹…")}
+        <div className="space-y-2 border-b border-line p-3">
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1 px-2 text-xs" onClick={() => void startInstall("dir")} title={t("选择一个插件文件夹（里面有 plugin.json）")}>
+              {t("安装文件夹…")}
+            </button>
+            <button className="btn flex-1 px-2 text-xs" onClick={() => void startInstall("zip")} title={t("选择一个 .zip 插件包")}>
+              {t("安装 zip…")}
+            </button>
+          </div>
+          <button className="btn w-full px-2 text-xs" onClick={() => setGitOpen((v) => !v)} aria-expanded={gitOpen}>
+            {t("从 Git 地址安装…")}
           </button>
-          <button className="btn flex-1 px-2 text-xs" onClick={() => void startInstall("zip")} title={t("选择一个 .zip 插件包")}>
-            {t("安装 zip…")}
-          </button>
+          {gitOpen && (
+            <form
+              className="space-y-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (gitUrl.trim()) void startPreview("git", () => backend().previewPlugin(gitUrl.trim()));
+              }}
+            >
+              <input className="input w-full text-xs" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} placeholder="https://github.com/owner/repo#v1.0" aria-label={t("Git 地址")} autoFocus />
+              <button className="btn-primary w-full px-3 text-xs" type="submit" disabled={!gitUrl.trim() || fetching === "git"}>
+                {fetching === "git" ? t("下载中…") : t("下载并检查")}
+              </button>
+              <p className="text-[11px] leading-snug text-muted">{t("只支持 https:// 地址，可在末尾用 #分支或标签 指定版本；需要电脑上装有 git。")}</p>
+            </form>
+          )}
         </div>
         <ul className="min-h-0 flex-1 overflow-y-auto p-2" aria-label={t("已安装的插件")}>
           {plugins === null && <li className="px-2 py-2 text-xs text-muted">{t("加载中…")}</li>}
-          {plugins?.length === 0 && <li className="px-2 py-2 text-xs leading-relaxed text-muted">{t("还没有安装插件。插件可以提供技能、斜杠命令和外部工具（MCP）。点上面的按钮选择一个插件文件夹或 zip 包。")}</li>}
+          {plugins?.length === 0 && <li className="px-2 py-2 text-xs leading-relaxed text-muted">{t("还没有安装插件。插件可以提供技能、斜杠命令和外部工具（MCP）。从下面的“插件市场”挑一个装上，或用上面的按钮安装自己的插件。")}</li>}
           {plugins?.map((p) => (
             <li key={p.id}>
               <button className={`flex w-full items-center gap-2 rounded-ctl px-2.5 py-2 text-left text-sm hover:bg-accent-soft ${p.id === selected ? "bg-accent-soft" : ""}`} onClick={() => setSelected(p.id)}>
@@ -90,6 +149,33 @@ export default function PluginSettings() {
             </li>
           ))}
         </ul>
+        <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-line p-2" aria-label={t("插件市场")}>
+          <div className="flex items-center justify-between px-2 pb-1">
+            <span className="text-xs font-medium text-muted">{t("插件市场")}</span>
+            <button className="text-[11px] text-accent hover:underline disabled:opacity-50" disabled={refreshing} onClick={() => void loadMarket(true)}>
+              {refreshing ? t("刷新中…") : t("刷新")}
+            </button>
+          </div>
+          {marketError && <div className="px-2 pb-1 text-[11px] leading-snug text-warn">{t("没能刷新在线列表（{err}），先显示已有的。", { err: marketError })}</div>}
+          <ul>
+            {market.map((c) => (
+              <li key={c.id} className="rounded-ctl px-2 py-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+                  {c.installed ? (
+                    <span className="shrink-0 text-[11px] text-muted">{t("已安装")}</span>
+                  ) : (
+                    <button className="btn shrink-0 px-2 py-0.5 text-xs" disabled={!!fetching} onClick={() => void startPreview(c.id, () => backend().previewCatalogPlugin(c.id))}>
+                      {fetching === c.id ? t("下载中…") : t("安装")}
+                    </button>
+                  )}
+                </div>
+                <div className="text-[11px] leading-snug text-muted">{c.summary?.[language()] ?? c.summary?.zh ?? c.summary?.en ?? ""}</div>
+                <div className="text-[10px] text-muted/70">{c.kind === "bundled" ? t("内置") : t("来自 Git 仓库")}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
       </aside>
 
       <section className="min-w-0 flex-1 overflow-y-auto p-5">

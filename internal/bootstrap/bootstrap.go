@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	pluginCatalog "github.com/crazyjums/myllmapp/catalog"
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/mcp"
@@ -50,6 +51,9 @@ type Built struct {
 	DataDir   string
 	Close     func() error
 }
+
+// pluginRegistryURL 是在线插件列表（仓库里的 catalog/registry.json）。
+const pluginRegistryURL = "https://raw.githubusercontent.com/crazyjums/mosaic/master/catalog/registry.json"
 
 // Build 按配置组装 Engine。
 func Build(cfg *config.Config, opts Options) (*Built, error) {
@@ -192,6 +196,9 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		Secrets:    secrets,
 		MCP:        mcpMgr,
 		AppVersion: update.Version,
+		Catalog:    pluginCatalog.FS,
+		// 在线列表只增加“可以安装的来源”，装之前仍要用户确认；离线或失败时用内置的那一份。
+		RegistryURL: pluginRegistryURL,
 	})
 	if err != nil {
 		mcpMgr.Close()

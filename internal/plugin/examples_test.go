@@ -13,9 +13,9 @@ import (
 	"github.com/crazyjums/myllmapp/internal/tool"
 )
 
-// 仓库里 examples/plugins 下的示例必须一直是合法的、能装的插件：它们也是给插件作者看的文档。
+// 仓库里 catalog/bundled 下的示例必须一直是合法的、能装的插件：它们也是给插件作者看的文档。
 
-func exampleDir(name string) string { return filepath.Join("..", "..", "examples", "plugins", name) }
+func exampleDir(name string) string { return filepath.Join("..", "..", "catalog", "bundled", name) }
 
 func newExampleHost(t *testing.T, mcpApplier MCPApplier) *Host {
 	t.Helper()
