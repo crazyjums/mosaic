@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
-import { backend, type SkillInfo } from "../bridge";
+import { backend } from "../bridge";
 import { t } from "../i18n";
 import { ACCEPT, checkAdd, fmtSize, readAttachment, type PendingAttachment } from "../store/attachments";
 import { useChat } from "../store/chatStore";
 import { isSendKey, MOD_KEY } from "../store/keys";
-import { filterSkills, skillText, slashQuery } from "../store/slash";
+import { filterSlash, parseSlash, skillText, slashQuery, toSlashItems, type SlashItem } from "../store/slash";
 import { useSettings } from "../store/settingsStore";
 import { useUIPrefs } from "../store/uiPrefs";
 import QueuePanel from "./QueuePanel";
@@ -13,6 +13,22 @@ import QueuePanel from "./QueuePanel";
 //
 // 运行中输入框仍然可用：这时发送的消息进入待发送队列（见 store/queue.ts），这一轮结束后按顺序发出。
 // 唯一例外是在等你确认权限时：输入框暂时禁用，免得边打字边按 Enter 误批准权限弹窗。
+// 连续提交时的发送顺序：展开命令要问一次后端，不能让后提交的跑到前面去。
+let sendChain: Promise<unknown> = Promise.resolve();
+
+/** 消息是 "/名字 参数" 且名字是已启用插件的命令时，返回展开后的提示词；其他情况（技能、普通文字、出错）返回原文。 */
+async function expandIfCommand(msg: string): Promise<string> {
+  const cmd = parseSlash(msg);
+  if (!cmd) return msg;
+  try {
+    const r = await backend().expandCommand(cmd.name, cmd.args);
+    return r.found ? r.text : msg;
+  } catch (e) {
+    useChat.setState({ toast: String(e instanceof Error ? e.message : e) });
+    return msg;
+  }
+}
+
 export default function Composer() {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
@@ -30,19 +46,22 @@ export default function Composer() {
 
   // 键入 / 时弹出技能菜单。技能随工作区变化，所以每次开始键入 / 时重新取一次。
   const query = slashQuery(text);
-  const [skills, setSkills] = useState<SkillInfo[] | null>(null);
+  const [skills, setSkills] = useState<SlashItem[] | null>(null);
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState(false); // 用户按了 Esc：这一段 /xxx 不再弹菜单
   const menuOpen = query !== null && !dismissed;
   useEffect(() => {
     if (query === "") {
       setDismissed(false);
-      void backend().listSkills().then(setSkills).catch(() => setSkills([]));
+      // 技能和插件提供的命令一起列出来；其中一个取不到不影响另一个。
+      void Promise.all([backend().listSkills().catch(() => []), backend().listCommands().catch(() => [])])
+        .then(([sk, cmd]) => setSkills(toSlashItems(sk, cmd)))
+        .catch(() => setSkills([]));
     }
   }, [query === ""]); // eslint-disable-line react-hooks/exhaustive-deps
-  const matches = useMemo(() => (skills ? filterSkills(skills, query ?? "") : []), [skills, query]);
+  const matches = useMemo(() => (skills ? filterSlash(skills, query ?? "") : []), [skills, query]);
   useEffect(() => setActive(0), [query]);
-  const pick = (s: SkillInfo) => {
+  const pick = (s: SlashItem) => {
     setText(skillText(s));
     setDismissed(false);
     ref.current?.focus();
@@ -72,7 +91,9 @@ export default function Composer() {
     setText("");
     setPending([]);
     setAttachError("");
-    void send(msg, attachments);
+    // 插件命令（/名字 参数）在发送前展开成提示词；不是命令就原样发送。用一条链保证连续提交时顺序不变。
+    sendChain = sendChain.then(async () => send(await expandIfCommand(msg), attachments));
+    void sendChain;
   };
 
   // 添加文件：逐个读取和检查，不合格的给出原因，合格的加进待发送附件。
@@ -250,7 +271,7 @@ export default function Composer() {
 }
 
 // 技能菜单：浮在输入框上方。没有任何技能时说明去哪里放；有技能但没有匹配时提示"没有匹配"。
-function SkillMenu({ matches, total, query, active, onPick, onHover }: { matches: SkillInfo[]; total: number; query: string; active: number; onPick: (s: SkillInfo) => void; onHover: (i: number) => void }) {
+function SkillMenu({ matches, total, query, active, onPick, onHover }: { matches: SlashItem[]; total: number; query: string; active: number; onPick: (s: SlashItem) => void; onHover: (i: number) => void }) {
   return (
     <div className="shadow-pop absolute bottom-full left-0 right-0 z-30 mb-2 max-h-72 overflow-y-auto rounded-card border border-line bg-panel p-1.5" role="listbox" aria-label={t("技能")}>
       {total === 0 ? (
@@ -265,7 +286,7 @@ function SkillMenu({ matches, total, query, active, onPick, onHover }: { matches
       ) : (
         matches.map((s, i) => (
           <button
-            key={s.name}
+            key={`${s.kind}:${s.name}`}
             role="option"
             aria-selected={i === active}
             className={`flex w-full items-start gap-3 rounded-ctl px-3 py-2 text-left ${i === active ? "bg-accent-soft" : "hover:bg-panel-2"}`}
@@ -279,8 +300,8 @@ function SkillMenu({ matches, total, query, active, onPick, onHover }: { matches
             <span className="min-w-0 flex-1 truncate text-xs text-muted" title={s.description}>
               {s.description}
             </span>
-            <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] text-muted" title={`${s.origin}\n${s.dir}`}>
-              {s.source === "project" ? t("项目") : t("个人")}
+            <span className="shrink-0 rounded-full border border-line px-1.5 text-[10px] text-muted" title={s.title}>
+              {s.kind === "command" ? `${t("命令")} · ${s.tag}` : s.tag === "项目" || s.tag === "个人" ? t(s.tag) : s.tag}
             </span>
           </button>
         ))

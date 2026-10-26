@@ -5,6 +5,7 @@ import { useSettings } from "../store/settingsStore";
 import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
 import AboutSettings from "./AboutSettings";
+import PluginSettings from "./PluginSettings";
 import MosaicMark from "./MosaicMark";
 import NavIcon from "./Icons";
 import GroupEditor from "./GroupEditor";
@@ -25,6 +26,7 @@ const TABS = [
   ["prompt", "系统提示词"],
   ["permissions", "权限与工具"],
   ["mcp", "MCP"],
+  ["plugins", "插件"],
   ["appearance", "外观"],
   ["statusline", "状态栏"],
   ["usage", "用量"],
@@ -134,6 +136,8 @@ export default function SettingsDialog() {
           <PermissionsSettings />
         ) : tab === "mcp" ? (
           <MCPSettings />
+        ) : tab === "plugins" ? (
+          <PluginSettings />
         ) : (
       <div className="flex min-h-0 flex-1">
         {/* 左：配置档列表 */}
