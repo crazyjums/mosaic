@@ -5,37 +5,6 @@ import (
 	"encoding/json"
 )
 
-// Manifest 描述一个插件包（将来从 plugin.toml 读取）。
-type Manifest struct {
-	Name        string
-	Version     string
-	Description string
-}
-
-// Plugin 是一个插件包，可以同时提供多种扩展。
-type Plugin interface {
-	Manifest() Manifest
-	Skills() []Skill
-	Commands() []SlashCommand
-	Hooks() []Hook
-	StatusLine() StatusLine // 可以为 nil
-}
-
-// Skill 是一项技能：名称和简介始终可见，正文只在模型需要时加载，以节省上下文。
-type Skill interface {
-	Name() string
-	Description() string
-	Load(ctx context.Context) (string, error)
-}
-
-// SlashCommand 是一个斜杠命令。
-type SlashCommand interface {
-	Name() string // 不含 "/"
-	Description() string
-	// Expand 把命令展开为要发送给模型的文本；返回空串表示命令已自行处理，不需要发送。
-	Expand(ctx context.Context, args string) (string, error)
-}
-
 // HookPoint 是钩子的触发时机。
 type HookPoint string
 
