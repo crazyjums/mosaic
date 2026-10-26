@@ -118,7 +118,7 @@ OAuth 认证（目前只能在请求头里填令牌）；把服务器的 `instru
 已实现：[`internal/plugin`](../internal/plugin/doc.go) 的声明式插件（`plugin.json`）：技能、斜杠命令、按来源管理的 MCP 工具、配置表单（密钥进钥匙串）、状态检查、动作、依赖检查；目录 / zip 安装，安装前确认，启用 / 停用 / 卸载。
 详见 [design/plugin-system.md](design/plugin-system.md)。
 
-已实现（续）：插件市场（内置插件 + 在线列表 `catalog/registry.json`）和 Git 地址安装。
+已实现（续）：插件市场（五个官方技能 / 命令插件 + 示例，在线列表 `catalog/registry.json`）、Git 地址安装、新建插件模板、[插件开发指南](plugin-development.md)。
 
 还没做：第 3 阶段飞书插件（需要真实 lark-cli 验证；敏感工具标记要绕过会话级“总是允许”）、第 4 阶段钩子（PreToolUse / PostToolUse）、子 agent、插件自动更新与固定提交、插件签名。
 
