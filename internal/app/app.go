@@ -14,6 +14,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/gitview"
 	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/permission"
+	"github.com/crazyjums/myllmapp/internal/plugin"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/settings"
 	"github.com/crazyjums/myllmapp/internal/skill"
@@ -35,6 +36,7 @@ type EmitFunc func(ctx context.Context, name string, data ...any)
 type App struct {
 	engine   *core.Engine
 	settings *settings.Manager
+	plugins  *plugin.Host
 	emit     EmitFunc
 
 	ctx         context.Context
@@ -89,7 +91,7 @@ func (a *App) NewSession() (core.Status, error) { return a.engine.NewSession() }
 // 技能随工作区变化，所以每次都重新扫描——目录很小，扫描只读几个文件头。
 func (a *App) ListSkills() []skill.Info {
 	home, _ := os.UserHomeDir()
-	list := skill.Discover(a.engine.Status().Workspace, home)
+	list := skill.Discover(a.engine.Status().Workspace, home, a.pluginSkills()...)
 	if list == nil {
 		list = []skill.Info{} // 前端拿到 [] 而不是 null
 	}

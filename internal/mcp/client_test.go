@@ -371,7 +371,9 @@ func TestManagerSources(t *testing.T) {
 	if err := m.ApplySource("plugin:demo", []ServerConfig{fakeStdioConfig("demo")}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return statusOf("mine").State == StateConnected && statusOf("demo").State == StateConnected })
+	waitFor(t, func() bool {
+		return statusOf("mine").State == StateConnected && statusOf("demo").State == StateConnected
+	})
 	if statusOf("mine").Source != "" || statusOf("demo").Source != "plugin:demo" {
 		t.Fatalf("状态里带来源: %+v %+v", statusOf("mine"), statusOf("demo"))
 	}

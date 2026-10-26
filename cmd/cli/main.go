@@ -17,6 +17,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/plugin"
 	"github.com/crazyjums/myllmapp/internal/settings"
 	"github.com/crazyjums/myllmapp/internal/skill"
 )
@@ -112,7 +113,7 @@ func run(f flags) error {
 	}
 
 	// 步骤 3：输入循环。stdin 由一个 goroutine 读取，主循环用 select 同时等待"输入、权限请求、Ctrl-C、本轮结束"。
-	c := &cli{eng: eng, settings: built.Settings, lines: readLines(os.Stdin), perm: permCh, info: info, interactive: interactive}
+	c := &cli{eng: eng, settings: built.Settings, plugins: built.Plugins, lines: readLines(os.Stdin), perm: permCh, info: info, interactive: interactive}
 	c.sig = make(chan os.Signal, 1)
 	signal.Notify(c.sig, os.Interrupt)
 
@@ -131,6 +132,7 @@ func run(f flags) error {
 type cli struct {
 	eng         *core.Engine
 	settings    *settings.Manager
+	plugins     *plugin.Host
 	lines       <-chan string
 	perm        <-chan event.PermissionRequest
 	sig         chan os.Signal
@@ -235,6 +237,7 @@ func (c *cli) command(line string) (quit bool) {
 /status                   当前状态
 /cd [dir]                 查看或切换当前会话的工作区（/cd - 改回默认工作区）
 /skills                   列出可用的技能（输入 /技能名 开头的消息即可使用）
+/plugins                  列出已安装的插件（插件提供的命令直接输入 /命令名 使用）
 /login [new]              用 ChatGPT 账号登录（使用套餐额度）；new 表示换一个账号
 /logout                   退出 ChatGPT 账号
 /quit                     退出`)
@@ -324,7 +327,7 @@ func (c *cli) command(line string) (quit bool) {
 		fmt.Fprintln(c.info, "已退出 ChatGPT 账号")
 	case "/skills":
 		home, _ := os.UserHomeDir()
-		list := skill.Discover(c.eng.Status().Workspace, home)
+		list := skill.Discover(c.eng.Status().Workspace, home, c.plugins.SkillFolders()...)
 		if len(list) == 0 {
 			fmt.Fprintln(c.info, "没有找到技能。把技能文件夹（里面有 SKILL.md）放到 <工作区>/.myllmapp/skills、<工作区>/.claude/skills、~/.myllmapp/skills 或 ~/.claude/skills 即可。")
 		}
@@ -335,7 +338,29 @@ func (c *cli) command(line string) (quit bool) {
 		st := c.eng.Status()
 		fmt.Fprintf(c.info, "会话 %s「%s」\n厂商 %s · 模型 %s\ntokens 入 %d / 出 %d\n工作区 %s\n权限模式 %s\n",
 			st.SessionID, st.Title, st.Provider, st.Model, st.Usage.InputTokens, st.Usage.OutputTokens, st.Workspace, st.PermissionMode)
+	case "/plugins":
+		for _, p := range c.plugins.List() {
+			state := "已停用"
+			switch {
+			case p.Error != "":
+				state = "不可用：" + p.Error
+			case p.Enabled:
+				state = "已启用"
+			}
+			fmt.Fprintf(c.info, "%s  %s %s  [%s]  技能 %d · 命令 %d · 工具服务 %d\n", p.ID, p.Name, p.Version, state, len(p.Skills), len(p.Commands), len(p.Servers))
+		}
+		fmt.Fprintln(c.info, "（安装、配置和启停请在桌面端：设置 → 插件）")
 	default:
+		// 插件提供的斜杠命令：展开成提示词后像普通输入一样发送。
+		args := strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
+		if text, ok, err := c.plugins.ExpandCommand(fields[0], args); ok {
+			if err != nil {
+				fmt.Fprintln(c.info, "错误:", err)
+				return false
+			}
+			c.turn(text)
+			return false
+		}
 		fmt.Fprintln(c.info, "未知命令，/help 查看帮助")
 	}
 	return false

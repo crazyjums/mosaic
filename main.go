@@ -45,6 +45,7 @@ func main() {
 	defer built.Close()
 
 	a := app.New(built.Engine, built.Settings, nil)
+	a.SetPlugins(built.Plugins)
 	a.SetChangelog(changelog)
 	err = wails.Run(&options.App{
 		Title:            "Mosaic",
