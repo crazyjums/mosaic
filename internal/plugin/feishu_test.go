@@ -37,7 +37,7 @@ func newFakeLark(t *testing.T) *fakeLark {
 printf '%s\n' "$*" >> '` + f.log + `'
 case "$1 $2" in
 "auth status")
-  if [ -e '` + filepath.Join(bin, "loggedin") + `' ]; then echo '{"ok":true,"data":{"identity":"user"}}'; else echo 'not logged in'; fi; exit 0;;
+  if [ -e '` + filepath.Join(bin, "loggedin") + `' ]; then echo '{"appId":"cli_x","brand":"feishu","identity":"user","userName":"小明","userOpenId":"ou_1"}'; else echo '{"appId":"cli_x","brand":"feishu","defaultAs":"auto","identity":"bot","note":"Token does not exist or has been cleared. Only bot (tenant) identity is available. Re-login: lark-cli auth login","userName":"小明","userOpenId":"ou_1"}'; fi; exit 0;;
 "auth login")
   case "$*" in
   *--no-wait*) echo '{"ok":true,"data":{"verification_url":"https://accounts.example/auth?x=1","device_code":"DEVCODE123456"}}'; exit 0;;
@@ -148,9 +148,10 @@ func TestFeishuPlugin(t *testing.T) {
 	}
 
 	// 登录流程：未登录 → 开始登录（授权链接、记下设备码）→ 完成 → 已登录。
+	// 真实的“没有用户令牌”输出：identity 是 bot，即使 userName 还在、退出码是 0，也要判为未登录。
 	st, err := h.Status(context.Background(), "feishu")
-	if err != nil || st.State != StateBad {
-		t.Fatalf("没登录应是异常: %v %+v", err, st)
+	if err != nil || st.State != StateBad || !strings.Contains(st.Message, "未登录") || !strings.Contains(st.Message, "Re-login") {
+		t.Fatalf("没登录应是异常，并给出原因: %v %+v", err, st)
 	}
 	if act, err := h.RunAction(context.Background(), "feishu", "login-finish"); err != nil || act.ExitCode == 0 || !strings.Contains(act.Output, "没有进行中的登录") {
 		t.Fatalf("没开始登录就完成应提示: %v %+v", err, act)
@@ -165,7 +166,7 @@ func TestFeishuPlugin(t *testing.T) {
 	if act, err := h.RunAction(context.Background(), "feishu", "login-finish"); err != nil || act.ExitCode != 0 || !strings.Contains(act.Output, "登录完成") {
 		t.Fatalf("%v %+v", err, act)
 	}
-	if st, err := h.Status(context.Background(), "feishu"); err != nil || st.State != StateOK {
+	if st, err := h.Status(context.Background(), "feishu"); err != nil || st.State != StateOK || !strings.Contains(st.Message, "已登录：小明") {
 		t.Fatalf("登录后应正常: %v %+v", err, st)
 	}
 	if act, err := h.RunAction(context.Background(), "feishu", "init"); err != nil || !strings.Contains(act.Output, "https://accounts.example/config") {
@@ -216,5 +217,44 @@ func TestFeishuMissingLarkCLI(t *testing.T) {
 	}
 	if st, _ := h.Status(context.Background(), "feishu"); st.State != StateMissingDependency {
 		t.Fatalf("%+v", st)
+	}
+}
+
+// 授权命令成功但没有拿到用户令牌（status 仍是 bot 身份）：不能报“登录完成”。
+func TestFeishuLoginFinishWithoutToken(t *testing.T) {
+	fake := newFakeLark(t)
+	// 让假 lark-cli 的 device-code 步骤成功但不创建 loggedin 标记。
+	script, _ := os.ReadFile(filepath.Join(fake.bin, "lark-cli"))
+	patched := strings.Replace(string(script), "touch '"+filepath.Join(fake.bin, "loggedin")+"'; ", "", 1)
+	if patched == string(script) {
+		t.Fatal("假脚本没有被改写")
+	}
+	if err := os.WriteFile(filepath.Join(fake.bin, "lark-cli"), []byte(patched), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := tool.NewRegistry()
+	mgr := mcp.NewManager(reg)
+	defer mgr.Close()
+	root := t.TempDir()
+	h, err := NewHost(HostOptions{
+		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
+		Secrets: secret.NewMemory(), MCP: mgr, AppVersion: "1.5.0", Catalog: catalog.FS,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := h.PreviewCatalog("feishu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Install(p.Token, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.RunAction(context.Background(), "feishu", "login"); err != nil {
+		t.Fatal(err)
+	}
+	act, err := h.RunAction(context.Background(), "feishu", "login-finish")
+	if err != nil || act.ExitCode == 0 || strings.Contains(act.Output, "登录完成") || !strings.Contains(act.Output, "仍然没有可用的用户令牌") {
+		t.Fatalf("没拿到令牌时不应报登录完成: %v %+v", err, act)
 	}
 }
