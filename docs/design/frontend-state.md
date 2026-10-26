@@ -65,6 +65,17 @@ stateDiagram-v2
 
 历史作为返回值给出（只有最近几轮，见 `docs/event-protocol.md` §6），`foldEvents` 一次折叠后只 `set` 一次，界面只渲染一次。更早的历史由 `loadEarlier` 取回，`prependHistory` 把它放到时间线前面；`MessageList` 用 `prependTick` 和接入前的内容高度补偿滚动位置，让正在看的内容保持不动。等待期间如果切换了会话，这一页直接丢弃。
 
+## 多会话并发
+
+后端允许多个会话同时运行（见 `docs/roadmap.md` “并发与排队”），所有会话的事件走同一条流，前端按 `session_id` 分流：
+
+- 当前会话的事件进 reducer（`applyEvent`）；`reducer` 仍然只认 `state.sessionId`，不知道别的会话存在；
+- 其他会话的事件：如果它有 `stash`（离开时还在运行、有待确认权限或有待发送消息），用同一个 `applyEvent` 累积进它自己的完整 `ChatState`；同时用 `activity.ts` 的纯函数更新“运行中 / 待确认 / 有新结果”给会话列表用；
+- 离开会话（`leaveCurrent`）时决定要不要存 stash，进入会话（`loadSession`）时优先用 stash 恢复（包含流式到一半的内容，这是后端重放给不了的），没有 stash 就从后端加载；
+- 后台会话 `turn_end` 且队列里没有后续消息时丢掉 stash，之后再打开从后端加载；
+- 切换会话不再确认/停止；`cancel` 只取消当前会话；
+- `reconcileRunning` 只补不清：状态快照和事件是两条通道，快照可能过时。
+
 ## 发送队列
 
 引擎一次只跑一轮，所以“运行中发消息”由前端排队（`store/queue.ts` 是纯状态机，`chatStore` 负责接线）：
