@@ -297,3 +297,52 @@ func TestAllowSessionIsPerSession(t *testing.T) {
 		t.Fatalf("A 的第二轮应只问了 shell 一次（共 3 次）: %d", n)
 	}
 }
+
+// 收到 turn_end 的那一刻就能发下一条（发送队列就是这样接着发的），不会撞上“上一轮还在收尾”的 ErrBusy，
+// 并且两轮的历史按顺序保存。
+func TestSendRightAfterTurnEnd(t *testing.T) {
+	h := newHarness(t, fake.Script{}, 0, nil)
+	const rounds = 20
+	errs := make(chan error, rounds)
+	var mu sync.Mutex
+	sent := 1
+	h.engine.Bus().Subscribe(func(ev event.Event) {
+		if _, ok := ev.Data.(event.TurnEnd); !ok {
+			return
+		}
+		mu.Lock()
+		if sent >= rounds {
+			mu.Unlock()
+			return
+		}
+		sent++
+		n := sent
+		mu.Unlock()
+		go func() {
+			_, err := h.engine.SendInputTo(context.Background(), ev.SessionID, core.UserInput{Text: "第" + string(rune('A'+n-1)) + "句"})
+			errs <- err
+		}()
+	})
+	sid := h.engine.Status().SessionID
+	if _, err := h.engine.SendInputTo(context.Background(), "", core.UserInput{Text: "第A句"}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < rounds-1; i++ {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatalf("turn_end 之后立即发送失败: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("超时")
+		}
+	}
+	// 等最后一轮收尾
+	deadline := time.Now().Add(5 * time.Second)
+	for len(storedUserTexts(h, sid)) < rounds && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := storedUserTexts(h, sid); len(got) != rounds {
+		t.Fatalf("应保存 %d 轮，实际 %d: %v", rounds, len(got), got)
+	}
+}

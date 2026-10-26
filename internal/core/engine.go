@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/permission"
@@ -82,19 +83,42 @@ type Engine struct {
 type run struct {
 	sess   *Session
 	cancel context.CancelFunc
+	// ending 在 turn_end 事件发出之前置位：界面收到 turn_end 的那一刻，Status 就已经显示“不在运行”，
+	// 紧接着发下一条（发送队列就是这样做的）也不会撞上 ErrBusy。轮结束后的保存、清理还在进行，
+	// 下一轮会等 done 关闭再开始，所以历史的保存顺序不会乱。
+	ending atomic.Bool
+	done   chan struct{}
+}
+
+// endWatcher 包装事件发布器：在根 agent 的 turn_end 发出前标记这一轮“正在收尾”。
+type endWatcher struct {
+	event.Publisher
+	r *run
+}
+
+func (w endWatcher) Publish(ev event.Event) event.Event {
+	if _, ok := ev.Data.(event.TurnEnd); ok && ev.AgentID == event.RootAgentID {
+		w.r.ending.Store(true)
+	}
+	return w.Publisher.Publish(ev)
 }
 
 // currentRunningLocked 当前会话是否在运行。调用方需持有 e.mu。
-func (e *Engine) currentRunningLocked() bool {
-	_, ok := e.runs[e.session.ID]
-	return ok
+func (e *Engine) currentRunningLocked() bool { return e.activeLocked(e.session.ID) }
+
+// activeLocked 会话是否有一轮在运行（已经发出 turn_end、只剩收尾的不算）。调用方需持有 e.mu。
+func (e *Engine) activeLocked(id string) bool {
+	r, ok := e.runs[id]
+	return ok && !r.ending.Load()
 }
 
 // runningIDsLocked 返回所有正在运行的会话 ID（有序，便于测试和界面稳定显示）。调用方需持有 e.mu。
 func (e *Engine) runningIDsLocked() []string {
 	ids := make([]string, 0, len(e.runs))
-	for id := range e.runs {
-		ids = append(ids, id)
+	for id, r := range e.runs {
+		if !r.ending.Load() {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 	return ids
@@ -114,8 +138,7 @@ func (e *Engine) IsRunning(id string) bool {
 	if id == "" {
 		id = e.session.ID
 	}
-	_, ok := e.runs[id]
-	return ok
+	return e.activeLocked(id)
 }
 
 // 常见错误，界面可以据此给出友好提示。
@@ -425,17 +448,32 @@ func (e *Engine) SendInput(ctx context.Context, in UserInput) (TurnResult, error
 // 队列里的下一条要接着发给 A，即使用户此时正看着 B。
 func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (TurnResult, error) {
 	// 步骤 1：占用该会话的运行权，准备好本轮要用的依赖。
-	e.mu.Lock()
-	sess, err := e.sessionForSendLocked(ctx, id)
-	if err != nil {
+	var sess *Session
+	for {
+		e.mu.Lock()
+		var err error
+		if sess, err = e.sessionForSendLocked(ctx, id); err != nil {
+			e.mu.Unlock()
+			return TurnResult{}, err
+		}
+		r, busy := e.runs[sess.ID]
+		if !busy {
+			break // 持锁继续
+		}
+		if !r.ending.Load() {
+			e.mu.Unlock()
+			return TurnResult{}, ErrBusy
+		}
+		// 上一轮已经发出 turn_end，只剩保存和清理：等它收尾，再开始这一轮。
+		done := r.done
 		e.mu.Unlock()
-		return TurnResult{}, err
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return TurnResult{}, ctx.Err()
+		}
 	}
 	sid := sess.ID
-	if _, busy := e.runs[sid]; busy {
-		e.mu.Unlock()
-		return TurnResult{}, ErrBusy
-	}
 	snap := sess.Snapshot()
 	if snap.Provider == "" {
 		e.mu.Unlock()
@@ -455,7 +493,8 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 	}
 	disabled := e.disabledLocked()
 	ctx, cancel := context.WithCancel(ctx)
-	e.runs[sid] = &run{sess: sess, cancel: cancel}
+	r := &run{sess: sess, cancel: cancel, done: make(chan struct{})}
+	e.runs[sid] = r
 	e.mu.Unlock()
 
 	defer func() {
@@ -463,6 +502,7 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 		e.mu.Lock()
 		delete(e.runs, sid)
 		e.mu.Unlock()
+		close(r.done)
 	}()
 
 	// 步骤 2：组装一个主 agent 并运行。每轮新建 Agent 很便宜（只是一份配置），
@@ -477,7 +517,7 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 		Tools:     e.cfg.Tools,
 		Policy:    &sessionPolicy{Policy: e.cfg.Policy, grants: e.grants, sid: sid},
 		Broker:    e.broker,
-		Publisher: e.bus,
+		Publisher: endWatcher{Publisher: e.bus, r: r},
 		Compactor: e.compactorFor(p, pcfg, snap.Model),
 		Workspace: rt.Workspace,
 		SessionID: sid,
