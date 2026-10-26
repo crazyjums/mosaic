@@ -44,6 +44,7 @@ interface GoApp {
   ReadWorkspaceText(path: string): Promise<WorkspaceFile>;
   OpenWorkspaceFile(path: string): Promise<void>;
   ListPlugins(): Promise<PluginInfo[] | null>;
+  ScaffoldPlugin(parentDir: string, id: string): Promise<string>;
   ListPluginCatalog(): Promise<PluginCatalogEntry[] | null>;
   RefreshPluginCatalog(): Promise<PluginCatalogEntry[] | null>;
   PreviewCatalogPlugin(id: string): Promise<PluginPreview>;
@@ -168,6 +169,7 @@ export function createWailsBackend(): Backend {
     fetchModels: async (input) => (await app.FetchModels(input)) ?? [],
     getWorkspaceInfo: () => app.GetWorkspaceInfo(),
     listPlugins: async () => (await app.ListPlugins()) ?? [],
+    scaffoldPlugin: (parentDir, id) => app.ScaffoldPlugin(parentDir, id),
     listPluginCatalog: async () => (await app.ListPluginCatalog()) ?? [],
     refreshPluginCatalog: async () => (await app.RefreshPluginCatalog()) ?? [],
     previewCatalogPlugin: (id) => app.PreviewCatalogPlugin(id),

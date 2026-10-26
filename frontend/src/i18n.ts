@@ -456,6 +456,13 @@ export const EN: Record<string, string> = {
   "已保存": "Saved",
   "已启用": "Enabled",
   "已安装的插件": "Installed plugins",
+  "新建插件模板…": "New plugin template…",
+  "生成一个最小的插件模板，用来学习怎么写插件": "Generate a minimal plugin template to learn how plugins are written",
+  "插件 ID": "Plugin ID",
+  "选择目录并生成": "Choose folder & generate",
+  "ID 用小写字母、数字和 -。生成后改里面的文字，再用“安装文件夹…”装上试试。": "Use lowercase letters, digits and -. Edit the generated files, then try them with “Install folder…”.",
+  "已生成：{path}": "Created: {path}",
+
   "从 Git 地址安装…": "Install from Git URL…",
   "Git 地址": "Git URL",
   "下载中…": "Downloading…",

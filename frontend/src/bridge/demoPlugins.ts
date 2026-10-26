@@ -60,6 +60,10 @@ export function createDemoPlugins() {
   };
 
   return {
+    scaffoldPlugin: async (parentDir: string, id: string): Promise<string> => {
+      if (!/^[a-z0-9][a-z0-9-]{0,23}$/.test(id.trim())) throw new Error("插件 ID 只能用小写字母、数字和 -，以字母或数字开头，最长 24 个字符");
+      return `${parentDir.replace(/\/$/, "")}/${id.trim()}`;
+    },
     listPluginCatalog: async (): Promise<PluginCatalogEntry[]> => withState(),
     refreshPluginCatalog: async (): Promise<PluginCatalogEntry[]> => withState(),
     previewCatalogPlugin: async (id: string): Promise<PluginPreview> => {

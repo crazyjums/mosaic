@@ -81,4 +81,10 @@ describe("演示模式的插件", () => {
     await expect(b.previewPlugin("http://github.com/a/b")).rejects.toThrow("https://");
     expect((await b.previewPlugin("https://github.com/a/feishu#v1")).plugin.id).toBe("feishu");
   });
+
+  it("新建插件模板：ID 不合法时报错，合法时返回路径", async () => {
+    const b = createDemoPlugins();
+    await expect(b.scaffoldPlugin("/tmp", "Bad_ID")).rejects.toThrow("插件 ID");
+    expect(await b.scaffoldPlugin("/tmp/", "my-plugin")).toBe("/tmp/my-plugin");
+  });
 });
