@@ -1,0 +1,10 @@
+{
+  "id": "code-review",
+  "name": "代码评审",
+  "version": "0.1.0",
+  "description": "一套评审清单和 /review 命令：看当前改动或指定文件，按正确性、边界、安全、测试分级给出意见。没有任何可执行代码。",
+  "min_app_version": "1.3.2",
+  "protocol": 1,
+  "skills": [{ "path": "skills/code-review" }],
+  "commands": [{ "name": "review", "path": "commands/review.md", "description": "评审当前改动或指定文件" }]
+}

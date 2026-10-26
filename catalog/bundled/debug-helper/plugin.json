@@ -1,0 +1,10 @@
+{
+  "id": "debug-helper",
+  "name": "排查助手",
+  "version": "0.1.0",
+  "description": "一套排查问题的方法和 /debug 命令：先复现、再缩小范围、最后验证修复，避免凭感觉乱改。没有任何可执行代码。",
+  "min_app_version": "1.3.2",
+  "protocol": 1,
+  "skills": [{ "path": "skills/bug-triage" }],
+  "commands": [{ "name": "debug", "path": "commands/debug.md", "description": "按步骤排查一个问题" }]
+}

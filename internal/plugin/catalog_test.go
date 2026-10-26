@@ -12,6 +12,7 @@ import (
 
 	"github.com/crazyjums/myllmapp/catalog"
 	"github.com/crazyjums/myllmapp/internal/secret"
+	"github.com/crazyjums/myllmapp/internal/skill"
 )
 
 func newCatalogHost(t *testing.T, registryURL string) (*Host, string) {
@@ -31,7 +32,7 @@ func newCatalogHost(t *testing.T, registryURL string) (*Host, string) {
 func TestCatalogBuiltinAndInstall(t *testing.T) {
 	h, _ := newCatalogHost(t, "")
 	list := h.Catalog()
-	if len(list) != 2 || list[0].ID != "hello-skill" || list[0].Kind != "bundled" || list[0].Installed {
+	if e, ok := findEntry(list, "hello-skill"); len(list) < 2 || !ok || e.Kind != "bundled" || e.Installed {
 		t.Fatalf("%+v", list)
 	}
 	p, err := h.PreviewCatalog("hello-skill")
@@ -42,8 +43,8 @@ func TestCatalogBuiltinAndInstall(t *testing.T) {
 	if err != nil || info.Source != "bundled:hello-skill" || len(info.Commands) != 1 {
 		t.Fatalf("%+v %v", info, err)
 	}
-	if l := h.Catalog(); !l[0].Installed || l[0].InstalledVersion == "" {
-		t.Fatalf("装好后应标记已安装: %+v", l[0])
+	if e, _ := findEntry(h.Catalog(), "hello-skill"); !e.Installed || e.InstalledVersion == "" {
+		t.Fatalf("装好后应标记已安装: %+v", e)
 	}
 	if _, err := h.PreviewCatalog("nope"); err == nil {
 		t.Fatal("不存在的 id 应报错")
@@ -104,11 +105,14 @@ func TestRefreshCatalog(t *testing.T) {
 	defer srv.Close()
 	h, root := newCatalogHost(t, srv.URL)
 
+	builtin := len(h.Catalog())
 	list, err := h.RefreshCatalog(context.Background())
-	if err != nil || len(list) != 3 {
+	if err != nil || len(list) != builtin+1 {
 		t.Fatalf("%+v %v", list, err)
 	}
-	if list[0].Name != "覆盖内置" || list[2].ID != "remote-one" || list[2].Kind != "git" || list[2].Ref != "v1" {
+	over, _ := findEntry(list, "hello-skill")
+	one, ok := findEntry(list, "remote-one")
+	if over.Name != "覆盖内置" || !ok || one.Kind != "git" || one.Ref != "v1" || list[len(list)-1].ID != "remote-one" {
 		t.Fatalf("在线列表应覆盖同 id 的内置项并追加新项: %+v", list)
 	}
 
@@ -117,13 +121,13 @@ func TestRefreshCatalog(t *testing.T) {
 		Dir: filepath.Join(root, "plugins"), DataDir: filepath.Join(root, "plugin-data"), StateFile: filepath.Join(root, "plugins.json"),
 		Secrets: secret.NewMemory(), MCP: newFakeMCP(), Catalog: catalog.FS,
 	})
-	if err != nil || len(h2.Catalog()) != 3 {
+	if err != nil || len(h2.Catalog()) != builtin+1 {
 		t.Fatalf("缓存应在重启后生效: %v", err)
 	}
 
 	// 失败时保持原样。
 	status, body = http.StatusInternalServerError, "oops"
-	if _, err := h.RefreshCatalog(context.Background()); err == nil || len(h.Catalog()) != 3 {
+	if _, err := h.RefreshCatalog(context.Background()); err == nil || len(h.Catalog()) != builtin+1 {
 		t.Fatalf("刷新失败应报错并保留原列表: %v", err)
 	}
 	status, body = http.StatusOK, `{"version":9}`
@@ -200,6 +204,67 @@ func TestPreviewGitWithoutGit(t *testing.T) {
 	h.opts.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
 	if _, err := h.PreviewGit("https://github.com/a/b", "", ""); err == nil || !strings.Contains(err.Error(), "没有找到 git") {
 		t.Fatalf("%v", err)
+	}
+}
+
+func findEntry(list []CatalogEntry, id string) (CatalogEntry, bool) {
+	for _, e := range list {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return CatalogEntry{}, false
+}
+
+// 市场里每一个内置插件都必须能装、清单合法、命令能展开：它们是随应用发布的，坏一个就是发布事故。
+func TestEveryBundledPluginInstalls(t *testing.T) {
+	h, _ := newCatalogHost(t, "")
+	list := h.Catalog()
+	if len(list) < 7 {
+		t.Fatalf("内置插件应不少于 7 个: %d", len(list))
+	}
+	for _, e := range list {
+		if e.Kind != "bundled" {
+			continue
+		}
+		p, err := h.PreviewCatalog(e.ID)
+		if err != nil {
+			t.Fatalf("%s: %v", e.ID, err)
+		}
+		if p.Plugin.ID != e.ID {
+			t.Errorf("%s: 清单 id 是 %q，要和市场 id 一致", e.ID, p.Plugin.ID)
+		}
+		info, err := h.Install(p.Token, nil)
+		if err != nil || info.Error != "" || !info.Enabled {
+			t.Fatalf("%s: %+v %v", e.ID, info, err)
+		}
+		for _, c := range info.Commands {
+			text, ok, err := h.ExpandCommand(c.Name, "示例参数")
+			if err != nil || !ok || !strings.Contains(text, "示例参数") {
+				t.Errorf("%s /%s 应能展开并带上参数: %q %v %v", e.ID, c.Name, text, ok, err)
+			}
+		}
+	}
+	// 每个技能文件夹都要真的被发现（SKILL.md 的 name 和 description 都写对了）。
+	got := map[string]bool{}
+	for _, sk := range skill.Discover(t.TempDir(), t.TempDir(), h.SkillFolders()...) {
+		got[sk.Name] = true
+		if sk.Description == "" {
+			t.Errorf("技能 %s 缺少 description", sk.Name)
+		}
+	}
+	for _, want := range []string{"code-review", "git-conventions", "writing-style", "bug-triage", "sql-tuning", "greeting"} {
+		if !got[want] {
+			t.Errorf("没有发现技能 %s: %v", want, got)
+		}
+	}
+	// 技能清单里不能有重名；命令名也不能和别的插件冲突（冲突会让其中一个要加前缀才能用）。
+	seen := map[string]string{}
+	for _, c := range h.Commands() {
+		if prev, dup := seen[c.Name]; dup {
+			t.Errorf("命令 /%s 在 %s 和 %s 里重名", c.Name, prev, c.PluginID)
+		}
+		seen[c.Name] = c.PluginID
 	}
 }
 
