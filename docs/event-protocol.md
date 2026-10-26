@@ -223,6 +223,7 @@ tool_call ──(message_end)──┬──────────────
 | `call_id` | string | 对应的工具调用 |
 | `tool` | string | 工具名 |
 | `risk` | string | 风险等级 |
+| `sensitive` | bool? | 为 true 表示工具会读取私密内容（聊天记录、文档）：每次都要确认，界面不应提供“本会话总是允许”（内核也不会记住）；省略表示 false |
 | `summary` | string | 工具生成的人类可读摘要 |
 | `input` | object | 参数 |
 
