@@ -27,6 +27,12 @@
 
 ✅ 已有　⬜ 只有接口 / 未做
 
+## 产物面板与图表预览 ✅
+
+右侧面板（`SidePanel`：上下文 / 产物标签，可折叠）+ 产物列表（`store/artifacts.ts` 从 `write_file` / `edit_file` / `move_file` 的工具调用里收集）+ 预览（`ArtifactsPanel`）。后端 `internal/app/files.go`：`ReadWorkspaceText`（文本预览，2MB 上限）和 `OpenWorkspaceFile`（系统默认程序打开）都只允许工作区内（解析符号链接后检查）的白名单扩展名，不含任何可能被系统执行的类型。网页预览用无 `allow-same-origin` 的沙箱 iframe，默认无脚本 + CSP 禁网络。Graphviz 用 `@viz-js/viz`（WebAssembly，本地渲染，首次使用时才加载）。
+
+还没做：PlantUML / D2 等需要 Java 或体积很大的运行库的图语言；shell 命令生成的文件不会出现在产物里；产物按会话重放工具调用得出，不单独持久化。
+
 ## 并发与排队 ✅
 
 **多个会话可以同时运行；同一个会话内一次只跑一轮，在它运行期间发的消息排队。**

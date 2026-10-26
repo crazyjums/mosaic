@@ -3,7 +3,6 @@ import { backend, type ContextBreakdown, type ContextItem, type ContextPart } fr
 import { t } from "../i18n";
 import { useChat } from "../store/chatStore";
 import { contextTokens, fmtTokens, modelMeta } from "../store/metrics";
-import { useUIPrefs } from "../store/uiPrefs";
 
 // 右侧的"上下文明细"面板：下一次请求会发给模型什么、各占多少。
 //
@@ -45,8 +44,9 @@ function itemLabel(it: ContextItem): string {
   }
 }
 
-export default function ContextPanel() {
-  const show = useUIPrefs((s) => s.prefs.contextPanel);
+// 内容区由 SidePanel 放进右侧面板（标签、折叠、占满高度都在那里处理）；active 表示这个标签当前可见，不可见时不请求数据。
+export default function ContextPanel({ active }: { active: boolean }) {
+  const show = active;
   const sessionId = useChat((s) => s.sessionId);
   // 会话切换、每次模型调用结束（时间线变化且不在流式输出中）、一轮结束时刷新。
   const refreshKey = useChat((s) => {
@@ -70,20 +70,12 @@ export default function ContextPanel() {
     return () => clearTimeout(timer);
   }, [show, refreshKey, sessionId]);
 
-  if (!show) return null;
   const parts = data?.parts ?? [];
   const total = data?.total ?? 0;
   const largest = data?.largest ?? [];
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-l border-line bg-side px-4 py-4 text-xs xl:flex">
-      <div className="mb-3 flex items-center">
-        <span className="text-sm font-semibold">{t("上下文明细")}</span>
-        <div className="flex-1" />
-        <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" aria-label={t("隐藏（在标题栏可以重新打开）")} title={t("隐藏（在标题栏可以重新打开）")} onClick={() => void useUIPrefs.getState().update({ contextPanel: false })}>
-          ✕
-        </button>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 text-xs">
 
       {/* 真实值：厂商返回的最近一次请求的上下文大小 */}
       <div className="card px-3.5 py-3">
@@ -164,6 +156,6 @@ export default function ContextPanel() {
       <p className="mt-4 text-[10px] leading-relaxed text-muted">
         {t("组成按字符数估算（英文约 4 个字符 / token，中文约 1 个字 / token，图片按 1000 计），用来看出大头在哪；准确的总数以上面厂商返回的为准。")}
       </p>
-    </aside>
+    </div>
   );
 }

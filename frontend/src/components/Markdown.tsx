@@ -2,16 +2,19 @@ import { Children, isValidElement, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { backend } from "../bridge";
+import { looksLikeFilePath, OPENABLE_EXT } from "../store/artifacts";
 import { t } from "../i18n";
-import { IMAGE_EXT, isLocalPath, MermaidDiagram, normalizeLocalPath, SvgBlock, WorkspaceImage, ZoomableImage } from "./MediaView";
+import { FileLink, openFileWithToast } from "./FileLink";
+import { GraphvizDiagram, IMAGE_EXT, isLocalPath, MermaidDiagram, normalizeLocalPath, SvgBlock, WorkspaceImage, ZoomableImage } from "./MediaView";
 
 // 模型输出的正文按 Markdown 渲染（支持表格、任务列表等 GFM 语法）。
 // react-markdown 默认不渲染原始 HTML，模型输出里的 <script> 之类不会被执行。
 //
 // 在默认渲染之上补充了图片能力：
 //   - ![](效果图.svg) 和指向工作区图片的链接 [效果图](效果图.svg)：从工作区读出图片显示在原处；
-//   - ```mermaid 代码块渲染成图，```svg 代码块显示成图片（流式输出期间先显示源码，避免反复渲染半截内容）；
-//   - 链接：网址在系统浏览器中打开，本地路径不跳转（否则 WebView 会离开应用页面）。
+//   - ```mermaid / ```dot（Graphviz）代码块渲染成图，```svg 代码块显示成图片（流式输出期间先显示源码，避免反复渲染半截内容）；
+//   - 链接：网址在系统浏览器中打开；指向工作区文件的链接和行内的文件路径（`report.html`）点击后用系统默认程序打开
+//     （.html 就是默认浏览器），悬停显示绝对路径；WebView 自己不会跳转（否则会离开应用页面）。
 
 const codeText = (children: ReactNode): string =>
   Children.toArray(children)
@@ -40,6 +43,7 @@ function makeComponents(streaming: boolean): Components {
               if (h.startsWith("#")) return;
               e.preventDefault();
               if (/^https?:\/\//.test(h)) void backend().openExternalURL(h);
+              else if (local && OPENABLE_EXT.test(path)) void openFileWithToast(path);
             }}
           >
             {children}
@@ -48,6 +52,12 @@ function makeComponents(streaming: boolean): Components {
           {local && IMAGE_EXT.test(path) && !streaming && <WorkspaceImage path={path} alt={path} />}
         </>
       );
+    },
+    // 行内代码如果是一个文件路径（`report.html`），变成可以点击打开的链接
+    code: ({ className, children }) => {
+      const text = codeText(children);
+      if (!className && !text.includes("\n") && looksLikeFilePath(text)) return <FileLink path={text} />;
+      return <code className={className}>{children}</code>;
     },
     // 表格放进一个可横向滚动的圆角外框：窄窗口里不撑破版面，宽度仍然撑满正文
     table: ({ children }) => (
@@ -62,6 +72,7 @@ function makeComponents(streaming: boolean): Components {
         const lang = /language-([\w-]+)/.exec(child.props.className ?? "")?.[1]?.toLowerCase();
         const code = codeText(child.props.children).replace(/\n$/, "");
         if (lang === "mermaid") return <MermaidDiagram code={code} />;
+        if (lang === "dot" || lang === "graphviz" || lang === "gv") return <GraphvizDiagram code={code} />;
         if (lang === "svg" || ((lang === "xml" || lang === "html") && /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(code))) return <SvgBlock code={code} />;
       }
       // 普通代码块：顶部一条语言标签 + 复制按钮。流式输出期间也显示，用户可以复制已经出来的部分。

@@ -23,8 +23,10 @@ export interface UIPrefs {
   skin: string;
   /** 用户自定义的皮肤 */
   customSkins: Skin[];
-  /** 是否显示右侧的上下文明细面板（窗口足够宽时） */
+  /** 右侧面板是否展开（窗口足够宽时）；折叠后只剩一条标签栏 */
   contextPanel: boolean;
+  /** 右侧面板当前的标签：上下文明细 / 产物 */
+  sideTab: "context" | "artifacts";
   /** 思考和工具调用的过程：collapsed = 默认折叠成一行摘要，只显示动画和最终回答；expanded = 全部展开 */
   process: "collapsed" | "expanded";
   /** 检查更新：auto = 启动时和每隔几小时自动检查并提示；off = 只在"关于"里手动检查 */
@@ -49,6 +51,7 @@ export const DEFAULT_PREFS: UIPrefs = {
   skin: DEFAULT_SKIN_ID,
   customSkins: [],
   contextPanel: true,
+  sideTab: "context",
   sidebarCollapsed: false,
   currency: "usd",
   cnyRate: 7.2,
@@ -85,6 +88,7 @@ export function normalizePrefs(raw: unknown): UIPrefs {
     skin: pick(r.skin, ids, d.skin),
     customSkins,
     contextPanel: typeof r.contextPanel === "boolean" ? r.contextPanel : d.contextPanel,
+    sideTab: pick(r.sideTab, ["context", "artifacts"], d.sideTab),
     currency: pick(r.currency, ["usd", "cny"], d.currency),
     cnyRate: typeof r.cnyRate === "number" && r.cnyRate > 0 && r.cnyRate < 1000 ? r.cnyRate : d.cnyRate,
     updateCheck: pick(r.updateCheck, ["auto", "off"], d.updateCheck),

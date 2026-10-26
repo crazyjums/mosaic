@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { ToolStatus, ToolView } from "../store/reducer";
 import { t } from "../i18n";
+import { OPENABLE_EXT } from "../store/artifacts";
+import { FileLink } from "./FileLink";
 import { IMAGE_EXT, svgDataURL, WorkspaceImage, ZoomableImage } from "./MediaView";
 
 // label 是中文原文，渲染时翻译。
@@ -50,6 +52,7 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
         </span>
       </button>
       <ImagePreview tool={tool} />
+      <FileRow tool={tool} />
       {/* 失败的调用不用展开就能看到原因（只取第一行，避免撑开版面） */}
       {failed && !open && tool.output && (
         <div className="truncate border-t border-danger/20 bg-danger/5 px-3 py-1.5 font-mono text-xs text-danger" title={tool.output}>
@@ -85,6 +88,20 @@ function ImagePreview({ tool }: { tool: ToolView }) {
   return (
     <div className="border-t border-line px-3 py-2">
       {inline ? <ZoomableImage src={svgDataURL(o.content as string)} alt={path} /> : <WorkspaceImage path={path} alt={path} />}
+    </div>
+  );
+}
+
+// 写出了一个文件：卡片下方给出可以点击的路径——点击用默认程序打开（网页在默认浏览器里），悬停显示绝对路径。
+function FileRow({ tool }: { tool: ToolView }) {
+  if (tool.status !== "done" || !["write_file", "edit_file", "move_file"].includes(tool.name)) return null;
+  const o = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
+  const path = typeof (tool.name === "move_file" ? o.destination : o.path) === "string" ? ((tool.name === "move_file" ? o.destination : o.path) as string) : "";
+  if (!path || !OPENABLE_EXT.test(path)) return null;
+  return (
+    <div className="flex items-center gap-2 border-t border-line px-3 py-1.5 text-xs text-muted">
+      <span aria-hidden="true">📄</span>
+      <FileLink path={path} />
     </div>
   );
 }

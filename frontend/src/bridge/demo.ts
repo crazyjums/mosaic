@@ -11,6 +11,7 @@
 //   3. 遇到 permission_request 时按当前权限档位处理（与 Go 端 permission.ModePolicy 一致）：
 //      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
+import { demoFileText } from "./demoFiles";
 import { demoCommitDetail, demoCommits, demoDiff, demoGitOverview } from "./demoGit";
 import type { AgentEvent, AttachmentInfo, Decision, Usage } from "../protocol/events";
 import type {
@@ -338,6 +339,13 @@ export function createDemoBackend(): Backend {
     },
     readWorkspaceImage: async () => {
       throw new Error("浏览器演示模式不能读取本地文件");
+    },
+    readWorkspaceText: async (path) => {
+      const text = demoFileText(path);
+      return { path: `${general.workspace || demoWorkspace}/${path.replace(/^\.?\//, "")}`, text, size: text.length };
+    },
+    openWorkspaceFile: async (path) => {
+      throw new Error(`浏览器演示模式不能打开本地文件（真实应用会用默认浏览器打开 ${path}）`);
     },
     setModel: async (p, m) => {
       provider = p || "fake";

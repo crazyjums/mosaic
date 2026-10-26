@@ -28,31 +28,14 @@ func (a *App) ReadWorkspaceImage(path string) (string, error) {
 }
 
 func readWorkspaceImage(workspace, p string) (string, error) {
-	if workspace == "" {
-		return "", fmt.Errorf("没有工作区")
-	}
 	p = strings.TrimPrefix(strings.TrimSpace(p), "file://")
 	mime, ok := imageTypes[strings.ToLower(filepath.Ext(p))]
 	if !ok {
 		return "", fmt.Errorf("不支持的图片类型：%s", p)
 	}
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(workspace, filepath.FromSlash(p))
-	}
-	realWS, err := filepath.EvalSymlinks(workspace)
+	real, fi, err := resolveWorkspaceFile(workspace, p)
 	if err != nil {
 		return "", err
-	}
-	real, err := filepath.EvalSymlinks(p)
-	if err != nil {
-		return "", fmt.Errorf("找不到图片 %s", p)
-	}
-	if rel, err := filepath.Rel(realWS, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("只能显示工作区内的图片")
-	}
-	fi, err := os.Stat(real)
-	if err != nil || fi.IsDir() {
-		return "", fmt.Errorf("找不到图片 %s", p)
 	}
 	if fi.Size() > maxImageBytes {
 		return "", fmt.Errorf("图片太大（%d MB），超过 %d MB 的不在聊天里显示", fi.Size()>>20, maxImageBytes>>20)
