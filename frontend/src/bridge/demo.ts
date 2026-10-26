@@ -30,6 +30,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const rid = (prefix: string) => `${prefix}_${Math.random().toString(16).slice(2, 10)}`;
 const zeroUsage = (): Usage => ({ input_tokens: 0, output_tokens: 0 });
 
+/** 一个会话正在进行的一轮 */
+interface RunCtx {
+  sess: DemoSession;
+  cancelled: boolean;
+}
+
 interface DemoSession {
   summary: SessionSummary;
   events: AgentEvent[];
@@ -98,8 +104,8 @@ export function createDemoBackend(): Backend {
   const listeners = new Set<(ev: AgentEvent) => void>();
   const sessions = new Map<string, DemoSession>();
   let current = newSession();
-  let running = false;
-  let cancelled = false;
+  /** 正在运行的会话（按会话 ID）：和真实后端一样，不同会话可以同时运行，同一会话一次一轮 */
+  const runs = new Map<string, RunCtx>();
   let seq = 0;
   let provider = "fake";
   let permissionMode: PermissionMode = "default";
@@ -135,7 +141,7 @@ export function createDemoBackend(): Backend {
     workspace_locked: false,
   });
   let model = "demo";
-  let pending: { requestId: string; resolve: (d: Decision) => void } | null = null;
+  const pendings = new Map<string, { sessionId: string; resolve: (d: Decision) => void }>();
 
   /** 新会话沿用传入的工作区（与真实后端一致：沿用当前会话的工作区）。 */
   function newSession(workspace = ""): DemoSession {
@@ -148,9 +154,9 @@ export function createDemoBackend(): Backend {
     };
   }
 
-  function emit(ev: AgentEvent) {
-    const full = { ...ev, seq: ++seq, id: rid("ev"), session_id: current.summary.id, ts: new Date().toISOString() } as AgentEvent;
-    current.events.push(full);
+  function emit(sess: DemoSession, ev: AgentEvent) {
+    const full = { ...ev, seq: ++seq, id: rid("ev"), session_id: sess.summary.id, ts: new Date().toISOString() } as AgentEvent;
+    sess.events.push(full);
     listeners.forEach((cb) => cb(full));
   }
 
@@ -161,10 +167,11 @@ export function createDemoBackend(): Backend {
       provider,
       model,
       usage: current.usage,
-      running,
+      running: runs.has(current.summary.id),
+      running_sessions: [...runs.keys()].sort(),
       workspace: current.workspace || general.workspace || demoWorkspace,
       workspace_is_default: !current.workspace,
-      pending_permissions: pending ? [pending.requestId] : [],
+      pending_permissions: [...pendings.keys()],
       permission_mode: permissionMode,
     };
   }
@@ -174,7 +181,8 @@ export function createDemoBackend(): Backend {
   const infosOf = (atts: Attachment[] = []): AttachmentInfo[] =>
     atts.map((a) => (a.data ? { name: a.name, kind: "image" as const, media_type: a.media_type, size: Math.floor((a.data.length * 3) / 4), data: a.data } : { name: a.name, kind: "text" as const, size: (a.text ?? "").length }));
 
-  async function play(text: string, atts: Attachment[] = []) {
+  async function play(rc: RunCtx, text: string, atts: Attachment[] = []) {
+    const { sess } = rc;
     // 每一轮重新生成 message_id / call_id，避免多轮回放时 ID 冲突。
     const ids = new Map<string, string>();
     const remap = (id: string) => {
@@ -185,7 +193,7 @@ export function createDemoBackend(): Backend {
     const escaped = JSON.stringify(text).slice(1, -1); // 作为 JSON 字符串内容插入，需要转义
 
     for (const original of recorded) {
-      if (cancelled) return endTurn("cancelled");
+      if (rc.cancelled) return endTurn(rc, "cancelled");
       const json = JSON.stringify(original);
       const ev = JSON.parse(recordedPrompt ? json.replaceAll(recordedPrompt, escaped) : json) as AgentEvent;
       if (ev.message_id) ev.message_id = remap(ev.message_id);
@@ -195,7 +203,7 @@ export function createDemoBackend(): Backend {
       switch (ev.type) {
         case "text_delta":
         case "thinking_delta":
-          await stream(ev, ev.data.text);
+          await stream(rc, ev, ev.data.text);
           continue;
         case "permission_resolved":
           continue; // 由用户的真实点击生成，见下面的 permission_request
@@ -209,10 +217,10 @@ export function createDemoBackend(): Backend {
           if (permissionMode === "auto" || (permissionMode === "accept_edits" && risk === "write")) continue;
           const requestId = rid("perm");
           ev.data.request_id = requestId;
-          emit(ev);
-          const decision = await new Promise<Decision>((resolve) => (pending = { requestId, resolve }));
-          pending = null;
-          emit({ ...ev, type: "permission_resolved", data: { request_id: requestId, call_id: ev.data.call_id, decision } });
+          emit(sess, ev);
+          const decision = await new Promise<Decision>((resolve) => pendings.set(requestId, { sessionId: sess.summary.id, resolve }));
+          pendings.delete(requestId);
+          emit(sess, { ...ev, type: "permission_resolved", data: { request_id: requestId, call_id: ev.data.call_id, decision } });
           if (decision === "deny") denied.set(ev.data.call_id, "permission denied by user");
           continue;
         }
@@ -223,50 +231,51 @@ export function createDemoBackend(): Backend {
           }
           break;
         case "turn_end":
-          addUsage(ev.data.usage);
-          ev.data.session_usage = current.usage;
+          addUsage(sess, ev.data.usage);
+          ev.data.session_usage = sess.usage;
           break;
       }
-      emit(ev);
+      emit(sess, ev);
       await sleep(ev.type === "tool_result" ? 250 : 60);
     }
   }
 
   /** "echo" 模型：复述用户输入。 */
-  async function playEcho(text: string, atts: Attachment[] = []) {
+  async function playEcho(rc: RunCtx, text: string, atts: Attachment[] = []) {
+    const { sess } = rc;
     const base = { v: 1, id: "", seq: 0, session_id: "", agent_id: "main", ts: "" };
     const message_id = rid("msg");
-    emit({ ...base, type: "turn_start", data: { turn_id: rid("turn"), provider: "fake", model } });
-    emit({ ...base, type: "user_message", data: { text, attachments: atts.length ? infosOf(atts) : undefined } });
-    emit({ ...base, message_id, type: "message_start", data: { provider: "fake", model, step: 1 } });
-    await stream({ ...base, message_id, type: "text_delta", data: { text: "" } }, `（fake）你说的是：${text}`);
+    emit(sess, { ...base, type: "turn_start", data: { turn_id: rid("turn"), provider: "fake", model } });
+    emit(sess, { ...base, type: "user_message", data: { text, attachments: atts.length ? infosOf(atts) : undefined } });
+    emit(sess, { ...base, message_id, type: "message_start", data: { provider: "fake", model, step: 1 } });
+    await stream(rc, { ...base, message_id, type: "text_delta", data: { text: "" } }, `（fake）你说的是：${text}`);
     const usage = { input_tokens: 40, output_tokens: 12 };
-    emit({ ...base, message_id, type: "message_end", data: { stop_reason: "end_turn", usage } });
-    addUsage(usage);
-    endTurn("completed", usage);
+    emit(sess, { ...base, message_id, type: "message_end", data: { stop_reason: "end_turn", usage } });
+    addUsage(sess, usage);
+    endTurn(rc, "completed", usage);
   }
 
   /** 把一段文本切成小片段逐个发出，模拟流式输出。 */
-  async function stream(ev: AgentEvent & { type: "text_delta" | "thinking_delta" }, text: string) {
+  async function stream(rc: RunCtx, ev: AgentEvent & { type: "text_delta" | "thinking_delta" }, text: string) {
     for (const chunk of text.match(/[\s\S]{1,3}/g) ?? []) {
-      if (cancelled) return;
-      emit({ ...ev, data: { ...ev.data, text: chunk } });
+      if (rc.cancelled) return;
+      emit(rc.sess, { ...ev, data: { ...ev.data, text: chunk } });
       await sleep(18);
     }
   }
 
-  function addUsage(u: Usage) {
-    current.usage = {
-      input_tokens: current.usage.input_tokens + u.input_tokens,
-      output_tokens: current.usage.output_tokens + u.output_tokens,
+  function addUsage(sess: DemoSession, u: Usage) {
+    sess.usage = {
+      input_tokens: sess.usage.input_tokens + u.input_tokens,
+      output_tokens: sess.usage.output_tokens + u.output_tokens,
     };
   }
 
-  function endTurn(reason: "completed" | "cancelled", usage: Usage = zeroUsage()) {
-    emit({
+  function endTurn(rc: RunCtx, reason: "completed" | "cancelled", usage: Usage = zeroUsage()) {
+    emit(rc.sess, {
       v: 1, id: "", seq: 0, session_id: "", agent_id: "main", ts: "",
       type: "turn_end",
-      data: { turn_id: "", reason, steps: 1, usage, session_usage: current.usage },
+      data: { turn_id: "", reason, steps: 1, usage, session_usage: rc.sess.usage },
     });
   }
 
@@ -299,12 +308,11 @@ export function createDemoBackend(): Backend {
     listSessions: async () =>
       [...sessions.values()].map((s) => s.summary).sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
     newSession: async () => {
-      if (running) throw new Error("engine: a turn is already running");
-      current = newSession(current.workspace);
+      current = newSession(current.workspace); // 当前会话在运行也可以新建，它转入后台继续跑
       return status();
     },
     loadSession: async (id) => {
-      const s = sessions.get(id);
+      const s = runs.get(id)?.sess ?? sessions.get(id);
       if (!s) throw new Error("session not found");
       current = s;
       // 演示模式下直接返回保存的事件；真实后端会把历史消息转换成最近几轮的事件（core.LoadSessionTail）。
@@ -312,15 +320,13 @@ export function createDemoBackend(): Backend {
     },
     loadEarlierHistory: async () => ({ events: [], earlier: 0 }),
     deleteSession: async (id) => {
-      // 与真实后端一致：删除当前会话时切换到新的空会话，运行中不允许删除当前会话。
-      if (id === current.summary.id) {
-        if (running) throw new Error("engine: a turn is already running");
-        current = newSession(current.workspace);
-      }
+      // 与真实后端一致：运行中的会话（不论是否当前）不能删除；删除当前会话时切换到新的空会话。
+      if (runs.has(id)) throw new Error("engine: a turn is already running");
+      if (id === current.summary.id) current = newSession(current.workspace);
       sessions.delete(id);
     },
     renameSession: async (id, title) => {
-      const s = sessions.get(id) ?? (id === current.summary.id ? current : undefined);
+      const s = runs.get(id)?.sess ?? sessions.get(id) ?? (id === current.summary.id ? current : undefined);
       if (!s) throw new Error("session not found");
       if (!title.trim()) throw new Error("标题不能为空");
       s.summary.title = title.trim().slice(0, 100);
@@ -359,12 +365,12 @@ export function createDemoBackend(): Backend {
     },
     getGeneral: async () => generalView(),
     saveGeneral: async (g) => {
-      if (running) throw new Error("engine: a turn is already running");
+      if (runs.has(current.summary.id)) throw new Error("engine: a turn is already running");
       general = g;
       return generalView();
     },
     setSessionWorkspace: async (dir) => {
-      if (running) throw new Error("engine: a turn is already running");
+      if (runs.has(current.summary.id)) throw new Error("engine: a turn is already running");
       current.workspace = dir;
       current.summary.workspace = dir;
       return status();
@@ -378,7 +384,7 @@ export function createDemoBackend(): Backend {
       throw new Error(demoOnly);
     },
     clearSessions: async () => {
-      if (running) throw new Error("engine: a turn is already running");
+      if (runs.size > 0) throw new Error("engine: a turn is already running");
       const n = sessions.size;
       sessions.clear();
       current = newSession(current.workspace);
@@ -404,24 +410,29 @@ export function createDemoBackend(): Backend {
     fetchModels: async () => {
       throw new Error(demoOnly);
     },
-    send: async (text, atts) => {
-      if (running) throw new Error("engine: a turn is already running");
-      running = true;
-      cancelled = false;
-      if (!current.summary.title) current.summary.title = text.slice(0, 40);
-      sessions.set(current.summary.id, current);
-      (model === "echo" ? playEcho(text, atts) : play(text, atts)).finally(() => {
-        running = false;
-        current.summary.updated_at = new Date().toISOString();
-        current.summary.message_count += 1;
+    send: async (sessionId, text, atts) => {
+      const sess = !sessionId || sessionId === current.summary.id ? current : (runs.get(sessionId)?.sess ?? sessions.get(sessionId));
+      if (!sess) throw new Error(`session ${sessionId} not found`);
+      const sid = sess.summary.id;
+      if (runs.has(sid)) throw new Error("engine: a turn is already running");
+      const rc: RunCtx = { sess, cancelled: false };
+      runs.set(sid, rc);
+      if (!sess.summary.title) sess.summary.title = text.slice(0, 40);
+      sessions.set(sid, sess);
+      (model === "echo" ? playEcho(rc, text, atts) : play(rc, text, atts)).finally(() => {
+        runs.delete(sid);
+        sess.summary.updated_at = new Date().toISOString();
+        sess.summary.message_count += 1;
       });
     },
-    cancel: async () => {
-      cancelled = true;
-      pending?.resolve("deny");
+    cancel: async (sessionId) => {
+      const rc = runs.get(sessionId || current.summary.id);
+      if (!rc) return;
+      rc.cancelled = true;
+      for (const [id, p] of pendings) if (p.sessionId === rc.sess.summary.id) p.resolve("deny"), pendings.delete(id);
     },
     respondPermission: async (id, decision) => {
-      if (pending?.requestId === id) pending.resolve(decision);
+      pendings.get(id)?.resolve(decision);
     },
     getChatGPT: async () => ({ state: "logged_out", registered: false, error: demoOnly }),
     loginChatGPT: async () => {
