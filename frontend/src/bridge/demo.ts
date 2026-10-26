@@ -12,6 +12,7 @@
 //      需要询问时真的停下来等用户点击；被拒绝时，把对应的 tool_result 改成失败。
 
 import { demoFileText } from "./demoFiles";
+import { createDemoPlugins } from "./demoPlugins";
 import { demoCommitDetail, demoCommits, demoDiff, demoGitOverview } from "./demoGit";
 import type { AgentEvent, AttachmentInfo, Decision, Usage } from "../protocol/events";
 import type {
@@ -102,6 +103,7 @@ function demoUsageReport(req: UsageRequest): UsageReport {
 }
 
 export function createDemoBackend(): Backend {
+  const plugins = createDemoPlugins();
   const listeners = new Set<(ev: AgentEvent) => void>();
   const sessions = new Map<string, DemoSession>();
   let current = newSession();
@@ -398,6 +400,8 @@ export function createDemoBackend(): Backend {
       current = newSession(current.workspace);
       return n;
     },
+    ...plugins,
+    chooseFile: async (title) => window.prompt(`浏览器演示模式没有文件选择框，请直接输入路径（${title}）：`, "/demo/hello-plugin.zip") ?? "",
     gitOverview: async () => demoGitOverview(),
     gitLog: async (skip, limit) => demoCommits.slice(skip, skip + limit),
     gitCommit: async (hash) => demoCommitDetail(hash),

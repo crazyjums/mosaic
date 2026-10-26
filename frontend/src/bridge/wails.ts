@@ -11,7 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
-  WorkspaceFile, GitOverview, GitCommit, GitCommitDetail, GitDiff,
+  WorkspaceFile, PluginInfo, PluginPreview, PluginStatus, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -43,6 +43,19 @@ interface GoApp {
   GetWorkspaceInfo(): Promise<WorkspaceInfo>;
   ReadWorkspaceText(path: string): Promise<WorkspaceFile>;
   OpenWorkspaceFile(path: string): Promise<void>;
+  ListPlugins(): Promise<PluginInfo[] | null>;
+  PreviewPlugin(src: string): Promise<PluginPreview>;
+  InstallPlugin(token: string, approved: string[]): Promise<PluginInfo>;
+  CancelPluginPreview(token: string): Promise<void>;
+  SetPluginEnabled(id: string, on: boolean): Promise<PluginInfo>;
+  UninstallPlugin(id: string, purge: boolean): Promise<void>;
+  SavePluginConfig(id: string, values: Record<string, string>): Promise<PluginInfo>;
+  ClearPluginSecret(id: string, key: string): Promise<PluginInfo>;
+  GetPluginStatus(id: string): Promise<PluginStatus>;
+  RunPluginAction(id: string, action: string): Promise<PluginActionResult>;
+  ListCommands(): Promise<SlashCommandInfo[] | null>;
+  ExpandCommand(name: string, args: string): Promise<{ found: boolean; text: string }>;
+  ChooseFile(title: string, patternName: string, pattern: string): Promise<string>;
   GitOverview(): Promise<GitOverview>;
   GitLog(skip: number, limit: number): Promise<GitCommit[] | null>;
   GitCommit(hash: string): Promise<GitCommitDetail>;
@@ -151,6 +164,19 @@ export function createWailsBackend(): Backend {
     testProvider: (input) => app.TestProvider(input),
     fetchModels: async (input) => (await app.FetchModels(input)) ?? [],
     getWorkspaceInfo: () => app.GetWorkspaceInfo(),
+    listPlugins: async () => (await app.ListPlugins()) ?? [],
+    previewPlugin: (src) => app.PreviewPlugin(src),
+    installPlugin: (token, approved) => app.InstallPlugin(token, approved),
+    cancelPluginPreview: (token) => app.CancelPluginPreview(token),
+    setPluginEnabled: (id, on) => app.SetPluginEnabled(id, on),
+    uninstallPlugin: (id, purge) => app.UninstallPlugin(id, purge),
+    savePluginConfig: (id, values) => app.SavePluginConfig(id, values),
+    clearPluginSecret: (id, key) => app.ClearPluginSecret(id, key),
+    getPluginStatus: (id) => app.GetPluginStatus(id),
+    runPluginAction: (id, action) => app.RunPluginAction(id, action),
+    listCommands: async () => (await app.ListCommands()) ?? [],
+    expandCommand: (name, args) => app.ExpandCommand(name, args),
+    chooseFile: (title, patternName, pattern) => app.ChooseFile(title, patternName, pattern),
     gitOverview: async () => {
       const o = await app.GitOverview();
       return { status: { ...o.status, files: o.status.files ?? [] }, branches: o.branches ?? [] };

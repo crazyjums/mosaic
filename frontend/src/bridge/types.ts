@@ -91,8 +91,8 @@ export interface Attachment {
 export interface SkillInfo {
   name: string;
   description: string;
-  /** project：工作区里的；user：个人目录里的 */
-  source: "project" | "user";
+  /** project：工作区里的；user：个人目录里的；plugin:<id>：插件带来的 */
+  source: "project" | "user" | `plugin:${string}`;
   /** 所在的根目录，例如 ".myllmapp/skills"、".claude/skills" */
   origin: string;
   dir: string;
@@ -223,6 +223,8 @@ export interface MCPServerStatus {
   tools: string[];
   server_name?: string;
   server_version?: string;
+  /** 空表示你自己添加的；"plugin:<id>" 表示插件带来的（只读，在 设置 → 插件 里管理） */
+  source?: string;
 }
 
 /** 对应 settings.KeychainStatus */
@@ -349,6 +351,27 @@ export interface Backend {
   fetchModels(input: ProviderInput): Promise<string[]>;
   // ---- 状态栏 ----
   getWorkspaceInfo(): Promise<WorkspaceInfo>;
+  // ---- 插件（见 docs/design/plugin-system.md）----
+  listPlugins(): Promise<PluginInfo[]>;
+  /** 校验插件目录或 .zip，返回安装前要给用户确认的内容；此时什么都没有生效 */
+  previewPlugin(src: string): Promise<PluginPreview>;
+  /** approved：用户勾选的、同意按作者声明的风险等级运行的 MCP 服务名（没勾选的一律每次询问） */
+  installPlugin(token: string, approved: string[]): Promise<PluginInfo>;
+  cancelPluginPreview(token: string): Promise<void>;
+  setPluginEnabled(id: string, on: boolean): Promise<PluginInfo>;
+  /** purge：一并清除配置、钥匙串里的密钥和插件数据 */
+  uninstallPlugin(id: string, purge: boolean): Promise<void>;
+  /** secret 项为空串表示不修改 */
+  savePluginConfig(id: string, values: Record<string, string>): Promise<PluginInfo>;
+  clearPluginSecret(id: string, key: string): Promise<PluginInfo>;
+  getPluginStatus(id: string): Promise<PluginStatus>;
+  runPluginAction(id: string, action: string): Promise<PluginActionResult>;
+  /** 已启用插件提供的斜杠命令 */
+  listCommands(): Promise<SlashCommandInfo[]>;
+  /** 把 /name args 展开成要发给模型的文本；found 为 false 表示没有这个命令，照常发送原文 */
+  expandCommand(name: string, args: string): Promise<{ found: boolean; text: string }>;
+  /** 选择文件（安装插件时选 .zip）；取消返回空串 */
+  chooseFile(title: string, patternName: string, pattern: string): Promise<string>;
   // ---- Git 窗口（全部只读）----
   gitOverview(): Promise<GitOverview>;
   /** 分页取所有分支上的提交（按时间倒序，含父提交，用来画分支图） */
@@ -656,4 +679,82 @@ export interface WorkspaceFile {
   text: string;
   size: number;
   truncated?: boolean;
+}
+
+// ---- 插件（对应 internal/plugin）----
+
+export interface PluginConfigField {
+  key: string;
+  label: string;
+  type: "string" | "secret" | "bool" | "select" | "path";
+  default?: string;
+  options?: string[];
+  required?: boolean;
+  help?: string;
+}
+
+export interface PluginConfigView extends PluginConfigField {
+  /** secret 的值永远不返回 */
+  value: string;
+  has_secret: boolean;
+}
+
+export interface PluginServerView {
+  name: string;
+  transport: string;
+  /** 要启动的命令行（安装确认时让用户看清） */
+  command: string;
+  declared_risk: "read" | "write" | "exec";
+  /** 实际生效的风险；没经用户确认时一律是 exec */
+  effective_risk: "read" | "write" | "exec";
+  approved: boolean;
+}
+
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  enabled: boolean;
+  /** 不能加载的原因（清单有问题、需要升级应用） */
+  error?: string;
+  /** 运行中的提示（缺必填配置、名字冲突等） */
+  warning?: string;
+  source?: string;
+  skills: string[];
+  commands: { name: string; description?: string }[];
+  servers: PluginServerView[];
+  config: PluginConfigView[];
+  has_status: boolean;
+  actions: { id: string; label: string }[];
+  requires: { command: string; found: boolean }[];
+  network: string[];
+  installed_at?: string;
+}
+
+export interface PluginPreview {
+  token: string;
+  plugin: PluginInfo;
+  /** 已经装了同 id 的插件：安装会覆盖更新 */
+  existing?: PluginInfo;
+}
+
+export interface PluginStatus {
+  state: "ok" | "bad" | "missing_dependency" | "none" | "unknown";
+  message?: string;
+  missing?: string[];
+}
+
+export interface PluginActionResult {
+  output: string;
+  exit_code: number;
+  error?: string;
+}
+
+/** 输入框 / 菜单里的一个插件斜杠命令 */
+export interface SlashCommandInfo {
+  name: string;
+  description: string;
+  plugin_id: string;
+  plugin_name: string;
 }

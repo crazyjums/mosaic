@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/crazyjums/myllmapp/internal/skill"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 type Options struct {
 	// ShellTimeout 是 shell 工具单条命令的超时时间。
 	ShellTimeout time.Duration
+	// SkillFolders 返回插件提供的额外技能文件夹（read_skill 每次调用时取，插件启停立即生效）；可以为 nil。
+	SkillFolders func() []skill.Folder
 	// MaxOutputBytes 是返回给模型的最大输出字节数，超出部分截断。
 	// 截断是为了保护上下文窗口：一次 `cat` 大文件就可能吃掉几万 token。
 	MaxOutputBytes int
@@ -64,7 +67,7 @@ func Register(reg *tool.Registry, opts Options) {
 	reg.MustRegister(&TodoRead{store: todos})
 	// 技能：个人技能放在用户目录里；读不到用户目录时只搜索工作区里的技能。
 	home, _ := os.UserHomeDir()
-	reg.MustRegister(NewReadSkill(home))
+	reg.MustRegister(NewReadSkill(home, opts.SkillFolders))
 }
 
 // resolvePath 把模型给出的路径解析为工作区内的绝对路径。

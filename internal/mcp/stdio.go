@@ -39,7 +39,12 @@ func startStdio(cfg ServerConfig) (*stdioTransport, error) {
 		return nil, errors.New("mcp: stdio server has no command")
 	}
 	cmd := exec.Command(cfg.Command, cfg.Args...)
-	cmd.Env = os.Environ()
+	// 用户自己配的 server 沿用应用的环境；插件带来的只给白名单，见 BaseEnv。
+	if IsPluginSource(cfg.Source) {
+		cmd.Env = BaseEnv()
+	} else {
+		cmd.Env = os.Environ()
+	}
 	for k, v := range cfg.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}

@@ -23,7 +23,8 @@
 | 上下文压缩 | ✅ `context_compacted` | ✅ `SummaryCompactor`（估算触发、摘要、保留最近几轮）；⬜ 手动“立即压缩”、按厂商返回的 input_tokens 校准、服务端压缩 | ✅ 提示 + 可展开摘要 | 见下文“上下文压缩” |
 | MCP 接入 | — | ✅ stdio / Streamable HTTP 客户端、`mcp.Manager` | ✅ 设置 → MCP | resources / prompts、服务器推送（工具列表变化通知） |
 | 插件：状态栏脚本 | — | ✅ `plugin.CommandStatusLine` | ✅ 状态栏"脚本输出"项 | — |
-| 插件：技能 / 斜杠命令 / 钩子 | — | ⬜ `internal/plugin` 接口 | ⬜ | 加载器 + 各接入点 |
+| 插件：技能 / 斜杠命令 / MCP 工具 | — | ✅ `plugin.Host` | ✅ 设置 → 插件 | 飞书插件、钩子、Git 地址安装 |
+| 插件：钩子 | — | ⬜ | ⬜ | 见 design/plugin-system.md 第 4 阶段 |
 
 ✅ 已有　⬜ 只有接口 / 未做
 
@@ -112,18 +113,12 @@
 还没做：resources、prompts、sampling；服务器推送流（GET）和 `notifications/tools/list_changed`（目前工具列表变化需要点"重新连接"）；
 OAuth 认证（目前只能在请求头里填令牌）；把服务器的 `instructions` 拼进系统提示词。
 
-### 插件系统
+### 插件系统 ✅（第 1、2 阶段）
 
-接口：[`internal/plugin/plugin.go`](../internal/plugin/plugin.go)。
+已实现：[`internal/plugin`](../internal/plugin/doc.go) 的声明式插件（`plugin.json`）：技能、斜杠命令、按来源管理的 MCP 工具、配置表单（密钥进钥匙串）、状态检查、动作、依赖检查；目录 / zip 安装，安装前确认，启用 / 停用 / 卸载。
+详见 [design/plugin-system.md](design/plugin-system.md)。
 
-| 扩展 | 接入点 |
-| --- | --- |
-| Skill | 系统提示词里列出技能名和简介；提供 `read_skill` 工具按需加载正文 |
-| SlashCommand | 前端/CLI 解析 `/xxx`，调用新的绑定方法 `ExpandCommand(name, args)`，结果作为用户消息发送 |
-| Hook | `AgentConfig` 增加 `Hooks`；`runTool` 在权限裁决前调用 `PreToolUse`，执行后调用 `PostToolUse`；`Engine.Send` 开头调用 `UserPromptSubmit` |
-| StatusLine | ✅ 已实现为"运行一条命令"（`plugin.CommandStatusLine`），由前端在状态变化时调用 `RunStatusLine`，没有新增事件 |
-
-插件加载：先支持"目录 + plugin.toml + 外部可执行文件（JSON over stdio）"，这样插件可以用任何语言编写，也避免 Go plugin 的平台限制。
+还没做：第 3 阶段飞书插件（需要真实 lark-cli 验证；敏感工具标记要绕过会话级“总是允许”）、第 4 阶段钩子（PreToolUse / PostToolUse）、子 agent、Git 地址安装、插件签名与索引。
 
 ## 其他改进方向
 

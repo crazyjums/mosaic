@@ -5,12 +5,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/secret"
 	"github.com/crazyjums/myllmapp/internal/settings"
+	"github.com/crazyjums/myllmapp/internal/skill"
 )
 
 // 用内置默认配置组装一次，确保"开箱即用"：fake 可用、缺密钥的厂商显示为不可用而不是导致启动失败。
@@ -176,5 +179,62 @@ func TestBuildWithoutAnyProvider(t *testing.T) {
 	}
 	if st := b.Engine.Status(); st.Provider != "local" || st.Model != "m1" {
 		t.Fatalf("配置第一个厂商后应自动切换过去: %+v", st)
+	}
+}
+
+// 插件接进了整个系统：装一个带技能和命令的插件，技能出现在系统提示词的技能清单里，read_skill 读得到正文，
+// 命令能展开；停用后全部消失。（插件在数据目录下，和用户的技能目录互不干扰。）
+func TestPluginsWired(t *testing.T) {
+	cfg := config.Default()
+	cfg.EnableDemo()
+	cfg.DataDir = t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	b, err := Build(cfg, Options{Workspace: t.TempDir(), NoStore: true, Secrets: secret.NewMemory()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if b.Plugins == nil {
+		t.Fatal("Built.Plugins 应存在")
+	}
+	if _, err := os.Stat(filepath.Join(cfg.DataDir, "plugins")); err != nil {
+		t.Fatal("插件目录应在数据目录下创建")
+	}
+
+	src := t.TempDir()
+	write := func(rel, content string) {
+		p := filepath.Join(src, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("plugin.json", `{"id":"demo","name":"演示","version":"0.1.0","skills":[{"path":"skills/hello"}],"commands":[{"name":"hi","path":"commands/hi.md"}]}`)
+	write("skills/hello/SKILL.md", "---\nname: hello-skill\ndescription: 打招呼\n---\n向用户问好")
+	write("commands/hi.md", "请问好：{{args}}")
+
+	p, err := b.Plugins.Preview(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Plugins.Install(p.Token, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := skill.Prompt(b.Workspace, home, b.Plugins.SkillFolders()...); !strings.Contains(got, "hello-skill: 打招呼") {
+		t.Fatalf("技能清单应包含插件的技能: %q", got)
+	}
+	if text, ok, err := b.Plugins.ExpandCommand("hi", "世界"); err != nil || !ok || text != "请问好：世界" {
+		t.Fatalf("命令展开: %q %v %v", text, ok, err)
+	}
+	if _, err := b.Plugins.SetEnabled("demo", false); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Plugins.SkillFolders()) != 0 || len(b.Plugins.Commands()) != 0 {
+		t.Fatal("停用后技能和命令应消失")
 	}
 }

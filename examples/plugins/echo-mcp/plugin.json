@@ -1,0 +1,23 @@
+{
+  "id": "echo-mcp",
+  "name": "回声工具示例",
+  "version": "0.1.0",
+  "description": "一个最小的 MCP 工具插件：提供 echo 和 shout 两个工具，演示设置表单、状态检查和操作按钮。需要本机有 python3。",
+  "min_app_version": "1.3.2",
+  "protocol": 1,
+  "mcp": [
+    {
+      "command": "python3",
+      "args": ["${PLUGIN_DIR}/server/echo_server.py", "--prefix", "${config.prefix}"],
+      "env": { "ECHO_LOUD": "${config.loud}" },
+      "risk": "read"
+    }
+  ],
+  "config": [
+    { "key": "prefix", "label": "回声前缀", "type": "string", "default": "echo:", "help": "每条回声前面加的文字" },
+    { "key": "loud", "label": "大声模式", "type": "bool", "default": "false" }
+  ],
+  "status": { "command": "python3 ${PLUGIN_DIR}/server/echo_server.py --status", "ok_path": "ok" },
+  "actions": [{ "id": "selftest", "label": "运行自检", "command": "python3 ${PLUGIN_DIR}/server/echo_server.py --selftest" }],
+  "requires": { "commands": ["python3"] }
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/permission"
+	"github.com/crazyjums/myllmapp/internal/plugin"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	_ "github.com/crazyjums/myllmapp/internal/provider/all" // 注册所有内置厂商适配器
 	"github.com/crazyjums/myllmapp/internal/secret"
@@ -19,6 +20,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/store"
 	"github.com/crazyjums/myllmapp/internal/tool"
 	"github.com/crazyjums/myllmapp/internal/tool/builtin"
+	"github.com/crazyjums/myllmapp/internal/update"
 	"github.com/crazyjums/myllmapp/internal/usage"
 )
 
@@ -40,7 +42,9 @@ type Options struct {
 type Built struct {
 	Engine *core.Engine
 	// Settings 管理界面上配置的厂商；桌面端的设置页和 CLI 的 /model 都通过它修改并持久化。
-	Settings  *settings.Manager
+	Settings *settings.Manager
+	// Plugins 管理已安装的插件（技能、斜杠命令、MCP 工具、配置）；桌面端的插件页和 CLI 的命令展开都通过它。
+	Plugins   *plugin.Host
 	Config    *config.Config
 	Workspace string
 	DataDir   string
@@ -120,7 +124,15 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 
 	// 步骤 3：工具与厂商。单个厂商配置档失败（如缺密钥）不会让启动失败，界面上会显示原因。
 	tools := tool.NewRegistry()
-	builtin.Register(tools, builtin.Options{ShellTimeout: time.Duration(eff.ShellTimeoutSeconds) * time.Second})
+	// 插件提供的技能文件夹：Host 要等 MCP 管理器建好才能创建，所以这里先用一个回调占位，每次使用时才去取。
+	var plugins *plugin.Host
+	pluginSkills := func() []skill.Folder {
+		if plugins == nil {
+			return nil
+		}
+		return plugins.SkillFolders()
+	}
+	builtin.Register(tools, builtin.Options{ShellTimeout: time.Duration(eff.ShellTimeoutSeconds) * time.Second, SkillFolders: pluginSkills})
 	shell, _ := tools.Get("shell")
 	catalog := settingsMgr.Catalog()
 	profile, model := pickDefault(catalog, cfg, settingsMgr)
@@ -159,7 +171,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		DisabledTools:   settingsMgr.DisabledTools(),
 		SkillsPrompt: func(ws string) string {
 			home, _ := os.UserHomeDir()
-			return skill.Prompt(ws, home)
+			return skill.Prompt(ws, home, pluginSkills()...)
 		},
 		TitleMode: eff.TitleMode,
 	})
@@ -172,6 +184,21 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	mcpMgr := mcp.NewManager(tools)
 	mcpMgr.Apply(settingsMgr.MCPServers())
 
+	// 步骤 7：插件。目录和状态都在数据目录下；单个插件加载失败只影响它自己，所以这里的错误只来自目录不可写。
+	plugins, err = plugin.NewHost(plugin.HostOptions{
+		Dir:        filepath.Join(dataDir, "plugins"),
+		DataDir:    filepath.Join(dataDir, "plugin-data"),
+		StateFile:  filepath.Join(dataDir, "plugins.json"),
+		Secrets:    secrets,
+		MCP:        mcpMgr,
+		AppVersion: update.Version,
+	})
+	if err != nil {
+		mcpMgr.Close()
+		closeFn()
+		return nil, err
+	}
+
 	settingsMgr.Attach(engine)
 	shellTool, _ := shell.(*builtin.Shell)
 	settingsMgr.SetRuntimeBase(settings.RuntimeBase{Defaults: defaults, WorkspaceOverride: override, Shell: shellTool, MCP: mcpMgr})
@@ -179,7 +206,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		mcpMgr.Close()
 		return closeFn()
 	}
-	return &Built{Engine: engine, Settings: settingsMgr, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeAll}, nil
+	return &Built{Engine: engine, Settings: settingsMgr, Plugins: plugins, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeAll}, nil
 }
 
 // DesktopWorkspace 返回桌面端应使用的工作区；返回空字符串表示沿用配置文件中的设置。

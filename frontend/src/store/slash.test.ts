@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SkillInfo } from "../bridge";
-import { filterSkills, skillText, slashQuery } from "./slash";
+import { filterSkills, filterSlash, parseSlash, skillText, slashQuery, toSlashItems } from "./slash";
 
 const sk = (name: string, description = ""): SkillInfo => ({ name, description, source: "user", origin: ".claude/skills", dir: "/x/" + name });
 
@@ -28,4 +28,21 @@ describe("filterSkills", () => {
   });
   it("没有匹配返回空", () => expect(filterSkills(list, "zzz")).toEqual([]));
   it("选中后填入 /名字 加空格", () => expect(skillText(list[0])).toBe("/code-review "));
+});
+
+describe("插件命令混进菜单", () => {
+  const skills = [sk("review", "审查"), { ...sk("feishu-docs", "读文档"), source: "plugin:feishu" as const, origin: "飞书" }];
+  const cmds = [{ name: "feishu-summary", description: "总结文档", plugin_id: "feishu", plugin_name: "飞书" }];
+  it("命令排在技能前面，标签区分来源", () => {
+    const items = toSlashItems(skills, cmds);
+    expect(items.map((i) => `${i.kind}:${i.name}:${i.tag}`)).toEqual(["command:feishu-summary:飞书", "skill:review:个人", "skill:feishu-docs:飞书"]);
+    expect(filterSlash(items, "feishu").map((i) => i.name)).toEqual(["feishu-docs", "feishu-summary"]);
+  });
+  it("parseSlash 只认 /名字 参数", () => {
+    expect(parseSlash("/hello 世界\n第二行")).toEqual({ name: "hello", args: "世界\n第二行" });
+    expect(parseSlash("/hello")).toEqual({ name: "hello", args: "" });
+    expect(parseSlash("/etc/hosts")).toBeNull();
+    expect(parseSlash("hello /x")).toBeNull();
+    expect(parseSlash("")).toBeNull();
+  });
 });

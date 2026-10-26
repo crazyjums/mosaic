@@ -41,7 +41,7 @@
 - 📨 **发送队列**：agent 工作时输入框不会锁住——新消息按会话排队、按顺序自动发出，可以查看、删除、置前；停止只取消当前会话的这一轮，队列保留
 - 📎 **图片与文本附件**：粘贴、拖拽或选择图片、Markdown / 纯文本文件，随消息一起发给模型（其他类型后续支持）
 - 🗜 **上下文压缩**：估算占用超过窗口的 80% 时，把较早的对话摘要成一条消息，最近几轮原样保留；绝不拆开工具调用和它的结果（需要在厂商配置里填模型的上下文窗口）
-- 🧩 **技能（Skills）与 MCP**：用 Markdown 写可复用的做法，输入 `/` 调用；界面里添加 stdio / HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
+- 🧩 **插件、技能（Skills）与 MCP**：可安装插件（技能 / 命令 / MCP 工具，安装前确认）；用 Markdown 写可复用的做法，输入 `/` 调用；界面里添加 stdio / HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
 
 **模型与账号**
 
@@ -172,7 +172,9 @@ flowchart LR
 
 已完成：多厂商与 ChatGPT 账号、权限与规则、MCP、技能、用量与故障转移、自动更新、皮肤、发送队列、多会话同时运行、图片 / 文本附件、上下文压缩、Git 窗口。
 
-计划中：子 agent 与后台任务、更多附件类型（PDF 等）、插件的斜杠命令与钩子。完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
+已完成（续）：插件系统（技能 / 斜杠命令 / MCP 工具，设置 → 插件）。
+
+计划中：子 agent 与后台任务、更多附件类型（PDF 等）、飞书插件与钩子。完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 参与贡献
 
@@ -228,7 +230,7 @@ go vet ./... && go test ./...
 │   ├── mcp/                    MCP 客户端（stdio / Streamable HTTP）与连接管理器
 │   ├── skill/                  技能（Skills）：发现、解析、注入提示词
 │   ├── update/                 自动更新：检查、下载、验签、替换
-│   ├── plugin/                 插件接口；已实现状态栏脚本，斜杠命令 / 钩子为预留
+│   ├── plugin/                 插件宿主（技能 / 斜杠命令 / MCP 工具）与状态栏脚本；钩子为预留
 │   └── archtest/               仓库级守卫测试：doc.go、密钥扫描、示例配置
 ├── frontend/
 │   └── src/
@@ -319,6 +321,7 @@ go vet ./... && go test ./...
 | [docs/design/persistence.md](docs/design/persistence.md) | SQLite 表结构、迁移、写入策略 |
 | [docs/design/frontend-state.md](docs/design/frontend-state.md) | 前端分层、reducer、工具状态机、演示模式 |
 | [docs/design/settings.md](docs/design/settings.md) | 界面设置：两层配置的合并规则、热更新、密钥与钥匙串、规则 / MCP / 状态栏脚本的持久化 |
+| [docs/design/plugin-system.md](docs/design/plugin-system.md) | 插件系统：plugin.json 格式、安装确认、MCP 来源管理、密钥与安全边界 |
 | [docs/extending.md](docs/extending.md) | 如何新增厂商 / 工具 / 子 agent / 界面 |
 | [docs/design/mosaic-ui.md](docs/design/mosaic-ui.md) | Mosaic 品牌与界面设计：Logo、皮肤、状态动效 |
 | [docs/roadmap.md](docs/roadmap.md) | 后续阶段规划与每个预留能力的接口状态 |
