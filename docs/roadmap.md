@@ -95,7 +95,7 @@
 实现：[`internal/core/compact.go`](../internal/core/compact.go) 的 `SummaryCompactor`，已在 `Agent.prepareContext` 中每步调用；`Engine` 每轮用本轮的厂商和模型创建它。
 
 行为（都有测试，见 `compact_test.go`）：
-1. **触发**：按字符估算（系统提示词 + 工具定义 + 历史）超过模型上下文窗口的 80%。窗口取自厂商配置里的 `models_meta.context_window`；**没配置就不压缩**（不猜窗口大小）；
+1. **触发**：按字符估算（系统提示词 + 工具定义 + 历史）超过模型上下文窗口的 80%。窗口取自厂商配置里的 `models_meta.context_window`；**没配置就假定 20 万 token**（`core.DefaultContextWindow`）——用 ChatGPT 账号登录的模型没地方填窗口，以前“没配置就不压缩”，实测一个长会话每次请求都带 24 万 token；
 2. **保留**：优先原样保留最近 2 轮；这些超过窗口的 40% 时（一轮里读了很多大文件）退到轮内更靠后的安全位置；
 3. **切点**：只切在“用户发言”或“紧跟 user 消息的 assistant 消息”之前，所以 `tool_use` 和它的 `tool_result` 不会被拆开，保留部分也不会以孤立的 `tool_result` 开头；
 4. **摘要**：把较早的消息转写成文本，用同一个厂商和模型生成摘要（已有的旧摘要会被合并而不是堆叠），替换成一条以固定标记开头的 user 消息（`provider.SummaryHeader`，不算“用户发言”）；
