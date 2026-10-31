@@ -93,6 +93,14 @@ func TestFeishuPlugin(t *testing.T) {
 	if !read.Spec().Sensitive || !help.Spec().Sensitive {
 		t.Fatal("两个工具都应是私密工具（每次都询问，不能被总是允许绕过）")
 	}
+	// 工具定义里不放英文双引号和 --：带这两个工具时，ChatGPT 套餐接口整个请求回 400 Bad Request（见 feishu.py 里的说明）。
+	for _, tl := range []tool.Tool{read, help} {
+		sp := tl.Spec()
+		if strings.ContainsAny(sp.Description, `"`) || strings.Contains(sp.Description, "--") ||
+			strings.Contains(string(sp.InputSchema), `\"`) || strings.Contains(string(sp.InputSchema), "--") {
+			t.Errorf("%s 的定义里有 \" 或 --，可能被 ChatGPT 接口拒绝: %s / %s", sp.Name, sp.Description, sp.InputSchema)
+		}
+	}
 	call := func(tl tool.Tool, in string) tool.Result {
 		return tl.Execute(context.Background(), tool.Call{Input: []byte(in)})
 	}
