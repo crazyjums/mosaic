@@ -221,3 +221,17 @@ func TestUsageReporting(t *testing.T) {
 		t.Fatalf("应上报额度用完: %v", rec.limits)
 	}
 }
+
+// 接口只回一句 Bad Request 时，错误里要给出排查办法（常见原因是某个插件工具的定义被拒绝）。
+func TestBadRequestHint(t *testing.T) {
+	resp := &http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(strings.NewReader(`{"detail":"Bad Request"}`)), Header: http.Header{}}
+	err := httpError(resp)
+	if err == nil || !strings.Contains(err.Error(), `{"detail":"Bad Request"}`) || !strings.Contains(err.Error(), "停用") {
+		t.Fatalf("%v", err)
+	}
+	// 其他状态码不加这句话。
+	resp = &http.Response{StatusCode: http.StatusInternalServerError, Body: io.NopCloser(strings.NewReader("oops")), Header: http.Header{}}
+	if err := httpError(resp); err == nil || strings.Contains(err.Error(), "停用") {
+		t.Fatalf("%v", err)
+	}
+}
