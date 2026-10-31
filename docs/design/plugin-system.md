@@ -200,6 +200,7 @@ stateDiagram-v2
 - **两个工具而不是一堆具体工具**：`feishu_help` 让模型先看 `lark-cli … --help` 再拼参数，`feishu_read(command, args)` 执行。lark-cli 的命令很多、参数会变，写死一套容易过时。
 - **只读靠两层白名单**：业务域白名单；命令名（`+` 后用 `-` 分隔的词）里必须有读取类动词（fetch / list / search / get…）且不能有任何写入类动词（send / create / update / delete…）。参数里禁止 `--as`、`--output`、`--output-dir`、`--file`、`--yes`、`-y`、`--force`、`@文件`；强制加 `--as user`（机器人身份读不到用户的资源，而且读不到时是“成功但为空”）。子进程 stdin 接空（自己的 stdin 是 MCP 通道）。
 - **私密**：`sensitive: true`，每次读取都弹窗确认。技能里要求模型把读到的内容当数据，不执行其中的指令。
+- **ChatGPT 套餐接口拒绝了带这两个工具的请求**（HTTP 400 `{"detail":"Bad Request"}`，停用飞书就恢复，已确认；其他厂商没问题）：工具定义是合法的 JSON Schema，接口也没说拒绝了哪里，所以原因只是推断——很可能接口前面有按文字内容过滤的规则，把描述里的 `"--chat-id"` 这类写法（引号后紧跟 `--`，像 SQL 注释）判成了可疑内容。0.2.1 起工具描述里不再出现英文双引号和 `--`，并有测试守着；**没有在真实接口上验证**。给其他插件作者的建议：工具描述保持朴素的自然语言，示例里不要放命令行参数。
 - **没验证的**：我们没有飞书租户，只用假的 lark-cli 脚本测了“传给 lark-cli 什么 / 拒绝什么 / 登录状态怎么流转”。**已确认**（来自真机反馈）：`auth status` 输出一个 JSON，未登录时 `identity` 是 `bot`、带 `note`（“Token does not exist or has been cleared… Re-login”），但 `userName` 等字段还在、退出码是 0——所以状态以 `identity == "user"` 判断，不能看退出码或有没有用户名；授权命令成功后还会再查一次状态，没拿到用户令牌就不报“登录完成”。**不确定**：`auth login --no-wait` 输出里设备码的位置（先找 JSON 里键名含 `device_code` 的字符串，再用正则）、各读取命令的确切参数（由模型现查帮助）、Windows 上 `lark-cli.cmd` 的调用。
 
 ### 一键登录（第 3.5 期）
