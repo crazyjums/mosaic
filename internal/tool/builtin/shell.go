@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -53,7 +52,7 @@ type shellInput struct {
 func (t *Shell) Spec() tool.Spec {
 	return tool.Spec{
 		Name:        "shell",
-		Description: fmt.Sprintf("执行一条 shell 命令（%s），返回输出和退出码。默认在工作区根目录执行、超时 %s；超时会返回已产生的输出。不要运行需要交互或长期不退出的命令。读文件、搜索、改文件请优先用专门的工具。", shellName(), t.Timeout()),
+		Description: fmt.Sprintf("执行一条 shell 命令（%s），返回输出和退出码。默认在工作区根目录执行、超时 %s；超时会返回已产生的输出。每次调用都是新进程，cd 不会保留到下一次（用 cwd 参数，或在同一条命令里用 & 连接）。不要运行需要交互或长期不退出的命令。读文件、搜索、改文件请优先用专门的工具。%s", shellName(), t.Timeout(), shellHint()),
 		InputSchema: json.RawMessage(fmt.Sprintf(`{
   "type": "object",
   "properties": {
@@ -104,11 +103,7 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	name, flag := shellName(), "-c"
-	if runtime.GOOS == "windows" {
-		flag = "/C"
-	}
-	cmd := exec.CommandContext(ctx, name, flag, in.Command)
+	cmd := newShellCmd(ctx, in.Command)
 	cmd.Dir = dir
 	prepareCmd(cmd)
 	// 进程被杀后最多再等 1 秒收尾输出，防止子进程继承的管道让 Wait 永远不返回。
@@ -118,7 +113,7 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 	cmd.Stderr = &out
 
 	err := cmd.Run()
-	output := truncate(out.String(), t.maxBytes)
+	output := truncate(decodeOutput(out.Bytes()), t.maxBytes)
 
 	var exitErr *exec.ExitError
 	switch {
@@ -136,11 +131,4 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 		output = "(no output)"
 	}
 	return tool.Result{Output: output + "\n[exit code 0]"}
-}
-
-func shellName() string {
-	if runtime.GOOS == "windows" {
-		return "cmd"
-	}
-	return "sh"
 }

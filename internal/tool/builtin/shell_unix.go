@@ -3,6 +3,7 @@
 package builtin
 
 import (
+	"context"
 	"os/exec"
 	"syscall"
 )
@@ -15,3 +16,16 @@ func prepareCmd(cmd *exec.Cmd) {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 }
+
+// newShellCmd 用 sh -c 运行命令。
+func newShellCmd(ctx context.Context, command string) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", command)
+}
+
+// decodeOutput：类 Unix 系统的命令输出就是 UTF-8。
+func decodeOutput(b []byte) string { return string(b) }
+
+func shellName() string { return "sh" }
+
+// shellHint 是追加在工具描述后面的、这个系统上特有的提醒。
+func shellHint() string { return "" }

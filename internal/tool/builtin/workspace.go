@@ -88,7 +88,7 @@ func resolvePath(workspace, p string) (string, error) {
 		abs = filepath.Join(workspace, p)
 	}
 	if !within(workspace, abs) {
-		return "", fmt.Errorf("path %q is outside the workspace", p)
+		return "", fmt.Errorf("path %q is outside the workspace (file tools can only access the workspace; use shell to read files elsewhere, or ask the user to change the workspace)", p)
 	}
 	// 再按符号链接解析后的真实路径检查一次。工作区本身也要解析（例如 macOS 的 /tmp → /private/tmp）。
 	realWS, err := filepath.EvalSymlinks(workspace)

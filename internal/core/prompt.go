@@ -22,6 +22,7 @@ func DefaultSystemPrompt(workspace string) string {
 Environment:
 - Workspace root: %s (all file paths are relative to it)
 - OS: %s/%s
+- %s
 
 Tools:
 - Explore: list_dir (recursive=true for a tree), find_files (by glob), search_content (regex, like grep), read_file (use offset/limit for large files).
@@ -34,7 +35,19 @@ Guidelines:
 - Use the tools to inspect files instead of guessing their contents; search before editing code you have not seen.
 - Read-only tools run without approval. Writing, editing, moving, deleting files and running shell commands require the user's approval; if a call is denied, adapt instead of retrying the same call.
 - Tool errors explain what went wrong and what to try next; follow the hint rather than repeating the call.
-- Keep answers concise. Reply in the same language the user writes in.`, workspace, runtime.GOOS, runtime.GOARCH, builtinTrash)
+- Keep answers concise. Reply in the same language the user writes in.`, workspace, runtime.GOOS, runtime.GOARCH, shellNote(), builtinTrash)
+}
+
+// shellNote 告诉模型 shell 工具实际用的是什么 shell。
+//
+// 为什么要写在提示词里：模型不知道自己在 Windows 的 cmd.exe 里时，会在 bash、PowerShell、cmd 三种语法之间乱试，
+// 大量步数耗在失败的命令上（真实会话里一次任务 40% 的调用失败）。每次调用是新进程这一点也要说清楚，
+// 否则它会以为 cd 能保留，反复怀疑“是不是目录不对”。
+func shellNote() string {
+	if runtime.GOOS == "windows" {
+		return "Shell: the shell tool runs commands with Windows cmd.exe (not bash, not PowerShell): use dir/type/findstr/where and chain with & or &&; for PowerShell write powershell -NoProfile -Command ... explicitly. Every call is a fresh process, so cd does not persist: use the cwd parameter instead."
+	}
+	return "Shell: the shell tool runs commands with sh -c. Every call is a fresh process, so cd does not persist: use the cwd parameter instead."
 }
 
 // builtinTrash 与 builtin.TrashDir 相同。内核不依赖 builtin 包（见 builtin/doc.go），所以这里重复一份。
