@@ -308,6 +308,45 @@ func Files(s Info) []string {
 	return out
 }
 
+// resolveResource 返回技能文件夹里 rel 的真实路径，保证它没有逃出技能文件夹。
+//
+// 先用符号链接解析后的路径检查；EvalSymlinks 在 Windows 上对 junction、同步盘里的文件夹之类会失败
+// （报 “The system cannot find the path specified”，文件其实就在那里——Files 能列出来，read_skill 却读不了），
+// 这时改成逐级检查技能文件夹之下的每一级都不是符号链接 / 重解析点：效果一样，不依赖 EvalSymlinks 能不能解析技能文件夹本身。
+func resolveResource(dir, rel string) (string, error) {
+	base := filepath.Clean(dir)
+	lex := filepath.Join(base, filepath.FromSlash(rel))
+	r, err := filepath.Rel(base, lex)
+	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+		return "", ErrOutside
+	}
+	if realBase, err := filepath.EvalSymlinks(base); err == nil {
+		if real, err := filepath.EvalSymlinks(lex); err == nil {
+			if rr, err := filepath.Rel(realBase, real); err != nil || rr == ".." || strings.HasPrefix(rr, ".."+string(filepath.Separator)) {
+				return "", ErrOutside
+			}
+			return real, nil
+		}
+	}
+	return noLinksBelow(base, r, lex)
+}
+
+// noLinksBelow 检查 base 之下沿着相对路径 r 的每一级都存在、且不是符号链接 / 重解析点，通过则返回 lex。
+func noLinksBelow(base, r, lex string) (string, error) {
+	cur := base
+	for _, part := range strings.Split(r, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if err != nil {
+			return "", err
+		}
+		if fi.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return "", ErrOutside
+		}
+	}
+	return lex, nil
+}
+
 // ErrOutside 表示请求的资源文件不在技能文件夹内。
 var ErrOutside = errors.New("skill: path is outside the skill folder")
 
@@ -317,16 +356,9 @@ func ReadResource(s Info, rel string) (string, error) {
 	if rel == "" || filepath.IsAbs(rel) {
 		return "", ErrOutside
 	}
-	base, err := filepath.EvalSymlinks(s.Dir)
+	p, err := resolveResource(s.Dir, rel)
 	if err != nil {
 		return "", err
-	}
-	p, err := filepath.EvalSymlinks(filepath.Join(base, filepath.FromSlash(rel)))
-	if err != nil {
-		return "", err
-	}
-	if r, err := filepath.Rel(base, p); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
-		return "", ErrOutside
 	}
 	fi, err := os.Stat(p)
 	if err != nil {
