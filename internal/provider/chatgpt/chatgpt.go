@@ -278,7 +278,13 @@ func httpError(resp *http.Response) error {
 	if resp.StatusCode == http.StatusUnauthorized {
 		return provider.NewHTTPError(resp, fmt.Errorf("HTTP 401: %w", explain(apiError{Code: "invalid_api_key"})))
 	}
-	return provider.NewHTTPError(resp, fmt.Errorf("chatgpt: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b))))
+	msg := fmt.Sprintf("chatgpt: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	if resp.StatusCode == http.StatusBadRequest {
+		// 接口只回一句 Bad Request，不说是哪里不对。带着插件 / MCP 工具时最常见的原因是某个工具的定义被拒绝了，
+		// 给用户一个马上能做的排查办法。
+		msg += "（请求被 ChatGPT 拒绝，但没有说明原因。如果刚装了插件或 MCP，可以先在 设置 → 插件 里停用它们再试，确认是不是某个工具的定义被拒绝了）"
+	}
+	return provider.NewHTTPError(resp, errors.New(msg))
 }
 
 // ListModels 获取账号可用的模型，实现 provider.ModelLister。
