@@ -429,13 +429,25 @@ func (e *Engine) Send(ctx context.Context, text string) (TurnResult, error) {
 }
 
 // compactorFor 返回本轮使用的压缩器：配置里显式指定了就用它（测试用），
-// 否则用本轮的厂商和模型生成摘要，窗口取自该模型的 models_meta.context_window。
+// 否则用本轮的厂商和模型生成摘要，窗口取自该模型的 models_meta.context_window；
+// 没配置时用 DefaultContextWindow（见下）。
 func (e *Engine) compactorFor(p provider.Provider, cfg provider.ProfileConfig, model string) Compactor {
 	if e.cfg.Compactor != nil {
 		return e.cfg.Compactor
 	}
-	return &SummaryCompactor{Provider: p, Model: model, Window: provider.ParseModelMeta(cfg.Options)[model].ContextWindow}
+	window := provider.ParseModelMeta(cfg.Options)[model].ContextWindow
+	if window <= 0 {
+		window = DefaultContextWindow
+	}
+	return &SummaryCompactor{Provider: p, Model: model, Window: window}
 }
+
+// DefaultContextWindow 是没有配置模型上下文窗口时假定的大小（token）。
+//
+// 为什么不是“不知道就不压缩”：用 ChatGPT 账号登录的模型没有地方填 context_window，一个长会话就一直不压缩，
+// 实测每次请求都带着 24 万 token 的历史（一个会话累计 3190 万输入 token），又慢又贵，模型还会被冗长的历史带偏。
+// 猜得稍大一点无妨：窗口比实际大时，压缩会晚一些触发，但总比永远不压缩好；想要精确的人在 models_meta 里填真实值。
+const DefaultContextWindow = 200_000
 
 // SendInput 和 Send 一样，但发言可以带附件（图片、文本文件），见 attachment.go。发给当前会话。
 func (e *Engine) SendInput(ctx context.Context, in UserInput) (TurnResult, error) {

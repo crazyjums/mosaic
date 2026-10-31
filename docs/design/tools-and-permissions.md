@@ -35,7 +35,7 @@ type Tool interface {
 | `write_file` | write | ❌ | `mode=overwrite`（默认）/ `append`，自动创建父目录 |
 | `mkdir` / `move_file` | write | ❌ | 移动时目标已存在则拒绝 |
 | `delete_file` | write | ❌ | 移到 `.myllmapp/trash/<时间>/原路径`，可找回 |
-| `shell` | exec | ❌ | `sh -c`（Windows 为 `cmd /C`）；`cwd`（相对工作区）、`timeout_seconds`（默认 60，最大 600），超时返回已有输出；取消时杀进程组 |
+| `shell` | exec | ❌ | `sh -c`（Windows 为 `cmd /S /C`，命令行用 `SysProcAttr.CmdLine` 原样传入，不经 Go 的参数转义；输出按行判断编码，非 UTF-8 的行按系统 OEM 代码页转成 UTF-8；系统提示词和工具描述里说明 shell 种类、每次调用是新进程）；`cwd`（相对工作区）、`timeout_seconds`（默认 60，最大 600），超时返回已有输出；取消时杀进程组 |
 
 "免确认"指默认权限档位；`accept_edits` 档位下 write 风险也免确认，`readonly` 档位下 write/exec 一律拒绝。
 

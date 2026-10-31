@@ -346,3 +346,16 @@ func TestAgentCancelDuringCompaction(t *testing.T) {
 		t.Fatal("取消时历史保持原样（只多了本轮的用户发言）")
 	}
 }
+
+// 没有配置上下文窗口的模型（例如用 ChatGPT 账号登录的）也要能压缩：假定一个默认窗口，而不是永远不压缩。
+func TestCompactorForDefaultsWindow(t *testing.T) {
+	e := &Engine{}
+	c := e.compactorFor(nil, provider.ProfileConfig{}, "gpt-x").(*SummaryCompactor)
+	if c.Window != DefaultContextWindow {
+		t.Fatalf("window = %d", c.Window)
+	}
+	cfg := provider.ProfileConfig{Options: map[string]any{"models_meta": map[string]any{"gpt-x": map[string]any{"context_window": 64000}}}}
+	if c := e.compactorFor(nil, cfg, "gpt-x").(*SummaryCompactor); c.Window != 64000 {
+		t.Fatalf("配置了窗口应以配置为准: %d", c.Window)
+	}
+}

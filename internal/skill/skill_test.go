@@ -164,3 +164,28 @@ func TestDiscoverExtraFolders(t *testing.T) {
 		t.Fatalf("提示词里应列出插件技能: %q", p)
 	}
 }
+
+// EvalSymlinks 解析不了技能文件夹时（Windows 的 junction、同步盘），改成逐级检查；效果要和原来一样：能读真实存在的文件，
+// 拒绝符号链接和越界路径，不存在的给出明确的错误。
+func TestNoLinksBelow(t *testing.T) {
+	base := t.TempDir()
+	write(t, filepath.Join(base, "references/a.md"), "A")
+	write(t, filepath.Join(base, "..", filepath.Base(base)+"-secret.txt"), "机密")
+	lex := filepath.Join(base, "references", "a.md")
+	if got, err := noLinksBelow(base, filepath.Join("references", "a.md"), lex); err != nil || got != lex {
+		t.Fatalf("%q %v", got, err)
+	}
+	if _, err := noLinksBelow(base, filepath.Join("references", "nope.md"), filepath.Join(base, "references", "nope.md")); !os.IsNotExist(err) {
+		t.Fatalf("不存在应给出文件不存在的错误: %v", err)
+	}
+	if err := os.Symlink(base+"-secret.txt", filepath.Join(base, "references", "link.md")); err != nil {
+		t.Skip("不能创建符号链接:", err)
+	}
+	if _, err := noLinksBelow(base, filepath.Join("references", "link.md"), filepath.Join(base, "references", "link.md")); err != ErrOutside {
+		t.Fatalf("符号链接应拒绝: %v", err)
+	}
+	// 路径里的 .. 在 resolveResource 的第一步就被拒绝。
+	if _, err := resolveResource(base, "../x"); err != ErrOutside {
+		t.Fatalf("%v", err)
+	}
+}
