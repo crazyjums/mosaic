@@ -18,7 +18,7 @@ export default function UpdateButton() {
       <button
         className={`${base} ${failed ? "text-warn hover:text-fg" : "text-muted hover:text-fg"}`}
         onClick={openDialog}
-        title={failed ? t("自动检查失败，点击重试：{reason}", { reason: autoError }) : t("检查更新")}
+        title={failed ? t("自动检查更新失败，点击重试：{reason}", { reason: autoError }) : t("检查更新")}
         disabled={checking}
       >
         {failed && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-warn" />}
