@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,13 @@ func TestExampleEchoMCPEndToEnd(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("没有 python3")
 	}
+	// WindowsApps 可能提供无法运行的 python3.exe 商店别名。
+	// 先实际启动解释器，避免把系统依赖问题误判为 MCP 握手超时。
+	probeCtx, stopProbe := context.WithTimeout(context.Background(), 8*time.Second)
+	defer stopProbe()
+	if out, err := exec.CommandContext(probeCtx, "python3", "-c", "import sys; print(sys.version)").CombinedOutput(); err != nil {
+		t.Skipf("python3 不可执行（不是 MCP 缺陷）：%v，输出：%s", err, strings.TrimSpace(string(out)))
+	}
 	reg := tool.NewRegistry()
 	mgr := mcp.NewManager(reg)
 	defer mgr.Close()
@@ -70,7 +78,15 @@ func TestExampleEchoMCPEndToEnd(t *testing.T) {
 	if _, err := h.Install(p.Token, nil); err != nil { // 不勾选：按 exec 运行
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool { _, ok := reg.Get("mcp__echo-mcp__echo"); return ok })
+	waitUntil(t, func() bool {
+		if _, ok := reg.Get("mcp__echo-mcp__echo"); ok { return true }
+		for _, st := range mgr.Statuses() {
+			if st.State == mcp.StateFailed {
+				t.Fatalf("echo-mcp 启动失败：%s", st.Error)
+			}
+		}
+		return false
+	})
 	echo, _ := reg.Get("mcp__echo-mcp__echo")
 	if echo.Spec().Risk != "exec" {
 		t.Fatalf("没确认的 read 声明应按 exec: %v", echo.Spec().Risk)
@@ -114,7 +130,9 @@ func TestExampleEchoMCPEndToEnd(t *testing.T) {
 
 func waitUntil(t *testing.T, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	timeout := 10 * time.Second
+	if runtime.GOOS == "windows" { timeout = 30 * time.Second } // Windows 冷启动 Python / Defender 扫描更慢
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
