@@ -138,7 +138,7 @@ export default function AboutSettings() {
         <div className="inline-flex gap-1 rounded-lg border border-line p-1" role="radiogroup">
           {(
             [
-              ["auto", t("启动时、每小时和重新打开窗口时检查")],
+              ["auto", t("启动时、每 15 分钟和返回窗口时检查")],
               ["off", t("只手动检查")],
             ] as const
           ).map(([v, label]) => (
