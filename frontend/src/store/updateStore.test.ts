@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UpdateInfo } from "../bridge";
-import { updateIndicator } from "./updateStore";
+import { shouldRecheck, updateIndicator, useUpdate } from "./updateStore";
+
+const mocked = vi.hoisted(() => ({ checkUpdate: vi.fn() }));
+vi.mock("../bridge", () => ({ backend: () => mocked }));
 
 const info = (latest: string, available = true): UpdateInfo => ({ current: "1.0.0", latest, available, manual: false });
 const idle = { state: "idle" as const, done: 0, total: 0 };
@@ -25,5 +28,57 @@ describe("更新按钮状态", () => {
   it("安装中显示进度，出错后回到可操作状态", () => {
     expect(updateIndicator({ info: info("1.1.0"), seen: "1.1.0", status: { state: "downloading", done: 1, total: 2 } }, "1.1.0")).toBe("busy");
     expect(updateIndicator({ info: info("1.1.0"), seen: "1.1.0", status: { state: "error", done: 0, total: 0, error: "x" } }, "")).toBe("steady");
+  });
+});
+
+describe("后台更新检查", () => {
+  beforeEach(() => {
+    mocked.checkUpdate.mockReset();
+    useUpdate.setState({
+      info: null,
+      checking: false,
+      error: "",
+      autoError: "",
+      lastAttemptAt: 0,
+      lastCheckedAt: 0,
+    });
+  });
+
+  it("自动检查失败不会弹错误，但保留诊断信息供 UI 展示", async () => {
+    mocked.checkUpdate.mockRejectedValueOnce(new Error("network unreachable"));
+    await useUpdate.getState().check(false);
+    const state = useUpdate.getState();
+    expect(state.checking).toBe(false);
+    expect(state.error).toBe("");
+    expect(state.autoError).toContain("network unreachable");
+    expect(state.lastCheckedAt).toBe(0);
+    expect(state.lastAttemptAt).toBeGreaterThan(0);
+  });
+
+  it("后台检查成功后清除旧错误，并高亮新版本", async () => {
+    mocked.checkUpdate.mockRejectedValueOnce(new Error("offline"));
+    mocked.checkUpdate.mockResolvedValueOnce(info("1.2.0"));
+    await useUpdate.getState().check(false);
+    await useUpdate.getState().check(false);
+    const state = useUpdate.getState();
+    expect(state.autoError).toBe("");
+    expect(state.lastCheckedAt).toBeGreaterThan(0);
+    expect(updateIndicator(state, "")).toBe("blink");
+  });
+
+  it("手动检查失败显示错误，不将其误报为新版本", async () => {
+    mocked.checkUpdate.mockRejectedValueOnce(new Error("connection failed"));
+    await useUpdate.getState().check(true);
+    const state = useUpdate.getState();
+    expect(state.error).toContain("connection failed");
+    expect(state.autoError).toBe("");
+    expect(updateIndicator(state, "")).toBe("none");
+  });
+
+  it("窗口恢复时按时间限流，首次检查与间隔到期允许执行", () => {
+    expect(shouldRecheck(0, 1000, 600000)).toBe(true);
+    expect(shouldRecheck(1000, 1001, 600000)).toBe(false);
+    expect(shouldRecheck(1000, 600999, 600000)).toBe(false);
+    expect(shouldRecheck(1000, 601000, 600000)).toBe(true);
   });
 });
