@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // 聊天里显示工作区中的图片：模型常常用 write_file 生成 SVG 效果图、流程图，再在回答里用
