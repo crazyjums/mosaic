@@ -16,6 +16,12 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: "经 CI 验证后自动发布的版本号，例如 v1.7.4"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -36,9 +42,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # 手动运行时没有 tag 约束，这里补上：格式要对、只能发默认分支、tag 不能已经存在。
+      # 手动运行与 CI 调用时没有 tag 约束，这里补上：格式要对、只能发默认分支、tag 不能已经存在。
       - name: 检查手动运行的参数
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.tag != ''
         run: |
           if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::版本号格式应为 v1.2.3 或 v1.2.3-beta.1，收到：$TAG"; exit 1
