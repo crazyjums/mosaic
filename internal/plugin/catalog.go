@@ -335,7 +335,15 @@ func (h *Host) RefreshCatalog(ctx context.Context) ([]CatalogEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	if h.opts.HTTPClient != nil {
+		configured, clientErr := h.opts.HTTPClient()
+		if clientErr != nil {
+			return nil, fmt.Errorf("插件市场代理配置错误：%w", clientErr)
+		}
+		if configured != nil { client = configured }
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("刷新插件列表失败：%v", err)
 	}
