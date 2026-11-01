@@ -146,7 +146,27 @@ export default function SettingsDialog() {
       <div className="flex min-h-0 flex-1">
         {/* 左：配置档列表 */}
         <aside className="flex w-60 shrink-0 flex-col border-r border-line">
-          <div className="px-4 pb-2 pt-4 text-sm font-semibold">模型厂商</div>
+          <div className="px-4 pb-2 pt-4 text-sm font-semibold">{t("账号连接")}</div>
+          {/* 登录入口始终展示在顶部：已登录 ChatGPT 时也能点回去查看账号状态。 */}
+          <div className="space-y-1.5 px-2 pb-3">
+            <button
+              className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selected === CHATGPT_ENTRY || selected === "chatgpt" ? "border-accent bg-accent-soft" : "border-line hover:bg-panel-2"}`}
+              onClick={() => setSelected(providers.some((p) => p.type === "chatgpt") ? "chatgpt" : CHATGPT_ENTRY)}
+              title={t("通过 ChatGPT 账号登录并使用套餐额度")}
+            >
+              <span className="block font-medium">ChatGPT</span>
+              <span className="mt-0.5 block text-[11px] text-muted">{t("账号登录 · 使用套餐额度")}</span>
+            </button>
+            <button
+              className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selected === CLAUDE_CODE_ENTRY ? "border-accent bg-accent-soft" : "border-line hover:bg-panel-2"}`}
+              onClick={() => setSelected(CLAUDE_CODE_ENTRY)}
+              title={t("连接官方 Claude Code CLI（不直接接入订阅额度）")}
+            >
+              <span className="block font-medium">Claude Code</span>
+              <span className="mt-0.5 block text-[11px] text-muted">{t("官方 CLI 登录 · 状态检查")}</span>
+            </button>
+          </div>
+          <div className="border-t border-line px-4 pb-2 pt-3 text-xs font-semibold text-muted">{t("模型厂商")}</div>
           <nav className="flex-1 overflow-y-auto px-2">
             {visibleProviders.map((p) => (
               <button
@@ -166,20 +186,6 @@ export default function SettingsDialog() {
             ))}
           </nav>
           <div className="space-y-2 border-t border-line p-3">
-            {!providers.some((p) => p.type === "chatgpt") && (
-              <button
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${selected === CHATGPT_ENTRY ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
-                onClick={() => setSelected(CHATGPT_ENTRY)}
-              >
-                {t("用 ChatGPT 账号登录")}
-              </button>
-            )}
-            <button
-              className={`w-full rounded-lg border px-3 py-2 text-sm ${selected === CLAUDE_CODE_ENTRY ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
-              onClick={() => setSelected(CLAUDE_CODE_ENTRY)}
-            >
-              使用 Claude Code 订阅登录
-            </button>
             <button
               className={`w-full rounded-lg border border-dashed px-3 py-2 text-sm ${selected === null ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
               onClick={() => setSelected(null)}
@@ -200,7 +206,7 @@ export default function SettingsDialog() {
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center border-b border-line px-5">
             <span className="text-sm font-medium">
-              {selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : selected === CLAUDE_CODE_ENTRY ? "Claude Code 登录" : selected === NEW_GROUP ? t("添加模型组") : current?.type === "group" ? t("编辑模型组：{name}", { name: current.name }) : current ? `编辑：${current.name}` : "添加厂商"}
+              {selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : selected === CLAUDE_CODE_ENTRY ? t("Claude Code 官方 CLI 登录") : selected === NEW_GROUP ? t("添加模型组") : current?.type === "group" ? t("编辑模型组：{name}", { name: current.name }) : current ? `编辑：${current.name}` : "添加厂商"}
             </span>
           </header>
           {error && <div className="border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">{error}</div>}
