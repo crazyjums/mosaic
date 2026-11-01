@@ -7,12 +7,13 @@ const { isTitleOnly } = await import("./ThinkingCard");
 
 describe("聊天里的图片", () => {
   it("区分本地路径和网址", () => {
-    for (const p of ["效果图.svg", "./a/b.png", "docs/x.svg", "C:\\work\\a.svg", "/home/u/a.png"]) expect(isLocalPath(p), p).toBe(true);
+    for (const p of ["效果图.svg", "./a/b.png", "docs/x.svg", "C:\\work\\a.svg", "/home/u/a.png", "file:///D:/reports/a.svg"]) expect(isLocalPath(p), p).toBe(true);
     for (const p of ["https://a.com/x.svg", "data:image/png;base64,x", "#top", "mailto:a@b", "javascript:alert(1)", "//cdn/x.png", ""]) expect(isLocalPath(p), p).toBe(false);
   });
   it("解码中文路径、去掉 ./ 和查询串", () => {
     expect(normalizeLocalPath("./%E6%95%88%E6%9E%9C%E5%9B%BE.svg?x=1")).toBe("效果图.svg");
     expect(normalizeLocalPath("bad%E6.svg")).toBe("bad%E6.svg");
+    expect(normalizeLocalPath("file:///D:/reports/%E6%8A%A5%E5%91%8A.html")).toBe("D:/reports/报告.html");
     expect(IMAGE_EXT.test("a.JPG") && !IMAGE_EXT.test("a.svg.txt")).toBe(true);
   });
   it("SVG 以 data URL 显示", () => {
