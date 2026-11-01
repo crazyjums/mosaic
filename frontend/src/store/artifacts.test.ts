@@ -55,6 +55,7 @@ describe("absPath", () => {
     expect(absPath("/w", "/tmp/x.html")).toBe("/tmp/x.html");
     expect(absPath("C:\\w", "D:\\x\\y.html")).toBe("D:\\x\\y.html");
     expect(absPath("", "a.html")).toBe("a.html");
+    expect(absPath("C:\\w", "file:///D:/reports/a.html")).toBe("D:/reports/a.html");
   });
 });
 
