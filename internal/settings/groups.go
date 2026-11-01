@@ -217,6 +217,15 @@ func (m *Manager) Proxy() ProxyView {
 	return ProxyView{Set: m.file.Proxy != "", Display: provider.RedactProxy(m.file.Proxy)}
 }
 
+// UpdateProxyURL 只供 Go 后端的更新客户端使用，返回真实代理配置（包括可选密码）。
+// 绝不能作为 Wails 绑定暴露给前端；前端仍只能拿到 Proxy() 脱敏结果。
+// 更新请求与模型请求应复用相同的全局代理，避免桌面端不读取 Shell 环境变量造成检查失败。
+func (m *Manager) UpdateProxyURL() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.file.Proxy
+}
+
 // SetProxy 保存全局默认代理，立即对所有没有单独设置代理的厂商生效。空串表示不设置。
 // 前端拿到的是脱敏后的地址；原样提交脱敏的地址表示"不修改"，以免把密码覆盖成 ***。
 func (m *Manager) SetProxy(raw string) error {
