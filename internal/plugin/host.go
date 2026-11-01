@@ -975,6 +975,11 @@ func (h *Host) prepareRun(id, command string) (argv []string, dir string, env []
 	if l.err != "" {
 		return nil, "", nil, nil, fmt.Errorf("这个插件现在不能运行：%s", l.err)
 	}
+	// status/action/login 都能启动本地程序。停用必须阻断所有运行入口，
+	// 而不是仅移除 MCP 和斜杠命令。
+	if st := h.state.Plugins[id]; st == nil || !st.Enabled {
+		return nil, "", nil, nil, fmt.Errorf("插件 %q 已停用，不能执行插件命令", id)
+	}
 	vars, err := h.varsLocked(id)
 	if err != nil {
 		return nil, "", nil, nil, err
