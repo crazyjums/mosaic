@@ -92,7 +92,7 @@ func (t *SearchContent) Execute(ctx context.Context, call tool.Call) tool.Result
 	if limit <= 0 {
 		limit = defaultSearchResults
 	}
-	root, err := resolvePath(call.Workspace, in.Path)
+	root, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
@@ -253,7 +253,7 @@ func (t *FindFiles) Execute(ctx context.Context, call tool.Call) tool.Result {
 	if limit <= 0 {
 		limit = 200
 	}
-	root, err := resolvePath(call.Workspace, in.Path)
+	root, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
