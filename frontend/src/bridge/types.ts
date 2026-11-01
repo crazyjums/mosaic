@@ -415,6 +415,7 @@ export interface Backend {
   clearSessions(): Promise<number>;
   // ---- 设置：ChatGPT 账号登录 ----
   getClaudeCodeStatus(): Promise<ClaudeCodeStatus>;
+  launchClaudeCodeLogin(): Promise<void>;
   getChatGPT(): Promise<ChatGPTStatus>;
   /** 在系统浏览器中打开授权页面，返回授权地址 */
   loginChatGPT(newAccount: boolean): Promise<string>;
