@@ -1,141 +1,158 @@
 <div align="center">
 
-<img src="docs/images/logo.svg" alt="Mosaic" width="128" height="128">
+<img src="docs/images/logo.svg" alt="Mosaic logo" width="96" height="96">
 
 # Mosaic
 
-**一个桌面端的 AI 编码工作台——连接你自己的大模型，让它在你选定的工作区里读代码、改文件、跑命令。**<br>
-每一步都看得见，危险操作先问你。
+**本地优先的 AI 编码工作台。**
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+在桌面上连接自己的大模型，让 Agent 围绕代码工作区阅读、编辑、执行工具；思考与执行可以展开查看，敏感操作由你决定。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Wails](https://img.shields.io/badge/Wails-v2-red)](https://wails.io)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](frontend/package.json)
-[![Release](https://img.shields.io/github/v/release/crazyjums/mosaic?display_name=tag)](https://github.com/crazyjums/mosaic/releases)
+[![Release](https://img.shields.io/github/v/release/crazyjums/mosaic?display_name=tag)](https://github.com/crazyjums/mosaic/releases/latest)
 
-[下载](https://github.com/crazyjums/mosaic/releases) ·
-[快速开始](#快速开始) ·
-[使用手册](docs/usage.md) ·
-[架构](docs/architecture.md) ·
-[路线图](docs/roadmap.md) ·
-[更新日志](CHANGELOG.md) ·
-[反馈问题](https://github.com/crazyjums/mosaic/issues)
+[下载安装](#下载安装) · [运行界面](#运行界面) · [功能概览](#功能概览) · [快速开始](#快速开始) · [使用手册](docs/usage.md) · [架构设计](docs/architecture.md) · [更新日志](CHANGELOG.md) · [反馈问题](https://github.com/crazyjums/mosaic/issues)
 
 </div>
 
-![对话：思考过程、工具调用卡片、右侧的上下文明细、底部的状态栏](docs/images/chat-done-dark.png)
+![Mosaic 桌面端会话、思考过程、执行记录、上下文和输入框](docs/images/readme-chat.png)
+
+> **截图说明**：图片由当前 React 前端的浏览器演示模式自动截取，使用离线 fake Provider 和示例数据，不涉及真实账号、API Key 或用户文件。界面结构与桌面版共用；浏览器演示本身不代表真实模型、MCP 服务或系统权限已经连接。文档功能基于 **v1.7.9（2026-11-01）** 核对；后续版本以 [最新 Release](https://github.com/crazyjums/mosaic/releases/latest) 和 [更新日志](CHANGELOG.md) 为准。
 
 ## 为什么做 Mosaic
 
-市面上的 AI 编码工具大多把 agent 当成黑盒。Mosaic 反过来：**agent 循环、上下文、工具调用、权限确认全部自己实现**（不依赖任何 agent SDK），
-并且把每一步都摊开给你看；它同时也是一个学习项目——可读性和可理解性优先于功能数量。
+Mosaic 不只是给模型提供一个聊天框，而是尝试把 **Agent 循环、模型适配、工具、上下文、权限和执行结果** 做成可以看见、理解和控制的桌面工作台。
 
-名字来自马赛克：许多小块（厂商、工具、技能、MCP、皮肤）拼成一个整体，每一块都可以替换。
+底层 Agent 内核由项目自行实现，不依赖外部 Agent SDK。Go 内核、Wails 桌面端和 CLI 共享统一的执行模型及事件协议；React 前端负责展示会话、任务过程、产物及状态。
 
-## 功能
+名字来自马赛克：不同模型、技能、MCP 工具和界面模块可以拼在一起，也可以逐步替换。
 
-**对话与 agent**
+## 功能概览
 
-- 🧠 **自研内核**：流式输出、多步工具调用、取消、最大步数保险丝；内核与界面解耦，同一个内核既是 Wails 桌面应用，也是终端 CLI
-- 🧵 **多会话同时运行**：切换或新建会话不会打断正在运行的会话，后台继续跑；会话列表标出“运行中 / 待确认 / 有新结果”
-- 📨 **发送队列**：agent 工作时输入框不会锁住——新消息按会话排队、按顺序自动发出，可以查看、删除、置前；停止只取消当前会话的这一轮，队列保留
-- 📎 **图片与文本附件**：粘贴、拖拽或选择图片、Markdown / 纯文本文件，随消息一起发给模型（其他类型后续支持）
-- 🗜 **上下文压缩**：估算占用超过窗口的 80% 时，把较早的对话摘要成一条消息，最近几轮原样保留；绝不拆开工具调用和它的结果（需要在厂商配置里填模型的上下文窗口）
-- 🧩 **插件、技能（Skills）与 MCP**：可安装插件（技能 / 命令 / MCP 工具，插件市场或 Git 地址安装，安装前确认）；用 Markdown 写可复用的做法，输入 `/` 调用；界面里添加 stdio / HTTP 的 MCP 服务器，工具自动接入、照常走权限确认
-
-**模型与账号**
-
-- 🔌 **多厂商**：OpenAI 兼容协议（OpenAI / DeepSeek / Qwen / Ollama …）+ Anthropic 原生协议（保留思考块与签名）；填 Base URL + API Key 即可，可获取模型列表、一键测试连接
-- 🔑 **用 ChatGPT 账号登录**：官方的 Sign in with ChatGPT，直接用 ChatGPT 套餐（Go / Plus / Pro）的额度调用 GPT 模型，不需要 API Key
-- 🔀 **模型组故障转移**、🌐 **按厂商的网络代理**、📊 **用量统计**（按天展开的 token 与花费预估，含缓存口径，可导出 CSV）
-
-**看得见、管得住**
-
-- 📦 **产物面板**：agent 写出的网页（沙箱预览）、SVG、Mermaid / Graphviz 流程图、Markdown 都能直接预览，文件路径点击用默认浏览器 / 程序打开，悬停显示绝对路径
-- 👀 **可视化**：思考过程（折叠时也能看到真实的“思考摘要”）、工具调用、权限确认、模型生成的 SVG / PNG / Mermaid 图、上下文明细面板
-- 🛡 **权限可控**：四档权限模式 + 按命令 / 路径匹配的规则（如 `go test*` 放行、`rm *` 拒绝）+ 工具开关；每个会话只能读写自己的工作区
-- 🌿 **Git 窗口**：点击状态栏的分支，打开只读的 Git 窗口——分支图、提交历史、提交详情与着色 diff、工作区变更
-- 🖥 **可自定义的状态栏**：上下文占用、预估花费、首字延迟、ChatGPT 额度、git 分支、自定义脚本……
-
-**体验**
-
-- 🎨 **皮肤**：7 套内置配色（深浅两用），可新建 / 编辑 / 导入 / 导出自定义皮肤
-- ⚙️ **设置都在界面上**：修改即时生效；API Key 存系统钥匙串；中英文界面
-- ⬆️ **自动更新**：应用内检查、下载、校验签名、替换并重启（见 [docs/design/auto-update.md](docs/design/auto-update.md)）
-
-## 界面一览
-
-> 截图来自桌面端 / 浏览器演示模式，对话使用内置的 fake 演示厂商；ChatGPT 账号为演示数据。
-
-| | |
+| 能力 | 已实现的功能 |
 | --- | --- |
-| ![发送队列与附件](docs/images/queue-attachments.png) | ![Git 窗口](docs/images/git-window.png) |
-| **发送队列与附件**：agent 工作时继续输入，消息排队等候；附件以卡片和缩略图随消息显示；折叠的过程里露出真实的“思考摘要” | **Git 窗口**：分支图、提交历史、提交详情与 diff、工作区变更；全程只读 |
-| ![产物面板](docs/images/artifacts-panel.png) | |
-| **产物面板**：右侧标签页（上下文 / 产物，可折叠），点文件预览网页、流程图、文档 | |
-| ![权限确认弹窗](docs/images/chat-permission.png) | ![浅色主题](docs/images/chat-done-light.png) |
-| **权限确认**：写文件、执行命令前停下来等你确认；本会话总是允许、拒绝后模型会换个办法继续 | **浅色主题**：思考过程默认在输出结束后折叠 |
-| ![用 ChatGPT 账号登录](docs/images/settings-chatgpt.png) | ![MCP 服务器](docs/images/settings-mcp.png) |
-| **用 ChatGPT 账号登录**：登录后自动出现 chatgpt 厂商，显示本应用用掉的套餐额度 | **MCP**：显示连接状态和服务器提供的工具，进程退出时自动移除工具 |
-| ![权限规则与工具开关](docs/images/settings-permissions.png) | ![状态栏](docs/images/settings-statusline.png) |
-| **权限规则与工具开关**：规则优先于权限档位，MCP 工具也在这里 | **状态栏**：选择显示的项和顺序，支持自定义脚本（ANSI 颜色） |
-| ![皮肤](docs/images/settings-skins.png) | ![关于](docs/images/settings-about.png) |
-| **皮肤**：内置配色 + 自定义皮肤编辑器（实时预览，导入 / 导出 JSON） | **关于**：项目介绍、版本与更新、开源地址 |
+| **Agent 编码对话** | 流式回复、思考摘要与折叠详情、连续工具调用、权限确认、取消与最大步数保护 |
+| **多会话和队列** | 多个会话独立运行；同一会话忙碌时新消息进入队列，可调整顺序或移除 |
+| **模型与账号** | OpenAI 兼容接口、Anthropic 原生接口、ChatGPT 账号登录；模型切换、模型组故障转移、网络代理和用量统计 |
+| **工作区与产物** | 工作区选择、图片/文本附件、文件与图表预览（HTML、SVG、Markdown、Mermaid、Graphviz 等） |
+| **上下文** | 分组用量估算、上下文明细与占用可视化、可配置的自动压缩 |
+| **插件 / Skill / MCP** | 插件市场、文件夹/ZIP/Git 安装、斜杠命令、MCP 连接及工具注册、插件健康诊断与重连 |
+| **Git 与状态栏** | Git 分支、历史及只读 diff 窗口；可配置的状态项、模型额度、脚本输出 |
+| **界面与更新** | 深浅主题、多套内置皮肤、中英文界面、签名校验的更新检查和新版本提示 |
+
+### 模型与登录：两条链路不能混淆
+
+- **API 模型**：在 **设置 → 模型厂商** 中配置 OpenAI 兼容服务或 Anthropic API。自定义服务通常需要 Base URL、API Key 和模型名。
+- **ChatGPT 账号**：支持 Sign in with ChatGPT，通过账号登录使用应用支持的 GPT 模型及相应套餐额度，不需要自行填写 OpenAI API Key。可用模型和使用额度以账号实际提供的结果为准。
+- **Claude Code 订阅登录**：可以在模型厂商设置中检查本机官方 Claude Code CLI 的登录状态，并打开终端完成登录。**它只管理官方 CLI，不会把 Claude Pro/Max 订阅转换为 Mosaic 的 Anthropic API 额度。** 要在 Mosaic 中通过 Anthropic API 调用 Claude，仍需单独配置 API Key。
+- **成本与额度**：API 花费是根据模型价格配置计算的估算值；套餐额度由对应账号接口提供，不等同于 API 账单。
+
+### 插件系统（v1.7.9）
+
+Mosaic 把插件视为 **Skill 工作流程 + 斜杠命令 + MCP 工具** 的可组合扩展：
+
+- 在 **设置 → 插件** 中浏览市场，或从文件夹、ZIP、HTTPS Git 地址安装；安装前预览并确认来源、可执行组件与风险。
+- 支持 Mosaic 自有 \`plugin.json\`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 \`plugin.json\`、\`skills/*/SKILL.md\`、\`mcp.json\`，兼容旧版 \`.codex-plugin/plugin.json\`。**不是**完整 Codex 插件运行环境。
+- 已安装插件分别显示 **已就绪 / 待配置 / 连接中 / 部分可用 / 运行异常 / 已停用**；详情里可以查看真实 MCP 连接状态、已注册工具和缺少的命令，必要时单独重连。
+- 斜杠命令可以复制到会话中使用；纯 Skill 插件不需要 MCP 服务。启用插件不代表已经完成依赖安装、外部登录或工具连接。
+- **当前限制**：不支持自动运行插件的 Hooks / Subagents、自定义插件 UI 和通用 MCP 工具试用器；飞书插件属于早期集成示例，仍需要 \`lark-cli\` / Python 及真实环境验证。
+
+[插件开发指南](docs/plugin-development.md) · [Plugin System V2 设计](docs/design/plugin-system-v2.md)
+
+### 权限与安全
+
+Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权限，配合按命令/路径匹配的规则和工具开关。
+
+- 日常建议使用 **默认** 模式：写文件、运行命令及需要额外授权的工具会按风险等级请求确认。
+- **全部放行** 是显式的高风险模式，可允许访问工作区外的本地文件；请仅在信任当前任务和运行环境时使用。权限规则中明确拒绝的操作仍可被阻止。
+- 插件可能启动你机器上的外部程序。**安装第三方插件不等于它运行在操作系统级沙箱中**；只从可信来源安装并检查执行内容。
+- 模型 API Key 默认可保存在本机 \`settings.json\`（限制文件权限）；可在 **设置 → 常规** 中选择迁移至系统钥匙串。不要把配置文件、令牌或真实会话截图公开上传。
+
+### 自动更新
+
+桌面版会在启动后和运行过程中自动检查新版本，正常情况下约 **每 15 分钟**复查一次；检测失败会提示原因，网络恢复或重新激活窗口后也会适时重试。
+
+- 发现新版本时，窗口右上角的 **检查更新** 按钮会高亮显示版本号；是否安装由用户确认，不会在后台静默替换程序。
+- 更新清单使用 Ed25519 验签，安装包再校验 SHA-256 与大小；更新检查和下载复用应用的全局代理设置。
+- **Windows / Linux**：支持在应用内下载安装并重启，若无写入权限会提示手动操作。
+- **macOS**：目前检测到更新后跳转 Release 下载页，**不支持应用内自动替换 .app**。
+- 本地 \`dev\` 构建不会自动更新为正式版。
+
+## 运行界面
+
+以下由 **当前源码的真实 React 页面** 通过浏览器演示模式截取，使用假数据而非 AI 绘图。为防止界面版本漂移，仓库提供 [截图更新脚本](scripts/capture-readme-screenshots.py)。
+
+| 对话与执行 | 工作区与侧边栏 |
+| --- | --- |
+| ![对话执行界面](docs/images/readme-chat.png) | ![工作区与固定宽度的右侧面板](docs/images/readme-workspace.png) |
+| **对话**：思考过程、工具调用、输入框及右侧上下文；细节默认可折叠。 | **工作区**：会话列表、工作区选择、可收起的右侧上下文/产物面板。 |
+
+| 产物预览 | 插件中心 |
+| --- | --- |
+| ![产物预览面板](docs/images/readme-artifacts.png) | ![插件市场和已安装插件入口](docs/images/readme-plugins.png) |
+| **产物**：HTML、图表和文档入口；“上下文/产物”使用固定的面板宽度，切换时不应挤动聊天区。 | **插件**：市场、安装和配置入口；真实桌面端还可查看 MCP 连接状态与诊断。 |
+
+> 截图为**浏览器演示模式**：插件页面的数据也由 demo backend 提供，不能据此推断真实外部服务已授权。历史版本的界面图保留在 [docs/images/](docs/images/) 供开发对照，不再混用为当前版本展示图。
+
+## 下载安装
+
+前往 [**GitHub Releases · 最新版本**](https://github.com/crazyjums/mosaic/releases/latest) 下载对应平台的文件。当前发布的是**可执行文件/应用压缩包**，并非三个平台都有图形化安装向导。
+
+| 系统 | Release 文件 | 安装或启动方式 |
+| --- | --- | --- |
+| **Windows x64** | \`mosaic-windows-amd64.exe\` | 下载后直接运行；首次启动可能遇到 Windows SmartScreen 提醒（当前未做 Windows 代码签名）。 |
+| **macOS（Intel / Apple Silicon）** | \`mosaic-darwin-universal.zip\` | 解压得到 \`mosaic.app\`，按需拖入“应用程序”；当前没有 Apple 公证，macOS 可能提示安全限制。 |
+| **Linux x64** | \`mosaic-linux-amd64\` | 下载后执行 \`chmod +x mosaic-linux-amd64 && ./mosaic-linux-amd64\`；需要 GTK3 / WebKit2GTK 图形库，构建基于 WebKit2GTK 4.1。 |
+
+> **Linux 依赖示例（Ubuntu 24.04+）**：\`sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0\`。Linux 服务器没有图形桌面时，建议用 CLI 而不是运行 Wails 窗口。Windows、macOS 与 Linux Release 都由 [发布工作流](.github/workflows/release.yml) 构建；客户端升级校验签名不代表 Windows/macOS 可执行文件已经做操作系统代码签名。
 
 ## 快速开始
 
-### 下载使用
-
-到 [Releases](https://github.com/crazyjums/mosaic/releases) 下载对应系统的安装包（Windows / macOS / Linux），打开后：
-
-1. 点左下角 **⚙ 设置 → 模型厂商**，选一个预设或自定义，填 Base URL 和 API Key，获取模型列表，测试连接，保存；或者选 **用 ChatGPT 账号登录**；
-2. 在状态栏选择一个**工作区**（你的代码仓库），开始对话。
-
-没有密钥也可以先体验：用 `go run ./cmd/cli -demo`（见下）或前端的浏览器演示模式，都使用内置的离线演示厂商（fake）。
+1. 安装并运行 Mosaic。在 **设置 → 模型厂商** 中选择 OpenAI 兼容服务 / Anthropic API，填写模型和密钥；或者使用 **ChatGPT 账号登录**。
+2. 选定代码仓库作为**工作区**，在下方输入框选择模型和权限档位，然后发送任务。
+3. 在对话中查看回答和折叠的思考/工具过程，需要授权时确认；生成的文件可在 **产物** 面板查看。
+4. 需要外部工具时，从 **设置 → 插件** 安装对应插件，并检查是否真正 **已就绪**；需要的 MCP 服务可在 **设置 → MCP** 中配置。
 
 ### 从源码运行
 
-环境要求：Go ≥ 1.26、Node.js ≥ 20.19、[Wails CLI v2.17](https://wails.io)（桌面端，`wails doctor` 检查依赖）。
+环境：**Go ≥ 1.26**、**Node.js ≥ 20.19（推荐 22）**、[Wails CLI v2.17](https://wails.io)。桌面构建还需要对应平台的本机依赖。
 
-```bash
+~~~bash
 git clone https://github.com/crazyjums/mosaic.git
 cd mosaic
 
-go test ./...                          # 测试（不需要任何密钥）
-make demo                              # CLI 演示：思考 → 工具调用 → 权限确认 → 结果 → 回答
-go run ./cmd/cli -demo                 # 交互式 CLI，使用离线演示厂商
-(cd frontend && npm install && npm run dev)   # 前端的浏览器演示模式
+go test ./...                             # Go 测试
+go run ./cmd/cli -demo                    # 离线 fake Provider CLI 演示
+make demo                                 # Agent 执行流程演示
 
-wails dev      # 桌面端开发模式（Ubuntu 24.04+ 加 -tags webkit2_41）
-wails build    # 打包到 build/bin/
-./scripts/build.sh            # 一键打包：自动识别系统并检查依赖
-./scripts/build.sh --windows  # 在 macOS / Linux 上交叉编译 Windows 版
-```
+cd frontend
+npm ci
+npm run dev                               # 浏览器演示（fake，不连接 Go）
+# 返回仓库根目录后使用以下桌面命令
+cd ..
 
-> 仓库已更名为 Mosaic，但 Go module 路径（`github.com/crazyjums/myllmapp`）、数据目录（`~/.myllmapp`）暂时沿用旧名（可执行文件和安装包已改名为 `mosaic`），以免一次改动牵连太多；之后会单独迁移。
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
+wails doctor
+wails dev                                 # 桌面开发
+wails build                               # 构建到 build/bin/
+# Ubuntu 24.04+ 开发/构建可添加 -tags webkit2_41
+~~~
 
-### 接入真实模型
+CLI 也可以使用真实模型：复制 \`config.example.toml\` 为 \`config.toml\`，设置所需厂商的 Key，运行 \`go run ./cmd/cli -provider anthropic\`；更多用法见 [使用手册](docs/usage.md)。
 
-三种方式任选（详见 [docs/usage.md](docs/usage.md#2-配置厂商)）：
+> 项目仓库已更名为 Mosaic，但 Go module 仍是 \`github.com/crazyjums/myllmapp\`，本机数据目录仍沿用 \`~/.myllmapp\`。这是为了兼容现有用户数据与源码依赖，不是另一个项目。
 
-1. **界面配置**：⚙ 设置 → 模型厂商；
-2. **用 ChatGPT 账号登录**：⚙ 设置 → 模型厂商 → 用 ChatGPT 账号登录（CLI 里是 `/login`）；
-3. **配置文件 / 环境变量**（CLI 同样适用）：
+## 使用时需要知道
 
-```bash
-cp config.example.toml config.toml   # 已在 .gitignore 中
-export ANTHROPIC_API_KEY=...          # 或 DEEPSEEK_API_KEY / OPENAI_API_KEY ...
-go run ./cmd/cli -provider anthropic
-```
+- **会话是独立的**：不同会话可并发执行，同一会话的新消息排队；多个会话修改同一代码仓库时没有全局互斥，需要自己避免冲突。
+- **压缩上下文依赖模型配置**：先在模型厂商高级设置中提供上下文窗口大小，达到阈值后才会压缩旧轮次，不能把压缩理解为无损保留全部原文。
+- **Git 窗口只读**：浏览提交和 diff，不提供 commit、checkout、push。
+- **更新不是静默安装**：发现新版本的高亮提示与真正下载/安装是两步；macOS 需要手动获取新版。
+- **插件安装不等于连接成功**：缺少依赖、尚未登录或 MCP 握手失败时，按插件健康诊断修复。
 
-CLI 里输入 `/help` 查看命令：`/model` 切换模型、`/mode` 切换权限模式、`/login` / `/logout` 登录 ChatGPT 账号等。
-
-## 使用说明里的几个要点
-
-- **会话之间并发，会话内排队**：多个会话可以同时运行；同一个会话里 agent 运行时发的消息会排队，这一轮结束后按顺序发出（详见 [路线图](docs/roadmap.md#并发与排队)）。多个会话同时改同一个工作区没有互斥，请自己留意冲突。
-- **压缩上下文需要知道窗口大小**：在 ⚙ 设置 → 模型厂商 → 高级选项 里给模型填上“上下文窗口”，达到 80% 时才会自动压缩；没填则不压缩。压缩会改写会话历史（较早的原文不再保留，只留摘要）。
-- **Git 窗口是只读的**：不会 commit / checkout / push，也不会执行仓库配置里指定的外部程序。
-- **安全默认值**：模型只能读写所选的工作区；写文件、执行命令默认需要确认；密钥只存在系统钥匙串或你的配置里，不会发给前端，也绝不要提交进仓库。
 
 ## 架构概览
 
@@ -172,9 +189,9 @@ flowchart LR
 
 已完成：多厂商与 ChatGPT 账号、权限与规则、MCP、技能、用量与故障转移、自动更新、皮肤、发送队列、多会话同时运行、图片 / 文本附件、上下文压缩、Git 窗口。
 
-已完成（续）：飞书插件（只读）、插件系统（技能 / 斜杠命令 / MCP 工具，设置 → 插件）。
+已完成（续）：插件市场、Skill / 斜杠命令 / MCP、插件诊断和单独重连、Codex / Agent Plugins 基础格式导入（v1.7.9）。飞书属于尚需真实租户验证的早期集成。
 
-计划中：子 agent 与后台任务、更多附件类型（PDF 等）、飞书插件与钩子。完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
+计划中：子 Agent / Hooks 的安全执行、插件完整 OAuth 与工具级试用、更多附件类型（PDF 等）、更完整的飞书集成。完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 参与贡献
 
@@ -231,7 +248,7 @@ go vet ./... && go test ./...
 │   ├── mcp/                    MCP 客户端（stdio / Streamable HTTP）与连接管理器
 │   ├── skill/                  技能（Skills）：发现、解析、注入提示词
 │   ├── update/                 自动更新：检查、下载、验签、替换
-│   ├── plugin/                 插件宿主（技能 / 斜杠命令 / MCP 工具）与状态栏脚本；钩子为预留
+│   ├── plugin/                 插件宿主、运行状态诊断、基础 Codex 插件包兼容、技能与 MCP；Hook 仍未支持
 │   └── archtest/               仓库级守卫测试：doc.go、密钥扫描、示例配置
 ├── frontend/
 │   └── src/
