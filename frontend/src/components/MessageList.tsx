@@ -77,7 +77,7 @@ export default function MessageList() {
       style={{ overflowAnchor: "none" }}
       className="min-w-0 flex-1 overflow-y-auto"
     >
-      <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-6 py-6">
+      <div className="mx-auto max-w-[var(--content-width)] space-y-5 px-7 py-7">
         {earlier > 0 && (
           <div className="flex justify-center">
             <button className="btn text-xs" onClick={more} disabled={loadingEarlier}>
@@ -101,12 +101,9 @@ export default function MessageList() {
               );
             case "error":
               return (
-                <div key={it.id} role="alert" className={`flex gap-2 rounded-ctl border px-3 py-2.5 text-sm ${it.fatal ? "border-danger/40 bg-danger/10 text-danger" : "border-warn/40 bg-warn/10 text-warn"}`}>
-                  <span aria-hidden="true">{it.fatal ? "⛔" : "⚠"}</span>
-                  <div className="min-w-0 break-words">
-                    <span className="mr-2 font-mono text-xs opacity-70">{it.code}</span>
-                    {it.message}
-                  </div>
+                <div key={it.id} role="alert" className={`flex flex-col gap-2 rounded-card border px-4 py-3.5 text-sm ${it.fatal ? "border-danger/40 bg-danger/10 text-danger" : "border-warn/40 bg-warn/10 text-warn"}`}>
+                  <div className="flex items-center gap-2 font-semibold"><span aria-hidden="true">{it.fatal ? "⊗" : "⚠"}</span> {it.fatal ? "请求失败" : "执行提示"} <span className="rounded-md bg-danger/10 px-2 py-0.5 font-mono text-[11px] font-normal">{it.code}</span></div>
+                  <div className="min-w-0 break-words text-[13px] leading-relaxed">{it.message}</div>
                 </div>
               );
             case "notice":
