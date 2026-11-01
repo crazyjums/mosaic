@@ -8,6 +8,8 @@ import { filterSlash, parseSlash, skillText, slashQuery, toSlashItems, type Slas
 import { useSettings } from "../store/settingsStore";
 import { useUIPrefs } from "../store/uiPrefs";
 import QueuePanel from "./QueuePanel";
+import { ModelItem } from "./StatusBar";
+import PermissionModeSelect from "./PermissionModeSelect";
 
 // 输入框：按设置的快捷键发送；可以添加图片和文本附件（选择 / 粘贴 / 拖进来）；键入 / 弹出技能菜单。
 //
@@ -167,11 +169,11 @@ export default function Composer() {
         : t("输入消息，{key}+Enter 发送，Enter 换行", { key: MOD_KEY });
 
   return (
-    <div className="shrink-0 px-6 pt-3">
+    <div className="shrink-0 px-7 pb-3 pt-3">
       <div className="mx-auto max-w-[var(--content-width)] space-y-2">
         <QueuePanel />
         <div
-          className={`relative rounded-card border bg-panel shadow-card transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--focus-ring)] ${dragging ? "border-accent ring-2 ring-[var(--focus-ring)]" : "border-line"}`}
+          className={`relative rounded-[18px] border-[1.5px] bg-panel shadow-card transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--focus-ring)] ${dragging ? "border-accent ring-2 ring-[var(--focus-ring)]" : "border-line"}`}
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes("Files")) {
               e.preventDefault();
@@ -220,7 +222,7 @@ export default function Composer() {
           <textarea
             ref={ref}
             autoFocus
-            className="block max-h-60 min-h-[28px] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1 pt-3 text-[15px] leading-relaxed outline-none placeholder:text-muted disabled:cursor-not-allowed"
+            className="block max-h-60 min-h-[44px] w-full resize-none overflow-y-auto bg-transparent px-4 pb-1 pt-3 text-[15px] leading-relaxed outline-none placeholder:text-muted disabled:cursor-not-allowed"
             rows={1}
             placeholder={placeholder}
             value={text}
@@ -248,8 +250,10 @@ export default function Composer() {
             <button className="rounded-ctl px-2 py-1 text-xs text-muted hover:bg-panel-2 hover:text-fg" onClick={() => void openSettings("permissions")} title={t("查看和管理 agent 可用的工具")}>
               🛠 {t("工具")}
             </button>
-            <span className="hidden text-[11px] text-muted sm:inline">{hint}</span>
+            <span className="hidden text-[11px] text-muted xl:inline">{hint}</span>
             <div className="flex-1" />
+            <div className="hidden max-w-[230px] 2xl:flex"><ModelItem /></div>
+            <div className="hidden xl:flex"><PermissionModeSelect /></div>
             {running && (
               <button
                 className="flex items-center gap-1.5 rounded-ctl border border-danger/50 px-3 py-1.5 text-sm text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
