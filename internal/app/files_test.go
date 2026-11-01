@@ -89,7 +89,9 @@ func TestAutoModeAllowsExternalDocumentsButNotExecutables(t *testing.T) {
 	f, err := readWorkspaceTextWithAccess(ws, path, true)
 	if err != nil || f.Text != "<p>outside</p>" { t.Fatalf("auto read: %+v %v", f, err) }
 	var opened string
-	if err := openWorkspaceFileWithAccess(ws, path, true, func(p string) error { opened = p; return nil }); err != nil || opened != path {
+	expected, err := filepath.EvalSymlinks(path)
+	if err != nil { t.Fatal(err) }
+	if err := openWorkspaceFileWithAccess(ws, path, true, func(p string) error { opened = p; return nil }); err != nil || opened != expected {
 		t.Fatalf("auto open: %q %v", opened, err)
 	}
 	exe := filepath.Join(outside, "run.bat")
