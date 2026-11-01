@@ -374,7 +374,20 @@ export default function PluginSettings() {
 const STATUS_DOT: Record<PluginStatus["state"], string> = { ok: "bg-ok", bad: "bg-danger", missing_dependency: "bg-warn", unknown: "bg-warn", none: "" };
 const STATUS_TEXT: Record<PluginStatus["state"], string> = { ok: "状态正常", bad: "状态异常", missing_dependency: "缺少依赖", unknown: "无法判断状态", none: "" };
 
-function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: PluginInfo; onChange: (p: PluginInfo) => void; onRemoved: () => void; update?: { version: string; busy: boolean; onUpdate: () => void } }) {
+const PLUGIN_HEALTH_LABEL: Record<PluginDiagnostics["state"], string> = {
+  ready: "已就绪", needs_setup: "待配置", starting: "连接中", degraded: "部分可用", failed: "运行异常", disabled: "已停用",
+};
+function pluginStateDot(state?: PluginDiagnostics["state"]): string {
+  switch (state) {
+    case "ready": return "bg-ok";
+    case "failed": return "bg-danger";
+    case "starting": return "bg-accent";
+    case "needs_setup": case "degraded": return "bg-warn";
+    default: return "bg-muted/50";
+  }
+}
+
+function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRemoved, update }: { plugin: PluginInfo; diagnostics?: PluginDiagnostics; onRefreshHealth: () => Promise<void>; onChange: (p: PluginInfo) => void; onRemoved: () => void; update?: { version: string; busy: boolean; onUpdate: () => void } }) {
   const [error, setError] = useState("");
   const [statusTick, setStatusTick] = useState(0); // 登录完成后让“状态”马上重新检查
   const [busy, setBusy] = useState(false);
@@ -428,6 +441,7 @@ function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: Plug
       {p.warning && <div className="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">{p.warning}</div>}
       {error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
+      <PluginHealthBlock plugin={p} health={diagnostics} onRefresh={onRefreshHealth} />
       {!p.error && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
       {!p.error && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
@@ -472,6 +486,76 @@ function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: Plug
         </button>
       </div>
     </div>
+  );
+}
+
+// “已启用”仅表示允许加载，以下状态来自运行时 MCP 连接及已注册工具。
+function PluginHealthBlock({ plugin, health, onRefresh }: { plugin: PluginInfo; health?: PluginDiagnostics; onRefresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const reconnect = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await backend().reconnectPlugin(plugin.id);
+      await onRefresh();
+    } catch (e) { setError(errMsg(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Block title={t("实际可用状态")}>
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${pluginStateDot(health?.state)}`} aria-hidden="true" />
+          <strong>{health ? t(PLUGIN_HEALTH_LABEL[health.state]) : t("检测中…")}</strong>
+          <div className="flex-1" />
+          <button className="btn px-2 py-0.5 text-xs" onClick={() => void onRefresh()}>{t("刷新状态")}</button>
+          {plugin.enabled && plugin.servers.length > 0 && (
+            <button className="btn px-2 py-0.5 text-xs" onClick={() => void reconnect()} disabled={busy}>
+              {busy ? t("重连中…") : t("重连 MCP")}
+            </button>
+          )}
+        </div>
+        {health?.message && <p className="text-xs text-muted">{health.message}</p>}
+        {health?.code && <div className="text-[11px] text-muted">{t("诊断代码")}：<code>{health.code}</code></div>}
+        {!!health?.missing.length && <p className="text-xs text-warn">{t("缺少依赖")}：{health.missing.join("、")}</p>}
+        {error && <div className="text-xs text-danger">{error}</div>}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+          <span>Skill：{health?.skills.length ?? plugin.skills.length}</span>
+          <span>{t("命令")}：{health?.commands.length ?? plugin.commands.length}</span>
+          <span>MCP：{health?.servers.length ?? plugin.servers.length}</span>
+          <span>{t("可用工具")}：{health?.tool_count ?? 0}</span>
+        </div>
+        {health?.servers.map((srv) => (
+          <div key={srv.name} className="rounded-ctl border border-line bg-panel-2 px-2.5 py-2 text-xs">
+            <div className="flex gap-2">
+              <code className="min-w-0 flex-1 truncate">{srv.name}</code>
+              <span className={srv.state === "connected" && srv.tools.length ? "text-ok" : srv.state === "failed" ? "text-danger" : "text-warn"}>
+                {srv.state === "connected" ? t("已连接") : srv.state === "failed" ? t("连接失败") : t("连接中")}
+              </span>
+            </div>
+            <div className="mt-1 text-muted">{t("已注册工具")}：{srv.tools.length ? srv.tools.join("、") : "—"}</div>
+            {srv.error && <div className="mt-1 break-words text-danger">{srv.error}</div>}
+          </div>
+        ))}
+        {plugin.commands.length > 0 && (
+          <div className="rounded-ctl border border-line p-2.5 text-xs">
+            <div className="mb-1 font-medium">{t("如何使用")}</div>
+            <div className="text-muted">{t("在对话框输入以下命令即可使用，或复制后粘贴发送")}：</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {plugin.commands.map((cmd) => (
+                <button key={cmd.name} className="rounded-ctl border border-line px-2 py-1 font-mono text-accent hover:bg-accent-soft"
+                  title={t("复制命令")}
+                  onClick={() => void navigator.clipboard.writeText("/" + cmd.name).catch((e) => setError(errMsg(e)))}>
+                  /{cmd.name} · {t("复制")}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {plugin.login && <p className="text-xs text-muted">{t("账号授权与工具连接是两回事，请在下方完成登录并检查插件状态")}</p>}
+      </div>
+    </Block>
   );
 }
 
