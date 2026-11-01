@@ -39,6 +39,8 @@ type AgentConfig struct {
 
 	// Workspace 是工具的工作区根目录（绝对路径）。
 	Workspace string
+	// AllowOutsideWorkspace 查询当前权限模式，在每次工具调用时动态生效。
+	AllowOutsideWorkspace func() bool
 	// SessionID 传给工具（todo_write 等按会话保存状态的工具需要它）。
 	SessionID string
 	// Disabled 是被用户在设置里关掉的工具：不发给模型，模型硬要调用也会被拒绝。
