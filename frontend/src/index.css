@@ -20,13 +20,13 @@
  */
 :root {
   color-scheme: dark;
-  --bg: #0b1220;
-  --panel: #111b2e;
-  --panel-2: #18243a;
-  --border: #263552;
-  --fg: #e8eef9;
-  --muted: #93a3bf;
-  --accent: #7c9cff;
+  --bg: #0e1014;
+  --panel: #171a21;
+  --panel-2: #20242e;
+  --border: #262a34;
+  --fg: #e9ecf2;
+  --muted: #9ba2b1;
+  --accent: #8c9bff;
   --think: #a78bfa;
   --ok: #4ade80;
   --warn: #fbbf24;
@@ -34,7 +34,7 @@
   /* 强调色背景上的文字（主按钮、选中的分段按钮）。深色主题的强调色偏浅，白字对比度不够（2.6:1），所以用深色字 */
   --on-accent: #0b1330;
   /* 消息区和输入框的最大宽度（设置 → 外观 → 消息区宽度） */
-  --content-width: 48rem;
+  --content-width: 48.75rem;
 
   /* 品牌常量：金色 = 正在执行的任务；三档海军蓝用于 Logo 的拼块 */
   --gold: #f0b42b;
@@ -47,21 +47,21 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.18);
   --shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.45);
   /* 布局尺寸 */
-  --sidebar-width: 16rem;
+  --sidebar-width: 16.5rem;
   --modal-width: 62rem;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #f5f7fb;
+    --bg: #fafafb;
     --panel: #ffffff;
-    --panel-2: #f1f4f9;
-    --border: #e2e8f0;
-    --fg: #172b49;
-    --muted: #62718a;
-    --accent: #416bea;
-    --think: #7c3aed;
+    --panel-2: #eef0f4;
+    --border: #e1e4ea;
+    --fg: #14171f;
+    --muted: #5a6170;
+    --accent: #2f43d6;
+    --think: #7c5ce0;
     --ok: #16a34a;
     --warn: #b45309;
     --danger: #dc2626;
@@ -78,14 +78,14 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f5f7fb;
+  --bg: #fafafb;
   --panel: #ffffff;
-  --panel-2: #f1f4f9;
-  --border: #e2e8f0;
-  --fg: #172b49;
-  --muted: #62718a;
-  --accent: #416bea;
-  --think: #7c3aed;
+  --panel-2: #eef0f4;
+  --border: #e1e4ea;
+  --fg: #14171f;
+  --muted: #5a6170;
+  --accent: #2f43d6;
+  --think: #7c5ce0;
   --ok: #16a34a;
   --warn: #b45309;
   --danger: #dc2626;
@@ -101,12 +101,12 @@
 
 /* 第 2 层：派生 Tokens。写在 :root 上，引用同一元素上最终生效的调色板变量，所以换皮肤时自动跟着变。 */
 :root {
-  --side: color-mix(in srgb, var(--bg) 62%, var(--border));
+  --side: color-mix(in srgb, var(--panel-2) 86%, var(--bg));
   --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--panel));
   --accent-hover: color-mix(in srgb, var(--accent) 84%, var(--fg));
   --code-bg: color-mix(in srgb, var(--panel-2) 72%, var(--border));
-  --brand: color-mix(in srgb, var(--accent) 35%, #081a38);
-  --on-brand: #ffffff;
+  --brand: var(--accent);
+  --on-brand: var(--on-accent);
   --focus-ring: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
@@ -132,11 +132,11 @@
   --color-gold: var(--gold);
   --color-gold-ink: var(--gold-ink);
   /* 圆角（rounded-ctl / rounded-card / rounded-modal）：控件 8、卡片 14、弹窗 18 */
-  --radius-ctl: 8px;
+  --radius-ctl: 10px;
   --radius-card: 14px;
   --radius-modal: 18px;
-  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
 html,
@@ -351,3 +351,10 @@ body {
 .usage-chart g:has(rect) { transition: opacity 0.15s; }
 .usage-chart:hover g:has(rect) { opacity: 0.55; }
 .usage-chart:hover g:has(rect):hover { opacity: 1; }
+
+/* Mosaic 主界面参考设计：紧凑状态栏、层次更清晰的面板和控件 */
+.mosaic-statusline { min-height:34px; scrollbar-width:thin; }
+.mosaic-process-summary { transition: border-color .16s ease, box-shadow .16s ease; }
+.mosaic-process-summary:hover { border-color: var(--accent); box-shadow: var(--shadow-card); }
+.mosaic-context-tiles { display:grid;grid-template-columns:repeat(20,minmax(0,1fr));gap:3px; }
+.mosaic-context-tiles>span { aspect-ratio:1; border-radius:3px; }
