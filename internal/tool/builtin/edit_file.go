@@ -60,7 +60,7 @@ func (t *EditFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.OldString == in.NewString {
 		return tool.Errorf("old_string 与 new_string 相同，没有需要修改的内容")
 	}
-	path, err := resolvePath(call.Workspace, in.Path)
+	path, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
