@@ -370,3 +370,25 @@ func TestListSessionsIncludesRunningUnsaved(t *testing.T) {
 		t.Fatalf("结束后以存储为准，不重复: %+v", list)
 	}
 }
+
+// 关闭应用时必须同时取消当前会话和后台会话。
+func TestCancelAllSessions(t *testing.T) {
+	h := newHarness(t, fake.DemoScript(), 0, nil)
+	w := watchPerms(h)
+	a := h.engine.Status().SessionID
+	doneA := sendAsync(h, a, "任务A")
+	w.wait(t, a, 1)
+	st, err := h.engine.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := st.SessionID
+	doneB := sendAsync(h, b, "任务B")
+	w.wait(t, b, 1)
+	h.engine.CancelAllSessions()
+	waitDone(t, doneA)
+	waitDone(t, doneB)
+	if got := h.engine.RunningSessions(); len(got) != 0 {
+		t.Fatalf("取消全部后仍有运行中的会话: %v", got)
+	}
+}

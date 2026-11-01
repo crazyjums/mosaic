@@ -64,9 +64,9 @@ func (a *App) Startup(ctx context.Context) {
 	})
 }
 
-// Shutdown 由 Wails 在退出前调用：取消正在运行的一轮，停止转发事件。
+// Shutdown 由 Wails 在退出前调用：取消所有会话的运行轮次，停止转发事件。
 func (a *App) Shutdown(context.Context) {
-	a.engine.Cancel()
+	a.engine.CancelAllSessions()
 	if a.unsubscribe != nil {
 		a.unsubscribe()
 	}

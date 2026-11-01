@@ -24,6 +24,11 @@ func (a *Agent) runTools(ctx context.Context, em emitter, calls []provider.Block
 		var r tool.Result
 		if ctx.Err() != nil {
 			r = tool.Errorf("cancelled by user before execution")
+			// 即使没有执行，也必须发终态事件，避免前端工具卡片一直停在 queued。
+			em.emit("", event.ToolResult{
+				CallID: c.ToolCallID, Name: c.ToolName,
+				Output: r.Output, IsError: true,
+			})
 		} else {
 			r = a.runTool(ctx, em, c)
 		}
