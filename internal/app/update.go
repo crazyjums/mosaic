@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/update"
 )
 
@@ -45,14 +48,36 @@ func (a *App) updater() *update.Updater {
 	return a.upd
 }
 
+// networkUpdater 为单次更新检查/下载复制 Updater 并配置最新全局代理。
+// 不修改 a.upd 的共享指针，避免并发检查/下载或修改代理设置时引入数据竞争。
+// 未配置应用代理时继续由 Go 默认 transport 使用 HTTP(S)_PROXY 环境变量。
+func (a *App) networkUpdater() (*update.Updater, error) {
+	u := *a.updater()
+	proxyURL := ""
+	if a.settings != nil {
+		proxyURL = a.settings.UpdateProxyURL()
+	}
+	client, err := provider.NewHTTPClientWithProxy(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("更新代理配置错误：%w", err)
+	}
+	client.Timeout = 30 * time.Second // 清单请求；下载时 updater.Download 会去掉总超时
+	u.Client = client
+	return &u, nil
+}
+
 // GetVersion 返回当前版本号（开发构建是 "dev"）。
 func (a *App) GetVersion() string { return a.updater().Current }
 
 // CheckUpdate 检查是否有新版本。网络错误、签名校验失败等都以 error 返回，由前端决定是否提示。
 func (a *App) CheckUpdate() (UpdateInfo, error) {
-	u := a.updater()
-	if ok, why := u.Enabled(); !ok {
-		return UpdateInfo{Info: update.Info{Current: u.Current}, Disabled: why}, nil
+	base := a.updater()
+	if ok, why := base.Enabled(); !ok {
+		return UpdateInfo{Info: update.Info{Current: base.Current}, Disabled: why}, nil
+	}
+	u, err := a.networkUpdater()
+	if err != nil {
+		return UpdateInfo{Info: update.Info{Current: base.Current}}, err
 	}
 	info, err := u.Check(a.context())
 	if err != nil {
@@ -100,9 +125,12 @@ func (a *App) InstallUpdate() error {
 }
 
 func (a *App) runInstall(info *update.Info) {
-	u := a.updater()
 	fail := func(err error) { a.setUpdateStatus(UpdateStatus{State: "error", Error: err.Error()}) }
-
+	u, err := a.networkUpdater()
+	if err != nil {
+		fail(err)
+		return
+	}
 	path, err := u.Download(a.context(), info, func(done, total int64) {
 		a.setUpdateStatus(UpdateStatus{State: "downloading", Done: done, Total: total})
 	})
