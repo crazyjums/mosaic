@@ -32,7 +32,7 @@
   --warn: #fbbf24;
   --danger: #f87171;
   /* 强调色背景上的文字（主按钮、选中的分段按钮）。深色主题的强调色偏浅，白字对比度不够（2.6:1），所以用深色字 */
-  --on-accent: #0b1330;
+  --on-accent: #0b0e1a;
   /* 消息区和输入框的最大宽度（设置 → 外观 → 消息区宽度） */
   --content-width: 48.75rem;
 
@@ -62,9 +62,9 @@
     --muted: #5a6170;
     --accent: #2f43d6;
     --think: #7c5ce0;
-    --ok: #16a34a;
+    --ok: #0e7c7c;
     --warn: #b45309;
-    --danger: #dc2626;
+    --danger: #c23b3b;
     --on-accent: #ffffff;
     --gold: #e4ae38;
     --gold-ink: #835a08;
@@ -86,9 +86,9 @@
   --muted: #5a6170;
   --accent: #2f43d6;
   --think: #7c5ce0;
-  --ok: #16a34a;
+  --ok: #0e7c7c;
   --warn: #b45309;
-  --danger: #dc2626;
+  --danger: #c23b3b;
   --on-accent: #ffffff;
   --gold: #e4ae38;
   --gold-ink: #835a08;
