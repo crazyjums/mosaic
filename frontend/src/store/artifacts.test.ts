@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absPath, collectArtifacts, kindOf, looksLikeFilePath } from "./artifacts";
+import { absPath, collectArtifacts, kindOf, looksLikeFilePath, OPENABLE_EXT } from "./artifacts";
 import type { AssistantItem, ToolView } from "./reducer";
 
 const tool = (callId: string, name: string, input: unknown, status: ToolView["status"] = "done"): ToolView => ({ callId, name, input, risk: "write", status });
@@ -40,7 +40,7 @@ describe("collectArtifacts", () => {
 
 describe("kindOf", () => {
   it("按扩展名分类（忽略大小写和查询串）", () => {
-    expect(["a.HTML", "b.svg", "c.mmd", "d.gv", "e.md", "f.PNG", "g.json", "h.exe", "noext"].map(kindOf)).toEqual(["html", "svg", "mermaid", "dot", "markdown", "image", "text", "other", "other"]);
+    expect(["a.HTML", "b.svg", "c.mmd", "d.gv", "e.md", "f.PNG", "g.json", "script.py", "tool.ps1", "h.exe", "noext"].map(kindOf)).toEqual(["html", "svg", "mermaid", "dot", "markdown", "image", "text", "text", "text", "other", "other"]);
   });
 });
 
@@ -62,6 +62,9 @@ describe("absPath", () => {
 describe("looksLikeFilePath", () => {
   it("行内代码像文件路径才变成链接", () => {
     expect(["report.html", "out/flow.svg", "C:\\x\\a.md", "./a.json"].every(looksLikeFilePath)).toBe(true);
-    expect(["foo()", "a b.html", "https://x.com/a.html", "run.sh", "a.exe", "*.html", "x".repeat(300) + ".html"].some(looksLikeFilePath)).toBe(false);
+    expect(["run.sh", "script.py", "tool.ps1"].every(looksLikeFilePath)).toBe(true);
+    expect(["foo()", "a b.html", "https://x.com/a.html", "a.exe", "*.html", "x".repeat(300) + ".html"].some(looksLikeFilePath)).toBe(false);
+    expect(OPENABLE_EXT.test("dangerous.exe")).toBe(false);
+    expect(OPENABLE_EXT.test("generated_report.py")).toBe(true);
   });
 });

@@ -43,6 +43,7 @@ interface GoApp {
   GetWorkspaceInfo(): Promise<WorkspaceInfo>;
   ReadWorkspaceText(path: string): Promise<WorkspaceFile>;
   OpenWorkspaceFile(path: string): Promise<void>;
+  RevealWorkspaceFile(path: string): Promise<void>;
   ListPlugins(): Promise<PluginInfo[] | null>;
   StartPluginLogin(id: string): Promise<PluginLoginState>;
   GetPluginLoginState(id: string): Promise<PluginLoginState>;
@@ -162,6 +163,7 @@ export function createWailsBackend(): Backend {
     readWorkspaceImage: (path) => app.ReadWorkspaceImage(path),
     readWorkspaceText: (path) => app.ReadWorkspaceText(path),
     openWorkspaceFile: (path) => app.OpenWorkspaceFile(path),
+    revealWorkspaceFile: (path) => app.RevealWorkspaceFile(path),
     openExternalURL: (url) => app.OpenExternalURL(url),
     setModel: (p, m) => app.SetModel(p, m),
     send: (sid, t, atts) => app.SendToSession(sid, t, atts ?? []),

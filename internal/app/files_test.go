@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"encoding/binary"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,7 +36,10 @@ func TestReadWorkspaceText(t *testing.T) {
 	if f, err := readWorkspaceText(ws, "big.txt"); err != nil || !f.Truncated || len(f.Text) != maxTextBytes {
 		t.Fatalf("超大文件应截断: %v %v %d", err, f.Truncated, len(f.Text))
 	}
-	for _, bad := range []string{"run.bat", "../x.html", "out", "nope.html", ""} {
+	if f, err := readWorkspaceText(ws, "run.bat"); err != nil || f.Text != "echo hi" {
+		t.Fatalf("脚本只读预览应允许: %+v %v", f, err)
+	}
+	for _, bad := range []string{"../x.html", "out", "nope.html", ""} {
 		if _, err := readWorkspaceText(ws, bad); err == nil {
 			t.Errorf("%q 应被拒绝", bad)
 		}
@@ -104,5 +108,74 @@ func TestAutoModeAllowsExternalDocumentsButNotExecutables(t *testing.T) {
 func TestFileURLPath(t *testing.T) {
 	if got := cleanPath("file:///tmp/a%20b.html"); got != filepath.FromSlash("/tmp/a b.html") {
 		t.Fatalf("decoded file url: %q", got)
+	}
+}
+
+func TestArtifactPreviewTextAndSafeOpen(t *testing.T) {
+	ws := newWS(t)
+	for name, body := range map[string]string{
+		"generate_report.py": "print('hello')\n",
+		"config.toml": "value = 42\n",
+		"tools.ps1": "Write-Host hello\n",
+		"build.sh": "echo hello\n",
+		"no-extension": "hello\n",
+	} {
+		if err := os.WriteFile(filepath.Join(ws, name), []byte(body), 0o644); err != nil { t.Fatal(err) }
+		got, err := readWorkspaceText(ws, name)
+		if err != nil || got.Text != body { t.Fatalf("%s should preview safely: %+v %v", name, got, err) }
+	}
+
+	var target, action string
+	open := func(path string) error { action, target = "document", path; return nil }
+	edit := func(path string) error { action, target = "editor", path; return nil }
+	reveal := func(path string) error { action, target = "reveal", path; return nil }
+
+	for file, expected := range map[string]string{
+		"generate_report.py": "editor", "config.toml": "editor", "tools.ps1": "editor",
+		"build.sh": "editor", "no-extension": "editor", "out/report.html": "document",
+		"run.bat": "editor",
+	} {
+		action = ""
+		if err := openArtifactWithAccess(ws, file, false, open, edit, reveal); err != nil { t.Fatal(err) }
+		if action != expected || !filepath.IsAbs(target) { t.Fatalf("%s => %s path %s, want %s", file, action, target, expected) }
+	}
+
+	// 不运行未知二进制和可执行文件：只能定位。
+	for _, file := range []string{"bad.exe", "binary.dat"} {
+		if err := os.WriteFile(filepath.Join(ws, file), []byte{0, 1, 2, 3}, 0o644); err != nil { t.Fatal(err) }
+		action = ""
+		if err := openArtifactWithAccess(ws, file, false, open, edit, reveal); err != nil || action != "reveal" {
+			t.Fatalf("%s must only reveal, got %s, %v", file, action, err)
+		}
+		if _, err := readWorkspaceText(ws, file); err == nil { t.Fatalf("%s must not preview binary", file) }
+	}
+}
+
+func TestUTF16TextPreview(t *testing.T) {
+	ws := newWS(t)
+	file := filepath.Join(ws, "powershell_output.txt")
+	expected := "已生成报告"
+	encoded := []byte{0xff, 0xfe}
+	for _, r := range expected {
+		var pair [2]byte
+		binary.LittleEndian.PutUint16(pair[:], uint16(r))
+		encoded = append(encoded, pair[:]...)
+	}
+	if err := os.WriteFile(file, encoded, 0o644); err != nil { t.Fatal(err) }
+	out, err := readWorkspaceText(ws, file)
+	if err != nil || out.Text != expected { t.Fatalf("UTF-16 should decode: %+v %v", out, err) }
+}
+
+func TestArtifactRevealRespectsWorkspaceBoundary(t *testing.T) {
+	ws := newWS(t)
+	outside := filepath.Join(t.TempDir(), "external.py")
+	if err := os.WriteFile(outside, []byte("print(1)"), 0o644); err != nil { t.Fatal(err) }
+	called := false
+	reveal := func(string) error { called = true; return nil }
+	if err := revealWorkspaceFileWithAccess(ws, outside, false, reveal); err == nil || called {
+		t.Fatal("default mode may not reveal outside file")
+	}
+	if err := revealWorkspaceFileWithAccess(ws, outside, true, reveal); err != nil || !called {
+		t.Fatalf("auto mode may reveal outside file: %v", err)
 	}
 }

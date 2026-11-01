@@ -2,7 +2,7 @@ import { Children, isValidElement, useState, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { backend } from "../bridge";
-import { looksLikeFilePath, OPENABLE_EXT } from "../store/artifacts";
+import { looksLikeFilePath } from "../store/artifacts";
 import { t } from "../i18n";
 import { FileLink, openFileWithToast } from "./FileLink";
 import { GraphvizDiagram, IMAGE_EXT, isLocalPath, MermaidDiagram, normalizeLocalPath, SvgBlock, WorkspaceImage, ZoomableImage } from "./MediaView";
@@ -43,7 +43,7 @@ function makeComponents(streaming: boolean): Components {
               if (h.startsWith("#")) return;
               e.preventDefault();
               if (/^https?:\/\//.test(h)) void backend().openExternalURL(h);
-              else if (local && OPENABLE_EXT.test(path)) void openFileWithToast(path);
+              else if (local) void openFileWithToast(path);
             }}
           >
             {children}

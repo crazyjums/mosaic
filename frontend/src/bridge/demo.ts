@@ -347,7 +347,10 @@ export function createDemoBackend(): Backend {
       return { path: `${general.workspace || demoWorkspace}/${path.replace(/^\.?\//, "")}`, text, size: text.length };
     },
     openWorkspaceFile: async (path) => {
-      throw new Error(`浏览器演示模式不能打开本地文件（真实应用会用默认浏览器打开 ${path}）`);
+      throw new Error(`浏览器演示模式不能打开本地文件：${path}`);
+    },
+    revealWorkspaceFile: async (path) => {
+      throw new Error(`浏览器演示模式不能在文件管理器中定位文件：${path}`);
     },
     setModel: async (p, m) => {
       provider = p || "fake";
