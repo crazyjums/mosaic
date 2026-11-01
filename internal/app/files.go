@@ -1,39 +1,53 @@
 package app
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"net/url"
 	"runtime"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
-// 产物面板和聊天里的文件链接：读出工作区里的文本文件做预览，或用系统默认程序打开（HTML 就是默认浏览器）。
-//
-// 安全：
-//   - 只允许当前会话工作区之内的文件（解析符号链接后再检查，防止用链接指到工作区外）；
-//   - 只认白名单里的扩展名。“用系统默认程序打开”在 Windows 上对 .bat / .exe / .lnk 等就是执行，
-//     模型写出的文件不能借这个入口跑起来，所以白名单里只有文档、网页、图片、数据这类不会被执行的类型；
-//   - 读文本有大小上限。
+// 产物面板和聊天里的文件链接：查看任意文本类型（包含代码/脚本），
+// 可用系统文档程序打开网页与图片，脚本只能用文本编辑器打开。
+// 安全策略针对“执行”而非“查看”：预览不执行内容，文件关联可能执行脚本，
+// 因此绝不直接将 .py/.bat/.ps1/.sh 等交给默认文件关联。
+// 所有入口仍校验真实工作区路径/符号链接；预览有大小限制，HTML 在前端沙箱里展示。
 
 // maxTextBytes 是产物预览最多读多少字节。
 const maxTextBytes = 2 << 20
 
-// textTypes 可以读出来做预览的文本类型。
-var textTypes = map[string]bool{
+// safeDocumentTypes 可以用系统默认程序打开的文档，不能加入可能被文件关联“执行”的脚本/代码。
+// 所有文本类型均可在应用内只读预览，源码使用明确的文本编辑器打开。
+var safeDocumentTypes = map[string]bool{
 	".html": true, ".htm": true, ".svg": true, ".md": true, ".markdown": true, ".txt": true,
 	".mmd": true, ".mermaid": true, ".dot": true, ".gv": true, ".json": true, ".csv": true,
 }
 
-// openTypes 可以用系统默认程序打开的类型：文本预览类型 + 图片 + PDF。
 func canOpen(ext string) bool {
-	if textTypes[ext] || ext == ".pdf" {
+	if safeDocumentTypes[ext] || ext == ".pdf" {
 		return true
 	}
 	_, ok := imageTypes[ext]
 	return ok
+}
+
+// 即使文件恰好含合法 UTF-8，绝不能把这些扩展名当作安全的文档程序启动。
+// 对它们只提供文件管理器中的定位，不做打开/执行。
+func executableExtension(ext string) bool {
+	switch ext {
+	case ".exe", ".com", ".msi", ".msp", ".dll", ".so", ".dylib", ".app",
+		".lnk", ".url", ".desktop", ".jar", ".apk", ".deb", ".rpm", ".scr":
+		return true
+	}
+	return false
 }
 
 // WorkspaceFile 是 ReadWorkspaceText 的结果。
@@ -115,9 +129,6 @@ func readWorkspaceText(workspace, p string) (WorkspaceFile, error) {
 
 func readWorkspaceTextWithAccess(workspace, p string, allowOutside bool) (WorkspaceFile, error) {
 	p = cleanPath(p)
-	if !textTypes[strings.ToLower(filepath.Ext(p))] {
-		return WorkspaceFile{}, fmt.Errorf("不支持预览这种文件：%s", filepath.Base(p))
-	}
 	real, fi, err := resolveWorkspaceFileWithAccess(workspace, p, allowOutside)
 	if err != nil {
 		return WorkspaceFile{}, err
@@ -127,20 +138,136 @@ func readWorkspaceTextWithAccess(workspace, p string, allowOutside bool) (Worksp
 		return WorkspaceFile{}, err
 	}
 	defer f.Close()
-	buf := make([]byte, maxTextBytes+1)
-	n, _ := f.Read(buf)
-	out := WorkspaceFile{Path: real, Size: fi.Size()}
-	if n > maxTextBytes {
-		n, out.Truncated = maxTextBytes, true
+	buf, err := io.ReadAll(io.LimitReader(f, maxTextBytes+1))
+	if err != nil {
+		return WorkspaceFile{}, err
 	}
-	out.Text = strings.ToValidUTF8(string(buf[:n]), "�")
+	out := WorkspaceFile{Path: real, Size: fi.Size()}
+	if len(buf) > maxTextBytes {
+		buf, out.Truncated = buf[:maxTextBytes], true
+	}
+	// 限制按内容判断（而非扩展名）：源码、配置和任意纯文本都能预览；
+	// 真正的二进制不能当成字符显示，更不会通过系统文件关联执行。
+	value, err := decodePreviewText(buf)
+	if err != nil {
+		return WorkspaceFile{}, fmt.Errorf("无法将 %s 作为文本预览：%w", filepath.Base(real), err)
+	}
+	out.Text = value
 	return out, nil
 }
 
-// OpenWorkspaceFile 用系统默认程序打开工作区内的文件：.html 会在默认浏览器里打开。
+// Windows PowerShell 等工具会写 UTF-16 BOM；把它转换成 UTF-8 文本显示。
+// 其他文件要求有效 UTF-8，避免把可执行文件或任意二进制误当文本。
+func decodePreviewText(data []byte) (string, error) {
+	if len(data) >= 2 && (bytes.Equal(data[:2], []byte{0xff, 0xfe}) || bytes.Equal(data[:2], []byte{0xfe, 0xff})) {
+		littleEndian := data[0] == 0xff
+		body := data[2:]
+		if len(body)%2 != 0 {
+			body = body[:len(body)-1] // 最后一个 UTF-16 字符可能被预览大小上限截断
+		}
+		values := make([]uint16, len(body)/2)
+		for i := range values {
+			if littleEndian {
+				values[i] = binary.LittleEndian.Uint16(body[i*2:])
+			} else {
+				values[i] = binary.BigEndian.Uint16(body[i*2:])
+			}
+		}
+		return string(utf16.Decode(values)), nil
+	}
+	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
+	if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
+		return "", fmt.Errorf("文件不是 UTF-8/UTF-16 文本（可能是二进制），请在文件管理器中查看")
+	}
+	return string(data), nil
+}
+
+// OpenWorkspaceFile 是用户点击产物时的安全打开：文档由默认程序打开；
+// 代码/脚本只用明确指定的文本编辑器打开；二进制和未知类型在文件管理器中定位。
+// 与 agent 的权限审批完全独立，不通过 shell 执行文件内容。
 func (a *App) OpenWorkspaceFile(path string) error {
 	st := a.engine.Status()
-	return openWorkspaceFileWithAccess(st.Workspace, path, st.PermissionMode == "auto", openFile)
+	return openArtifactWithAccess(st.Workspace, path, st.PermissionMode == "auto", openFile, openInTextEditor, revealFile)
+}
+
+// RevealWorkspaceFile 允许用户在文件管理器中定位任意类型产物。
+// 不执行文件，不允许使用符号链接绕过当前工作区边界。
+func (a *App) RevealWorkspaceFile(path string) error {
+	st := a.engine.Status()
+	return revealWorkspaceFileWithAccess(st.Workspace, path, st.PermissionMode == "auto", revealFile)
+}
+
+func revealWorkspaceFileWithAccess(workspace, p string, allowOutside bool, reveal func(string) error) error {
+	real, _, err := resolveWorkspaceFileWithAccess(workspace, cleanPath(p), allowOutside)
+	if err != nil {
+		return err
+	}
+	return reveal(real)
+}
+
+// openArtifactWithAccess 通过注入动作便于测试：不可信扩展名绝不走系统默认文件关联。
+func openArtifactWithAccess(workspace, p string, allowOutside bool, open, edit, reveal func(string) error) error {
+	real, _, err := resolveWorkspaceFileWithAccess(workspace, cleanPath(p), allowOutside)
+	if err != nil {
+		return err
+	}
+	ext := strings.ToLower(filepath.Ext(real))
+	if canOpen(ext) {
+		return open(real)
+	}
+	if executableExtension(ext) {
+		return reveal(real)
+	}
+	// 不能按扩展名就把文件交给默认关联；先检查是否为实际文本。
+	if _, err := readWorkspaceTextWithAccess(workspace, real, allowOutside); err == nil {
+		return edit(real)
+	}
+	return reveal(real)
+}
+
+// openInTextEditor 选择受信任的文本编辑器，不读取用户可控的 EDITOR，也不经 shell。
+// 系统没有可用 GUI 编辑器时退化为在文件管理器中定位。
+func openInTextEditor(path string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("notepad.exe", path)
+	case "darwin":
+		cmd = exec.Command("open", "-a", "TextEdit", path)
+	default:
+		for _, name := range []string{"code", "codium", "gedit", "kate", "mousepad", "xed", "pluma", "leafpad"} {
+			if _, err := exec.LookPath(name); err == nil {
+				cmd = exec.Command(name, path)
+				break
+			}
+		}
+		if cmd == nil {
+			return revealFile(path)
+		}
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("无法使用文本编辑器打开文件：%w", err)
+	}
+	go cmd.Wait()
+	return nil
+}
+
+// revealFile 只打开文件管理器，不执行选中文件。
+func revealFile(path string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer.exe", "/select,", path)
+	case "darwin":
+		cmd = exec.Command("open", "-R", path)
+	default:
+		cmd = exec.Command("xdg-open", filepath.Dir(path))
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("无法在文件管理器中定位文件：%w", err)
+	}
+	go cmd.Wait()
+	return nil
 }
 
 func openWorkspaceFile(workspace, p string, open func(string) error) error {
