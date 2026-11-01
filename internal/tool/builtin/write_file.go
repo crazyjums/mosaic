@@ -55,7 +55,7 @@ func (t *WriteFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Path == "" {
 		return tool.Errorf("path is required")
 	}
-	path, err := resolvePath(call.Workspace, in.Path)
+	path, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
