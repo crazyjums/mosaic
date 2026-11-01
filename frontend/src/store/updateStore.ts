@@ -1,6 +1,6 @@
 // 客户端更新的状态：最近一次检查的结果、是否在检查、安装进度。
 //
-// 自动检查：偏好读取完成后启动检查，成功后每小时检查；失败 5 分钟后重试。
+// 自动检查：偏好读取完成后启动检查，成功后每 15 分钟检查；失败 2 分钟后重试。
 // 窗口重新获得焦点、从后台恢复或网络恢复时，按限流间隔补检。失败不打断用户，
 // 但会留下可见的诊断状态，避免网络问题让更新入口永久停在“检查更新”。
 
@@ -37,10 +37,10 @@ interface UpdateState {
 
 const IDLE: UpdateStatus = { state: "idle", done: 0, total: 0 };
 const STARTUP_DELAY_MS = 3000;
-const RECHECK_MS = 60 * 60 * 1000;
-const RETRY_MS = 5 * 60 * 1000;
-const WAKE_RECHECK_MS = 10 * 60 * 1000;
-const ONLINE_RECHECK_MS = 60 * 1000;
+const RECHECK_MS = 15 * 60 * 1000;
+const RETRY_MS = 2 * 60 * 1000;
+const WAKE_RECHECK_MS = 2 * 60 * 1000;
+const ONLINE_RECHECK_MS = 30 * 1000;
 
 let started = false;
 let autoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -110,15 +110,18 @@ export const useUpdate = create<UpdateState>((set, get) => ({
     let failed = false;
     try {
       const info = await backend().checkUpdate();
-      set({ info, error: "", autoError: "", lastCheckedAt: Date.now() });
+      // 后端在开发版或缺少签名公钥时会返回 disabled，而不是抛错。
+      // 将其明确显示为后台检查不可用，避免“检查更新”按钮永久无反馈。
+      set({ info, error: "", autoError: info.disabled || "", lastCheckedAt: info.disabled ? 0 : Date.now() });
     } catch (e) {
       failed = true;
       const reason = String(e instanceof Error ? e.message : e);
-      if (manual) set({ error: reason });
+      // 连用户主动点击检查也保留诊断状态；不会丢失之前已成功验签的新版本。
+      if (manual) set({ error: reason, autoError: reason });
       else set({ autoError: reason });
     } finally {
       set({ checking: false });
-      // 失败后较快重试；成功后每小时检查一次。已有已验证更新可继续保持高亮。
+      // 失败后较快重试；成功后定期检查。已有已验证更新可继续保持高亮。
       if (started && useUIPrefs.getState().prefs.updateCheck === "auto" && !get().info?.disabled) {
         scheduleAutoCheck(failed ? RETRY_MS : RECHECK_MS);
       }
