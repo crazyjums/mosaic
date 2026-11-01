@@ -442,10 +442,10 @@ function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRem
       {error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
       <PluginHealthBlock plugin={p} health={diagnostics} onRefresh={onRefreshHealth} />
-      {!p.error && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
-      {!p.error && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
+      {!p.error && p.enabled && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
+      {!p.error && p.enabled && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
-      {!p.error && p.actions.length > 0 && <ActionsBlock plugin={p} />}
+      {!p.error && p.enabled && p.actions.length > 0 && <ActionsBlock plugin={p} />}
 
       <Block title={t("提供的内容")}>
         <div className="space-y-1 text-sm">
