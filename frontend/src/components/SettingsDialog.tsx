@@ -151,7 +151,7 @@ export default function SettingsDialog() {
           <div className="space-y-1.5 px-2 pb-3">
             <button
               className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selected === CHATGPT_ENTRY || selected === "chatgpt" ? "border-accent bg-accent-soft" : "border-line hover:bg-panel-2"}`}
-              onClick={() => setSelected(providers.some((p) => p.type === "chatgpt") ? "chatgpt" : CHATGPT_ENTRY)}
+              onClick={() => setSelected(CHATGPT_ENTRY)}
               title={t("通过 ChatGPT 账号登录并使用套餐额度")}
             >
               <span className="block font-medium">ChatGPT</span>
