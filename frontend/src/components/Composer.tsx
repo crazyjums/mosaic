@@ -252,8 +252,8 @@ export default function Composer() {
             </button>
             <span className="hidden text-[11px] text-muted xl:inline">{hint}</span>
             <div className="flex-1" />
-            <div className="hidden max-w-[230px] 2xl:flex"><ModelItem /></div>
-            <div className="hidden xl:flex"><PermissionModeSelect /></div>
+            <div className="hidden max-w-[210px] lg:flex"><ModelItem /></div>
+            <div className="hidden lg:flex"><PermissionModeSelect /></div>
             {running && (
               <button
                 className="flex items-center gap-1.5 rounded-ctl border border-danger/50 px-3 py-1.5 text-sm text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
