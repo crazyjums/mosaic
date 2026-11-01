@@ -33,16 +33,26 @@ def capture(url: str) -> None:
         # accessing a local workspace or sending requests to an external model.
         page.get_by_role("textbox", name="消息输入框").fill("帮我制作一个示例网页，并说明实现步骤")
         page.get_by_role("button", name="发送").click()
-        # Permit only interactions in the local fake/demo instance.
-        for _ in range(35):
-            for label in ["允许一次", "允许", "批准", "同意"]:
-                btn = page.get_by_role("button", name=label, exact=True)
-                if btn.count() and btn.first.is_visible():
-                    btn.first.click()
-                    break
-            if "完成" in page.locator("body").inner_text():
+        # The permission button includes a keyboard hint (accessible name
+        # "允许 Enter"); do not match exact "允许". Instead use the actual
+        # keyboard shortcut in the local fake/demo permission dialog.
+        for _ in range(90):
+            dlg = page.get_by_role("alertdialog", name="需要你的确认")
+            if dlg.count() and dlg.is_visible():
+                page.keyboard.press("Enter")
+            done = page.get_by_role("button", name="发送", exact=False)
+            if done.count() and done.first.is_visible() and not dlg.is_visible():
+                # Allow the final UI event to render before capturing.
+                page.wait_for_timeout(700)
                 break
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(250)
+        # Any pending permission must be resolved before navigating tabs.
+        for _ in range(5):
+            dlg = page.get_by_role("alertdialog", name="需要你的确认")
+            if not dlg.is_visible():
+                break
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(350)
         page.screenshot(path=str(OUT / "readme-chat.png"), animations="disabled")
 
         # Capture both context / artifacts to match the current fixed-width
