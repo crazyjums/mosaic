@@ -30,6 +30,9 @@ type Call struct {
 	Input json.RawMessage
 	// Workspace 是工作区根目录的绝对路径。文件类工具必须把路径限制在它之内。
 	Workspace string
+	// AllowOutsideWorkspace 仅在用户主动选择 auto 模式时由 Engine 赋值。
+	// 非 auto 模式仍按 workspace 限制所有文件工具；此标记不得由模型参数控制。
+	AllowOutsideWorkspace bool
 	// SessionID 是发起调用的会话，可能为空（测试、子 agent）。按会话保存状态的工具（todo）用它区分会话。
 	SessionID string
 }
