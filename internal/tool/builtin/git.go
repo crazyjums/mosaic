@@ -115,7 +115,7 @@ func (t *GitDiff) Execute(ctx context.Context, call tool.Call) tool.Result {
 	}
 	if in.Path != "" {
 		// 路径也要限制在工作区内；"--" 之后的参数 git 只当作路径，不会被解析成选项。
-		p, err := resolvePath(call.Workspace, in.Path)
+		p, err := resolveToolPath(call, in.Path)
 		if err != nil {
 			return tool.Errorf("%v", err)
 		}
