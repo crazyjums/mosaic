@@ -236,6 +236,13 @@ export interface KeychainStatus {
 }
 
 /** 对应 settings.ChatGPTStatus（内嵌 siwc.Status）。不含任何令牌 */
+export interface ClaudeCodeStatus {
+  installed: boolean;
+  logged_in: boolean;
+  auth_method?: string;
+  message: string;
+}
+
 export interface ChatGPTStatus {
   state: "logged_out" | "pending" | "logged_in";
   email?: string;
@@ -407,6 +414,7 @@ export interface Backend {
   /** 删除所有历史会话，返回删除的数量 */
   clearSessions(): Promise<number>;
   // ---- 设置：ChatGPT 账号登录 ----
+  getClaudeCodeStatus(): Promise<ClaudeCodeStatus>;
   getChatGPT(): Promise<ChatGPTStatus>;
   /** 在系统浏览器中打开授权页面，返回授权地址 */
   loginChatGPT(newAccount: boolean): Promise<string>;
