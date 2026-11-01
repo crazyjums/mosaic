@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
+import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginDiagnostics, type PluginPreview, type PluginStatus } from "../bridge";
 import { t } from "../i18n";
 import PluginInstallDialog from "./PluginInstallDialog";
 import { CATEGORIES, FeaturedCard, PluginCard, PluginIcon, matches } from "./PluginMarket";
@@ -17,6 +17,20 @@ const DOCS_URL = "https://github.com/crazyjums/mosaic/blob/master/docs/plugin-de
 
 export default function PluginSettings() {
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
+  const [health, setHealth] = useState<Record<string, PluginDiagnostics>>({});
+  const [healthError, setHealthError] = useState("");
+  const reloadHealth = useCallback(async () => {
+    try {
+      const list = await backend().listPluginDiagnostics();
+      setHealth(Object.fromEntries(list.map((h) => [h.id, h])));
+      setHealthError("");
+    } catch (e) { setHealthError(errMsg(e)); }
+  }, []);
+  useEffect(() => {
+    void reloadHealth();
+    const timer = setInterval(() => void reloadHealth(), 8000);
+    return () => clearInterval(timer);
+  }, [reloadHealth]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<PluginPreview | null>(null);
@@ -39,11 +53,12 @@ export default function PluginSettings() {
     try {
       const list = await backend().listPlugins();
       setPlugins(list);
+      void reloadHealth();
       setSelected((cur) => (cur && list.some((p) => p.id === cur) ? cur : (list[0]?.id ?? null)));
     } catch (e) {
       setError(errMsg(e));
     }
-  }, []);
+  }, [reloadHealth]);
   useEffect(() => void reload(), [reload]);
 
   // 市场：先显示本地已有的列表（内置的加上上次刷新的），再在后台刷新一次在线列表；离线时刷新失败不影响使用。
@@ -126,7 +141,10 @@ export default function PluginSettings() {
   };
   const openDocs = () => void backend().openExternalURL(DOCS_URL).catch((e) => setError(errMsg(e)));
 
-  const replace = (p: PluginInfo) => setPlugins((list) => (list ? list.map((x) => (x.id === p.id ? p : x)) : list));
+  const replace = (p: PluginInfo) => {
+    setPlugins((list) => (list ? list.map((x) => (x.id === p.id ? p : x)) : list));
+    void reloadHealth();
+  };
   const updateOf = (id: string) => market.find((c) => c.id === id && c.update_available);
   const toggleEnabled = async (p: PluginInfo) => {
     try {
@@ -141,6 +159,12 @@ export default function PluginSettings() {
   const rest = shown.filter((c) => !featured.includes(c));
   const usedCategories = CATEGORIES.filter(([k]) => market.some((c) => c.category === k));
   const installed = (plugins ?? []).filter((p) => !query.trim() || [p.id, p.name, p.description ?? ""].some((x) => x.toLowerCase().includes(query.trim().toLowerCase())));
+  const healthSummary = Object.values(health).reduce((acc, h) => {
+    if (h.state === "ready") acc.ready++;
+    else if (h.state === "needs_setup") acc.setup++;
+    else if (h.state === "failed" || h.state === "degraded") acc.failed++;
+    return acc;
+  }, { ready: 0, setup: 0, failed: 0 });
   const current = plugins?.find((p) => p.id === selected);
 
   const menuItem = (label: string, hint: string, run: () => void) => (
@@ -282,6 +306,10 @@ export default function PluginSettings() {
       ) : (
         <div className="flex min-h-0 flex-1">
           <aside className="flex w-64 shrink-0 flex-col border-r border-line">
+            <div className="border-b border-line px-3 py-2.5 text-[11px] text-muted">
+              {t("已就绪")} {healthSummary.ready} · {t("待配置")} {healthSummary.setup} · {t("异常")} {healthSummary.failed}
+              {healthError && <div className="mt-1 text-warn" title={healthError}>{t("插件状态读取失败")}</div>}
+            </div>
             <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2" aria-label={t("已安装的插件")}>
               {plugins === null && <li className="px-2 py-2 text-xs text-muted">{t("加载中…")}</li>}
               {plugins?.length === 0 && (
@@ -300,8 +328,8 @@ export default function PluginSettings() {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{p.name}</span>
                       <span className="flex items-center gap-1.5 truncate text-[11px] text-muted">
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.error ? "bg-danger" : p.warning ? "bg-warn" : p.enabled ? "bg-ok" : "bg-muted/50"}`} aria-hidden="true" />
-                        v{p.version} · {p.error ? t("不可用") : p.enabled ? t("已启用") : t("已停用")}
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${pluginStateDot(health[p.id]?.state)}`} aria-hidden="true" />
+                        v{p.version} · {health[p.id] ? t(PLUGIN_HEALTH_LABEL[health[p.id].state]) : t("检测中…")}
                         {updateOf(p.id) && <span className="rounded-full bg-accent-soft px-1.5 text-accent">{t("有更新")}</span>}
                       </span>
                     </span>
@@ -325,6 +353,8 @@ export default function PluginSettings() {
               <PluginDetail
                 key={current.id}
                 plugin={current}
+                diagnostics={health[current.id]}
+                onRefreshHealth={reloadHealth}
                 onChange={replace}
                 onRemoved={() => void reload()}
                 update={updateOf(current.id) ? { version: updateOf(current.id)!.version ?? "", busy: fetching === current.id, onUpdate: () => getFromMarket(updateOf(current.id)!) } : undefined}
