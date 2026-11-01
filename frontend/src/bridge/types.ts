@@ -386,6 +386,11 @@ export interface Backend {
   savePluginConfig(id: string, values: Record<string, string>): Promise<PluginInfo>;
   clearPluginSecret(id: string, key: string): Promise<PluginInfo>;
   getPluginStatus(id: string): Promise<PluginStatus>;
+  /** 综合依赖、技能/命令与 MCP 真实连接/工具注册状态（无需执行插件代码） */
+  getPluginDiagnostics(id: string): Promise<PluginDiagnostics>;
+  listPluginDiagnostics(): Promise<PluginDiagnostics[]>;
+  /** 仅重连该插件的 MCP 服务 */
+  reconnectPlugin(id: string): Promise<PluginDiagnostics>;
   runPluginAction(id: string, action: string): Promise<PluginActionResult>;
   /** 已启用插件提供的斜杠命令 */
   listCommands(): Promise<SlashCommandInfo[]>;
@@ -800,6 +805,27 @@ export interface PluginPreview {
   plugin: PluginInfo;
   /** 已经装了同 id 的插件：安装会覆盖更新 */
   existing?: PluginInfo;
+}
+
+export type PluginHealthState = "disabled" | "needs_setup" | "starting" | "ready" | "degraded" | "failed";
+export interface PluginServerHealth {
+  name: string;
+  state: "connecting" | "connected" | "failed" | "disabled";
+  tools: string[];
+  error?: string;
+}
+export interface PluginDiagnostics {
+  id: string;
+  enabled: boolean;
+  state: PluginHealthState;
+  message?: string;
+  code?: string;
+  skills: string[];
+  commands: string[];
+  servers: PluginServerHealth[];
+  tool_count: number;
+  missing: string[];
+  checked_at: string;
 }
 
 export interface PluginStatus {
