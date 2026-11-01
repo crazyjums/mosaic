@@ -339,8 +339,10 @@ export interface Backend {
   readWorkspaceImage(path: string): Promise<string>;
   /** 读取工作区内的文本文件（网页、SVG、Markdown、Mermaid、DOT 等）做预览；path 是相对工作区或工作区内的绝对路径 */
   readWorkspaceText(path: string): Promise<WorkspaceFile>;
-  /** 用系统默认程序打开工作区内的文件（.html 在默认浏览器里打开）；只允许安全的文档/网页/图片类型 */
+  /** 安全打开工作区产物：文档用默认程序；代码/脚本只用文本编辑器；二进制在文件管理器中定位 */
   openWorkspaceFile(path: string): Promise<void>;
+  /** 在文件管理器中定位工作区内的任意文件，不执行它 */
+  revealWorkspaceFile(path: string): Promise<void>;
   /** 在系统浏览器中打开 http / https 链接 */
   openExternalURL(url: string): Promise<void>;
   setModel(profile: string, model: string): Promise<Status>;
