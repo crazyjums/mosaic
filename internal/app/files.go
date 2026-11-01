@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"net/url"
 	"runtime"
 	"strings"
 )
@@ -46,21 +47,30 @@ type WorkspaceFile struct {
 
 // resolveWorkspaceFile 把相对工作区的路径（或工作区内的绝对路径）解析成真实路径，并确认它在工作区之内、是个文件。
 func resolveWorkspaceFile(workspace, p string) (string, os.FileInfo, error) {
-	if workspace == "" {
+	return resolveWorkspaceFileWithAccess(workspace, p, false)
+}
+
+// resolveWorkspaceFileWithAccess: auto 权限模式可访问工作区外的文档；普通模式仍严格限制在工作区。
+func resolveWorkspaceFileWithAccess(workspace, p string, allowOutside bool) (string, os.FileInfo, error) {
+	if workspace == "" && !filepath.IsAbs(p) {
 		return "", nil, fmt.Errorf("没有工作区")
 	}
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(workspace, filepath.FromSlash(p))
 	}
-	realWS, err := filepath.EvalSymlinks(workspace)
-	if err != nil {
-		return "", nil, err
+	var realWS string
+	if !allowOutside {
+		var err error
+		realWS, err = filepath.EvalSymlinks(workspace)
+		if err != nil {
+			return "", nil, err
+		}
 	}
 	real, err := filepath.EvalSymlinks(p)
 	if err != nil {
 		return "", nil, fmt.Errorf("找不到文件 %s", p)
 	}
-	if rel, err := filepath.Rel(realWS, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if rel, err := filepath.Rel(realWS, real); !allowOutside && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 		return "", nil, fmt.Errorf("只能访问工作区内的文件")
 	}
 	fi, err := os.Stat(real)
@@ -70,19 +80,45 @@ func resolveWorkspaceFile(workspace, p string) (string, os.FileInfo, error) {
 	return real, fi, nil
 }
 
-func cleanPath(p string) string { return strings.TrimPrefix(strings.TrimSpace(p), "file://") }
+// cleanPath 识别 file URL（含 URL 编码、Windows 盘符、UNC 共享目录），普通文件路径原样保留。
+func cleanPath(p string) string {
+	p = strings.TrimSpace(p)
+	if !strings.HasPrefix(strings.ToLower(p), "file://") {
+		return p
+	}
+	u, err := url.Parse(p)
+	if err != nil || u.Scheme != "file" {
+		return p
+	}
+	path, err := url.PathUnescape(u.EscapedPath())
+	if err != nil {
+		return p
+	}
+	if u.Host != "" && u.Host != "localhost" {
+		path = "//" + u.Host + path
+	}
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+	return filepath.FromSlash(path)
+}
 
 // ReadWorkspaceText 读取当前会话工作区内的文本文件（网页、SVG、Markdown、Mermaid、DOT 等），供产物面板预览。
 func (a *App) ReadWorkspaceText(path string) (WorkspaceFile, error) {
-	return readWorkspaceText(a.engine.Status().Workspace, path)
+	st := a.engine.Status()
+	return readWorkspaceTextWithAccess(st.Workspace, path, st.PermissionMode == "auto")
 }
 
 func readWorkspaceText(workspace, p string) (WorkspaceFile, error) {
+	return readWorkspaceTextWithAccess(workspace, p, false)
+}
+
+func readWorkspaceTextWithAccess(workspace, p string, allowOutside bool) (WorkspaceFile, error) {
 	p = cleanPath(p)
 	if !textTypes[strings.ToLower(filepath.Ext(p))] {
 		return WorkspaceFile{}, fmt.Errorf("不支持预览这种文件：%s", filepath.Base(p))
 	}
-	real, fi, err := resolveWorkspaceFile(workspace, p)
+	real, fi, err := resolveWorkspaceFileWithAccess(workspace, p, allowOutside)
 	if err != nil {
 		return WorkspaceFile{}, err
 	}
@@ -103,15 +139,20 @@ func readWorkspaceText(workspace, p string) (WorkspaceFile, error) {
 
 // OpenWorkspaceFile 用系统默认程序打开工作区内的文件：.html 会在默认浏览器里打开。
 func (a *App) OpenWorkspaceFile(path string) error {
-	return openWorkspaceFile(a.engine.Status().Workspace, path, openFile)
+	st := a.engine.Status()
+	return openWorkspaceFileWithAccess(st.Workspace, path, st.PermissionMode == "auto", openFile)
 }
 
 func openWorkspaceFile(workspace, p string, open func(string) error) error {
+	return openWorkspaceFileWithAccess(workspace, p, false, open)
+}
+
+func openWorkspaceFileWithAccess(workspace, p string, allowOutside bool, open func(string) error) error {
 	p = cleanPath(p)
 	if !canOpen(strings.ToLower(filepath.Ext(p))) {
 		return fmt.Errorf("出于安全考虑，不能用系统程序打开这种文件：%s", filepath.Base(p))
 	}
-	real, _, err := resolveWorkspaceFile(workspace, p)
+	real, _, err := resolveWorkspaceFileWithAccess(workspace, p, allowOutside)
 	if err != nil {
 		return err
 	}
