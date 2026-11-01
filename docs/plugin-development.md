@@ -12,6 +12,61 @@
 
 设计细节和安全模型见 [design/plugin-system.md](design/plugin-system.md)；这里只讲怎么写。
 
+## Agent Plugins / Codex 插件包的基础兼容（V2）
+
+Mosaic 从本版本起提供 **兼容导入适配层**，仍然复用同一套插件安装确认、技能、MCP 和 Agent 权限系统。支持两种插件清单入口：
+
+- 标准 Agent Plugins 根目录 `plugin.json`（需要 `$schema` 指向 `agent-plugins.org`，并提供符合 Mosaic ID 规则的 `name` 与合法的 `version`）。
+- Codex 旧格式 `.codex-plugin/plugin.json`（会映射到内部 Manifest；要求提供 `name`、`version`）。
+
+示例：
+
+```text
+sample-plugin/
+  plugin.json
+  skills/review/SKILL.md
+  mcp.json
+```
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sample-plugin",
+  "version": "1.0.0",
+  "description": "Review code and connect tools"
+}
+```
+
+```json
+{
+  "mcpServers": {
+    "tools": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["server.py"]
+    }
+  }
+}
+```
+
+当未在 Manifest 中显式列出技能时，自动发现 `skills/<目录>/SKILL.md`；`mcp.json` 支持 `stdio` / `http` / `streamable-http` 的基础配置。转换后的 MCP 风险默认是 `exec`，不能因为来自市场或 Codex 包就免除权限确认。
+
+这是**基础兼容**，不等同于完整支持 Codex 的所有插件规范：暂不支持自动执行 `hooks/`、`agents/`、subagents、自定义 UI 和插件声明的任意安装脚本；检测到 hooks/agents 目录会拒绝安装并说明原因。对于不能转换的 MCP 类型（例如 SSE）也会明确拒绝，绝不静默忽略。现有 Mosaic 专有 `plugin.json` 完全兼容。
+
+## 如何判断插件真正可用
+
+在 **设置 → 插件 → 已安装** 中查看真实运行状态：
+
+- **已就绪**：纯 Skill/命令插件成功注册；MCP 插件成功握手，并已经注册至少一项工具。
+- **待配置**：缺少 Python/CLI 或必填配置/密钥，先按提示补齐。
+- **连接中**：MCP 正在启动并发现工具，状态会自动刷新。
+- **部分可用 / 运行异常**：展开 MCP 服务详情查看真实工具数量及错误，点击“重连 MCP”。
+- **已停用**：技能、命令和 MCP 工具不可用，插件状态/操作/登录脚本也不再允许启动。
+
+插件详情会列出命令（可复制 `/命令` 到聊天框）、依赖、真实 MCP 服务及工具名。**“已安装/已启用”不代表“已连接/已就绪”**。授权第三方账号与 MCP 连接成功也是两件不同的事。
+
+此阶段暂未实现完整的 OAuth 自动授权、任意工具试用、插件级回滚以及 Hook 运行隔离；这些留在 [Plugin System V2 设计](design/plugin-system-v2.md) 的后续阶段。
+
 ## 5 分钟上手
 
 1. 打开 **设置 → 插件**，右上角“**＋ 添加 → 新建插件模板…**”，填一个 ID（小写字母、数字、`-`），选一个放它的目录。
