@@ -61,32 +61,13 @@ export default function SidePanel() {
               onClick={() => void update({ contextPanel: true, sideTab: x.id })}
               aria-pressed={tab === x.id}
             >{t(x.label)} {x.id === "artifacts" && count > 0 && <span className="rounded-full bg-panel/30 px-1.5 text-[10px]">{count}</span>}</button>)}
+            {tab === "artifacts" && first && <button className="rounded-lg px-2 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => setZoom(true)} aria-label={t("放大预览")}>⤢</button>}
             <button className="rounded-lg px-2 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => void update({ contextPanel: false })} aria-label={t("折叠面板")}>›</button>
           </nav>
           {tab === "context" ? <ContextPanel active /> : <ArtifactsPanel />}
         </section>
       )}
-      {/* 侧边标签栏：折叠时也在，点标签展开 */}
-      <nav className="flex h-full w-10 shrink-0 flex-col items-center gap-1 border-l border-line bg-side py-2" aria-label={t("右侧面板")}>
-        {TABS.map((x) => {
-          const active = open && tab === x.id;
-          return (
-            <button
-              key={x.id}
-              className={`flex w-8 shrink-0 flex-col items-center gap-1 rounded-ctl px-0.5 py-2 text-[11px] hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-accent ${active ? "bg-accent-soft text-fg" : "text-muted"}`}
-              onClick={() => toggleSideTab(x.id)}
-              aria-pressed={active}
-              aria-label={t(x.label)}
-              title={active ? `${t(x.label)} · ${t("折叠")}` : t(x.label)}
-            >
-              <span aria-hidden="true" className="shrink-0 text-base leading-none">{x.icon}</span>
-              
-              {x.id === "artifacts" && count > 0 && <span className="rounded-full bg-accent px-1 text-[9px] leading-3 text-on-accent">{count}</span>}
-            </button>
-          );
-        })}
-      </nav>
-      {zoom && first && <ZoomedArtifacts onClose={() => setZoom(false)} workspace={workspace} />}
+{zoom && first && <ZoomedArtifacts onClose={() => setZoom(false)} workspace={workspace} />}
     </div>
   );
 }
