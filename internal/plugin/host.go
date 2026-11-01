@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,9 @@ type HostOptions struct {
 	Catalog fs.FS
 	// RegistryURL 是在线插件列表的地址；为空时不联网刷新，只用内置列表。
 	RegistryURL string
+	// HTTPClient returns a client with the current user-configured proxy; nil falls back to Go HTTP defaults.
+	// It runs on each refresh so changing proxy settings does not require an app restart.
+	HTTPClient func() (*http.Client, error)
 	// LookPath 查找外部命令（检查 requires），默认 exec.LookPath；测试里可以替换。
 	LookPath func(string) (string, error)
 }
