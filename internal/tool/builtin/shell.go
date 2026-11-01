@@ -85,7 +85,7 @@ func (t *Shell) Execute(ctx context.Context, call tool.Call) tool.Result {
 	}
 	dir := call.Workspace
 	if in.Cwd != "" {
-		d, err := resolvePath(call.Workspace, in.Cwd)
+		d, err := resolveToolPath(call, in.Cwd)
 		if err != nil {
 			return tool.Errorf("cwd: %v", err)
 		}
