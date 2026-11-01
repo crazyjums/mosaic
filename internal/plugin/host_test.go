@@ -119,8 +119,10 @@ func TestInstallFromDirAndEnable(t *testing.T) {
 	}
 	c := cfgs[0]
 	pluginDir := filepath.Join(root, "plugins", "demo")
-	if c.Name != "demo" || c.Command != "node" || c.Args[0] != filepath.Join(pluginDir, "server.js") || c.Args[2] != "work" ||
-		c.Env["TOKEN"] != "s3cret" || c.Env["DATA"] != filepath.Join(root, "plugin-data", "demo") || c.Cwd != pluginDir || c.Risk != permission.RiskExec {
+	// Windows 的测试临时目录可能在同一次运行中同时出现长路径与 8.3 短路径。
+	// 比较实际文件/目录身份，不能用路径字符串判定配置错误。
+	if c.Name != "demo" || c.Command != "node" || !sameExistingPath(c.Args[0], filepath.Join(pluginDir, "server.js")) || c.Args[2] != "work" ||
+		c.Env["TOKEN"] != "s3cret" || !sameExistingPath(c.Env["DATA"], filepath.Join(root, "plugin-data", "demo")) || !sameExistingPath(c.Cwd, pluginDir) || c.Risk != permission.RiskExec {
 		t.Fatalf("展开后的配置: %+v", c)
 	}
 	if v, _ := mem.Get("plugin/demo/token"); v != "s3cret" {
@@ -724,4 +726,12 @@ func TestLoginManifestValidation(t *testing.T) {
 			t.Errorf("%s 应被拒绝", name)
 		}
 	}
+}
+
+// sameExistingPath 对比文件系统里的实际对象，兼容 Windows 8.3、大小写和软链接路径。
+func sameExistingPath(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) { return true }
+	ai, aerr := os.Stat(a)
+	bi, berr := os.Stat(b)
+	return aerr == nil && berr == nil && os.SameFile(ai, bi)
 }
