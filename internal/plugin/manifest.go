@@ -159,9 +159,18 @@ func (e *IncompatibleError) Error() string { return e.Reason }
 // ParseManifest 解析并校验 dir 下的 plugin.json。路径类字段必须落在 dir 之内（解析符号链接后检查）。
 // appVersion 用来检查 min_app_version，"dev"（开发版）或空表示不检查。
 func ParseManifest(dir, appVersion string) (*Manifest, error) {
-	f, err := os.Open(filepath.Join(dir, FileName))
+	// Compatible with native Mosaic packages and portable Agent Plugins:
+	// plugin.json at root or legacy Codex .codex-plugin/plugin.json.
+	path := filepath.Join(dir, FileName)
+	legacy := false
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		path = filepath.Join(dir, ".codex-plugin", FileName)
+		f, err = os.Open(path)
+		legacy = err == nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("找不到 %s", FileName)
+		return nil, fmt.Errorf("找不到 %s 或 .codex-plugin/%s", FileName, FileName)
 	}
 	defer f.Close()
 	buf := make([]byte, maxManifestBytes+1)
@@ -170,9 +179,16 @@ func ParseManifest(dir, appVersion string) (*Manifest, error) {
 		return nil, fmt.Errorf("%s 太大（超过 %d KB）", FileName, maxManifestBytes>>10)
 	}
 	var m Manifest
-	dec := json.NewDecoder(bytes.NewReader(buf[:n]))
-	if err := dec.Decode(&m); err != nil {
-		return nil, fmt.Errorf("%s 不是合法的 JSON：%v", FileName, err)
+	if err := json.Unmarshal(buf[:n], &m); err != nil {
+		return nil, fmt.Errorf("%s 不是合法的 JSON：%v", path, err)
+	}
+	var identity struct { Schema string `json:"$schema"` }
+	_ = json.Unmarshal(buf[:n], &identity)
+	portable := legacy || strings.Contains(identity.Schema, "agent-plugins.org")
+	if portable {
+		if err := importAgentComponents(dir, &m); err != nil {
+			return nil, err
+		}
 	}
 	if err := m.validate(dir); err != nil {
 		return nil, err
