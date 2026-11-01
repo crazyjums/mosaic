@@ -532,6 +532,7 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 		Publisher: endWatcher{Publisher: e.bus, r: r},
 		Compactor: e.compactorFor(p, pcfg, snap.Model),
 		Workspace: rt.Workspace,
+		AllowOutsideWorkspace: func() bool { return e.permissionMode() == string(permission.ModeAuto) },
 		SessionID: sid,
 		Disabled:  disabled,
 	})
