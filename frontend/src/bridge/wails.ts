@@ -79,6 +79,7 @@ interface GoApp {
   OpenDataDir(): Promise<void>;
   ClearSessions(): Promise<number>;
   GetClaudeCodeStatus(): Promise<ClaudeCodeStatus>;
+  LaunchClaudeCodeLogin(): Promise<void>;
   GetChatGPT(): Promise<ChatGPTStatus>;
   LoginChatGPT(newAccount: boolean): Promise<string>;
   CancelChatGPTLogin(): Promise<void>;
@@ -214,6 +215,7 @@ export function createWailsBackend(): Backend {
     openDataDir: () => app.OpenDataDir(),
     clearSessions: () => app.ClearSessions(),
     getClaudeCodeStatus: () => app.GetClaudeCodeStatus(),
+    launchClaudeCodeLogin: () => app.LaunchClaudeCodeLogin(),
     getChatGPT: () => app.GetChatGPT(),
     loginChatGPT: (newAccount) => app.LoginChatGPT(newAccount),
     cancelChatGPTLogin: () => app.CancelChatGPTLogin(),
