@@ -75,13 +75,50 @@ jobs:
           echo "准备发布 $tag（经全平台测试的提交 $GITHUB_SHA）"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  # 复用现有 Release 工作流的构建、签名和上传步骤，仍保留手动发布入口。
+  # 经 master 全平台测试及版本检查后，独立触发已有 release.yml。
+  # 发布运行将单独出现在 Actions → release，而非嵌入 ci 的 jobs。
   auto_release:
     needs: release_candidate
     if: needs.release_candidate.outputs.tag != ''
+    runs-on: ubuntu-latest
     permissions:
-      contents: write
-    uses: ./.github/workflows/release.yml
-    with:
-      tag: ${{ needs.release_candidate.outputs.tag }}
-    secrets: inherit
+      contents: read
+      actions: write
+    concurrency:
+      group: auto-release-dispatch-${{ needs.release_candidate.outputs.tag }}
+      cancel-in-progress: false
+    steps:
+      - name: 检查目标提交、Tag 和同版本发布运行
+        id: guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release_candidate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$GITHUB_REPOSITORY/branches/master" --jq '.commit.sha')"
+          if [ "$current" != "$GITHUB_SHA" ]; then
+            echo "master 已更新，跳过旧提交的发布"
+            exit 0
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --silent 2>/dev/null; then
+            echo "$TAG 已存在，跳过重复发布"
+            exit 0
+          fi
+          # 防止 CI 重跑时，同一版本的 Release 已在构建但尚未创建 Tag。
+          if gh run list --workflow release.yml --event workflow_dispatch \
+            --json displayTitle,status --limit 100 \
+            | jq -e --arg title "release $TAG" \
+              'any(.[]; .displayTitle == $title and .status != "completed")' >/dev/null; then
+            echo "$TAG 已有正在执行或排队的发布，跳过重复触发"
+            exit 0
+          fi
+          echo "dispatch=true" >> "$GITHUB_OUTPUT"
+      - name: 独立触发 release 工作流
+        if: steps.guard.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release_candidate.outputs.tag }}
+        run: |
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref master -f tag="$TAG"
+          echo "已请求独立发布：$TAG；请到 Actions → release 查看运行记录"
