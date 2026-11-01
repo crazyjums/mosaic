@@ -17,7 +17,7 @@ const FEATURES: [string, string][] = [
 ];
 
 export default function AboutSettings() {
-  const { version, info, checking, error, status, check, install } = useUpdate();
+  const { version, info, checking, error, autoError, lastCheckedAt, status, check, install } = useUpdate();
   const prefs = useUIPrefs((s) => s.prefs);
   const update = useUIPrefs((s) => s.update);
   const [history, setHistory] = useState<ReleaseNotes[]>([]);
@@ -100,6 +100,19 @@ export default function AboutSettings() {
         </div>
         {info?.disabled && <div className="mt-2"><Notice tone="info">{info.disabled}</Notice></div>}
         {error && <div className="mt-2 text-sm text-danger">{error}</div>}
+        {prefs.updateCheck === "auto" && autoError && (
+          <div className="mt-2 text-xs text-warn">
+            {t("自动检查更新失败：{reason}", { reason: autoError })}{" "}
+            <button className="underline hover:text-fg" onClick={() => void check(true)} disabled={checking}>
+              {t("重试")}
+            </button>
+          </div>
+        )}
+        {lastCheckedAt > 0 && (
+          <div className="mt-2 text-[11px] text-muted">
+            {t("上次成功检查：{time}", { time: new Date(lastCheckedAt).toLocaleString() })}
+          </div>
+        )}
         {info?.available && (
           <div className="mt-3 space-y-2">
             {info.releases && <ChangeSummary releases={info.releases} />}
@@ -125,7 +138,7 @@ export default function AboutSettings() {
         <div className="inline-flex gap-1 rounded-lg border border-line p-1" role="radiogroup">
           {(
             [
-              ["auto", t("启动时和每隔几小时自动检查")],
+              ["auto", t("启动时、每小时和重新打开窗口时检查")],
               ["off", t("只手动检查")],
             ] as const
           ).map(([v, label]) => (
