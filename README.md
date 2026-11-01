@@ -55,10 +55,10 @@ Mosaic 不只是给模型提供一个聊天框，而是尝试把 **Agent 循环�
 Mosaic 把插件视为 **Skill 工作流程 + 斜杠命令 + MCP 工具** 的可组合扩展：
 
 - 在 **设置 → 插件** 中浏览市场，或从文件夹、ZIP、HTTPS Git 地址安装；安装前预览并确认来源、可执行组件与风险。
-- 支持 Mosaic 自有 \`plugin.json\`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 \`plugin.json\`、\`skills/*/SKILL.md\`、\`mcp.json\`，兼容旧版 \`.codex-plugin/plugin.json\`。**不是**完整 Codex 插件运行环境。
+- 支持 Mosaic 自有 `plugin.json`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`，兼容旧版 `.codex-plugin/plugin.json`。**不是**完整 Codex 插件运行环境。
 - 已安装插件分别显示 **已就绪 / 待配置 / 连接中 / 部分可用 / 运行异常 / 已停用**；详情里可以查看真实 MCP 连接状态、已注册工具和缺少的命令，必要时单独重连。
 - 斜杠命令可以复制到会话中使用；纯 Skill 插件不需要 MCP 服务。启用插件不代表已经完成依赖安装、外部登录或工具连接。
-- **当前限制**：不支持自动运行插件的 Hooks / Subagents、自定义插件 UI 和通用 MCP 工具试用器；飞书插件属于早期集成示例，仍需要 \`lark-cli\` / Python 及真实环境验证。
+- **当前限制**：不支持自动运行插件的 Hooks / Subagents、自定义插件 UI 和通用 MCP 工具试用器；飞书插件属于早期集成示例，仍需要 `lark-cli` / Python 及真实环境验证。
 
 [插件开发指南](docs/plugin-development.md) · [Plugin System V2 设计](docs/design/plugin-system-v2.md)
 
@@ -69,7 +69,7 @@ Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权�
 - 日常建议使用 **默认** 模式：写文件、运行命令及需要额外授权的工具会按风险等级请求确认。
 - **全部放行** 是显式的高风险模式，可允许访问工作区外的本地文件；请仅在信任当前任务和运行环境时使用。权限规则中明确拒绝的操作仍可被阻止。
 - 插件可能启动你机器上的外部程序。**安装第三方插件不等于它运行在操作系统级沙箱中**；只从可信来源安装并检查执行内容。
-- 模型 API Key 默认可保存在本机 \`settings.json\`（限制文件权限）；可在 **设置 → 常规** 中选择迁移至系统钥匙串。不要把配置文件、令牌或真实会话截图公开上传。
+- 模型 API Key 默认可保存在本机 `settings.json`（限制文件权限）；可在 **设置 → 常规** 中选择迁移至系统钥匙串。不要把配置文件、令牌或真实会话截图公开上传。
 
 ### 自动更新
 
@@ -79,7 +79,7 @@ Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权�
 - 更新清单使用 Ed25519 验签，安装包再校验 SHA-256 与大小；更新检查和下载复用应用的全局代理设置。
 - **Windows / Linux**：支持在应用内下载安装并重启，若无写入权限会提示手动操作。
 - **macOS**：目前检测到更新后跳转 Release 下载页，**不支持应用内自动替换 .app**。
-- 本地 \`dev\` 构建不会自动更新为正式版。
+- 本地 `dev` 构建不会自动更新为正式版。
 
 ## 运行界面
 
@@ -103,11 +103,11 @@ Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权�
 
 | 系统 | Release 文件 | 安装或启动方式 |
 | --- | --- | --- |
-| **Windows x64** | \`mosaic-windows-amd64.exe\` | 下载后直接运行；首次启动可能遇到 Windows SmartScreen 提醒（当前未做 Windows 代码签名）。 |
-| **macOS（Intel / Apple Silicon）** | \`mosaic-darwin-universal.zip\` | 解压得到 \`mosaic.app\`，按需拖入“应用程序”；当前没有 Apple 公证，macOS 可能提示安全限制。 |
-| **Linux x64** | \`mosaic-linux-amd64\` | 下载后执行 \`chmod +x mosaic-linux-amd64 && ./mosaic-linux-amd64\`；需要 GTK3 / WebKit2GTK 图形库，构建基于 WebKit2GTK 4.1。 |
+| **Windows x64** | `mosaic-windows-amd64.exe` | 下载后直接运行；首次启动可能遇到 Windows SmartScreen 提醒（当前未做 Windows 代码签名）。 |
+| **macOS（Intel / Apple Silicon）** | `mosaic-darwin-universal.zip` | 解压得到 `mosaic.app`，按需拖入“应用程序”；当前没有 Apple 公证，macOS 可能提示安全限制。 |
+| **Linux x64** | `mosaic-linux-amd64` | 下载后执行 `chmod +x mosaic-linux-amd64 && ./mosaic-linux-amd64`；需要 GTK3 / WebKit2GTK 图形库，构建基于 WebKit2GTK 4.1。 |
 
-> **Linux 依赖示例（Ubuntu 24.04+）**：\`sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0\`。Linux 服务器没有图形桌面时，建议用 CLI 而不是运行 Wails 窗口。Windows、macOS 与 Linux Release 都由 [发布工作流](.github/workflows/release.yml) 构建；客户端升级校验签名不代表 Windows/macOS 可执行文件已经做操作系统代码签名。
+> **Linux 依赖示例（Ubuntu 24.04+）**：`sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0`。Linux 服务器没有图形桌面时，建议用 CLI 而不是运行 Wails 窗口。Windows、macOS 与 Linux Release 都由 [发布工作流](.github/workflows/release.yml) 构建；客户端升级校验签名不代表 Windows/macOS 可执行文件已经做操作系统代码签名。
 
 ## 快速开始
 
@@ -141,9 +141,9 @@ wails build                               # 构建到 build/bin/
 # Ubuntu 24.04+ 开发/构建可添加 -tags webkit2_41
 ~~~
 
-CLI 也可以使用真实模型：复制 \`config.example.toml\` 为 \`config.toml\`，设置所需厂商的 Key，运行 \`go run ./cmd/cli -provider anthropic\`；更多用法见 [使用手册](docs/usage.md)。
+CLI 也可以使用真实模型：复制 `config.example.toml` 为 `config.toml`，设置所需厂商的 Key，运行 `go run ./cmd/cli -provider anthropic`；更多用法见 [使用手册](docs/usage.md)。
 
-> 项目仓库已更名为 Mosaic，但 Go module 仍是 \`github.com/crazyjums/myllmapp\`，本机数据目录仍沿用 \`~/.myllmapp\`。这是为了兼容现有用户数据与源码依赖，不是另一个项目。
+> 项目仓库已更名为 Mosaic，但 Go module 仍是 `github.com/crazyjums/myllmapp`，本机数据目录仍沿用 `~/.myllmapp`。这是为了兼容现有用户数据与源码依赖，不是另一个项目。
 
 ## 使用时需要知道
 
