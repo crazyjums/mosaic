@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/crazyjums/myllmapp/internal/permission"
@@ -110,7 +111,7 @@ func (t *MoveFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
-	if src == filepath.Clean(call.Workspace) {
+	if src == filepath.Clean(call.Workspace) || filepath.Dir(src) == src {
 		return tool.Errorf("不能移动工作区根目录")
 	}
 	if _, err := os.Lstat(src); err != nil {
