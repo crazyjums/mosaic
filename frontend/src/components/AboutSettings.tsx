@@ -17,7 +17,7 @@ const FEATURES: [string, string][] = [
 ];
 
 export default function AboutSettings() {
-  const { version, info, checking, error, autoError, lastCheckedAt, status, check, install } = useUpdate();
+  const { version, info, checking, error, autoError, lastAttemptAt, lastCheckedAt, status, check, install } = useUpdate();
   const prefs = useUIPrefs((s) => s.prefs);
   const update = useUIPrefs((s) => s.update);
   const [history, setHistory] = useState<ReleaseNotes[]>([]);
@@ -106,6 +106,11 @@ export default function AboutSettings() {
             <button className="underline hover:text-fg" onClick={() => void check(true)} disabled={checking}>
               {t("重试")}
             </button>
+          </div>
+        )}
+        {lastAttemptAt > 0 && (
+          <div className="mt-2 text-[11px] text-muted">
+            {t("最近尝试检查：{time}", { time: new Date(lastAttemptAt).toLocaleString() })}
           </div>
         )}
         {lastCheckedAt > 0 && (
