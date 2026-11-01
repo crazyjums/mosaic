@@ -587,6 +587,16 @@ func (e *Engine) CancelSession(id string) {
 	}
 }
 
+// CancelAllSessions 取消所有正在执行的会话，包括后台会话。
+// 在关闭应用时调用，避免仅停止当前会话而遗漏后台 Agent。
+func (e *Engine) CancelAllSessions() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, r := range e.runs {
+		r.cancel()
+	}
+}
+
 // sessionForSendLocked 找到要发送的会话：当前会话、正在运行的会话（内存里的最新状态），或者从存储里读出来。
 // 读出来的会话不会变成当前会话。调用方需持有 e.mu（读存储是一次本地数据库查询，持锁很短，
 // 换来的是“不会有两个内存副本同时被发送”的简单保证）。
