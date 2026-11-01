@@ -67,7 +67,7 @@ export default function SidePanel() {
           {tab === "context" ? <ContextPanel active /> : <ArtifactsPanel />}
         </section>
       )}
-{zoom && first && <ZoomedArtifacts onClose={() => setZoom(false)} workspace={workspace} />}
+      {zoom && first && <ZoomedArtifacts onClose={() => setZoom(false)} workspace={workspace} />}
     </div>
   );
 }
