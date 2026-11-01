@@ -194,6 +194,7 @@ export const EN: Record<string, string> = {
   "自动检查更新失败，点击重试：{reason}": "Automatic update check failed — click to retry: {reason}",
   "自动检查更新失败：{reason}": "Automatic update check failed: {reason}",
   "上次成功检查：{time}": "Last successful check: {time}",
+  "最近尝试检查：{time}": "Last update check attempted: {time}",
   "已是最新版本": "You're up to date",
   "已跳过版本 {v}": "Skipped version {v}",
   "当前 {v}": "current {v}",
