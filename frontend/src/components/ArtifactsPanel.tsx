@@ -3,7 +3,7 @@ import { backend } from "../bridge";
 import { t } from "../i18n";
 import { absPath, collectArtifacts, OPENABLE_EXT, type Artifact, type ArtifactKind } from "../store/artifacts";
 import { useChat } from "../store/chatStore";
-import { FileLink, openFileWithToast } from "./FileLink";
+import { FileLink, openFileWithToast, revealFileWithToast } from "./FileLink";
 import Markdown, { copyText } from "./Markdown";
 import { GraphvizDiagram, MermaidDiagram, svgDataURL, WorkspaceImage, ZoomableImage } from "./MediaView";
 
@@ -98,10 +98,13 @@ export function ArtifactViewer({ artifact, big = false, onZoom }: { artifact: Ar
           {copied ? t("已复制") : t("复制路径")}
         </button>
         {canOpen && (
-          <button className="rounded-ctl bg-accent px-2 py-0.5 text-on-accent hover:bg-accent-hover" onClick={() => void openFileWithToast(artifact.path)} title={t("点击用默认程序打开（网页会在默认浏览器里打开）")}>
+          <button className="rounded-ctl bg-accent px-2 py-0.5 text-on-accent hover:bg-accent-hover" onClick={() => void openFileWithToast(artifact.path)} title={t("安全打开：脚本将使用文本编辑器，其他文件使用合适的程序")}>
             {artifact.kind === "html" ? t("在浏览器打开") : t("打开")}
           </button>
         )}
+        <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => void revealFileWithToast(artifact.path)} title={t("在文件管理器中定位文件")}>
+          {t("定位")}
+        </button>
         {onZoom && (
           <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={onZoom} title={t("放大预览")} aria-label={t("放大预览")}>
             ⤢
@@ -126,7 +129,7 @@ type TextState = { status: "loading" } | { status: "error"; error: string } | { 
 /** 读产物的文本内容。重新写入（callId 变了）时重新读。图片不走这里。 */
 function useArtifactText(a: Artifact): TextState {
   const [state, setState] = useState<TextState>({ status: "loading" });
-  const needsText = a.kind !== "image" && a.kind !== "other";
+  const needsText = a.kind !== "image";
   useEffect(() => {
     if (!needsText) return;
     let alive = true;
@@ -144,17 +147,15 @@ function useArtifactText(a: Artifact): TextState {
 
 function ArtifactBody({ artifact, text, showSource, scripts }: { artifact: Artifact; text: TextState; showSource: boolean; scripts: boolean }) {
   if (artifact.kind === "image") return <WorkspaceImage path={artifact.path} alt={artifact.path} />;
-  if (artifact.kind === "other") {
-    return (
-      <div className="text-xs text-muted">
-        {t("这种文件不能在这里预览。")} <FileLink path={artifact.path} />
-      </div>
-    );
-  }
   if (text.status === "loading") return <div className="text-xs text-muted">{t("加载中…")}</div>;
-  if (text.status === "error") return <div className="text-xs text-danger">{text.error}</div>;
+  if (text.status === "error") return (
+    <div className="space-y-1 text-xs text-muted">
+      <div>{t("无法作为文本预览：{reason}", { reason: text.error })}</div>
+      <FileLink path={artifact.path} label={t("安全打开或定位文件")} />
+    </div>
+  );
   const body = (() => {
-    if (showSource || artifact.kind === "text") {
+    if (showSource || artifact.kind === "text" || artifact.kind === "other") {
       return (
         <pre className="whitespace-pre-wrap break-words font-mono text-xs">
           <code>{text.text}</code>
