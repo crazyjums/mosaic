@@ -82,7 +82,7 @@ function Tip({ tip, children, className = "" }: { tip: string; children: ReactNo
   );
 }
 
-function ModelItem() {
+export function ModelItem() {
   const { provider, model, profiles, running, setModel } = useChat();
   const openSettings = useSettings((s) => s.show);
   const isDemo = profiles.find((p) => p.name === provider)?.type === "fake";
