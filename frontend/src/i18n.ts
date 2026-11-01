@@ -609,6 +609,12 @@ export const EN: Record<string, string> = {
   // ---- 设置：导航 ----
   "常规": "General",
   "模型厂商": "Providers",
+  "账号连接": "Account connections",
+  "账号登录 · 使用套餐额度": "Account sign-in · Use plan quota",
+  "通过 ChatGPT 账号登录并使用套餐额度": "Sign in with ChatGPT and use your plan quota",
+  "官方 CLI 登录 · 状态检查": "Official CLI sign-in · Status check",
+  "连接官方 Claude Code CLI（不直接接入订阅额度）": "Sign in to the official Claude Code CLI (does not add subscription access to Mosaic)",
+  "Claude Code 官方 CLI 登录": "Claude Code CLI sign-in",
   "系统提示词": "System prompt",
   "权限与工具": "Permissions & tools",
   "外观": "Appearance",
