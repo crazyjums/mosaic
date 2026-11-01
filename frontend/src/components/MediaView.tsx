@@ -12,12 +12,21 @@ export const IMAGE_EXT = /\.(svg|png|jpe?g|gif|webp|bmp|ico)$/i;
 
 /** 是否是工作区里的本地路径（而不是网址、锚点、data URL）。 */
 export function isLocalPath(href: string): boolean {
+  if (/^file:\/\//i.test(href)) return true;
   return !!href && !/^[a-z][a-z0-9+.-]*:/i.test(href.replace(/^[a-zA-Z]:[\\/]/, "/")) && !href.startsWith("#") && !href.startsWith("//");
 }
 
 /** Markdown 里的路径可能是 URL 编码的（中文文件名）或带 ./ 前缀。 */
 export function normalizeLocalPath(href: string): string {
-  let p = href.replace(/^file:\/\//, "");
+  let p = href;
+  if (/^file:\/\//i.test(href)) {
+    try {
+      const u = new URL(href);
+      p = (u.host && u.host !== "localhost" ? "//" + u.host : "") + decodeURIComponent(u.pathname);
+      if (/^\/[A-Za-z]:\//.test(p)) p = p.slice(1);
+      return p;
+    } catch { return href; }
+  }
   try {
     p = decodeURI(p);
   } catch {

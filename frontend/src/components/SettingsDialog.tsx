@@ -12,6 +12,7 @@ import GroupEditor from "./GroupEditor";
 import UsageSettings from "./UsageSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import ChatGPTAccount from "./ChatGPTAccount";
+import ClaudeCodeAccount from "./ClaudeCodeAccount";
 import DataSettings from "./DataSettings";
 import GeneralSettings from "./GeneralSettings";
 import MCPSettings from "./MCPSettings";
@@ -51,10 +52,13 @@ const NEW_GROUP = "\u0000newgroup";
 
 /** 左侧列表里"ChatGPT 账号登录"入口的选中值（还没登录时没有 chatgpt 配置档可选） */
 const CHATGPT_ENTRY = "\u0000chatgpt";
+const CLAUDE_CODE_ENTRY = "\u0000claudecode";
 
 export default function SettingsDialog() {
   const { open, tab, setTab, providers, error, hide } = useSettings();
   const running = useChat((s) => s.running);
+  // 隐藏内置且未配置 API Key 的两个占位条目；用户显式配置后仍可编辑。
+  const visibleProviders = providers.filter((p) => !(p.source === "config" && !p.available && (p.name === "openai" || p.name === "anthropic")));
   // selected：正在编辑的配置档名称；null 表示"新建"
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -62,8 +66,8 @@ export default function SettingsDialog() {
   // 而不是停在内置的、还没填密钥的 anthropic / openai 条目上。
   useEffect(() => {
     if (!open) return;
-    const first = providers.find((p) => p.type !== "fake" && p.available);
-    setSelected((cur) => (cur === CHATGPT_ENTRY || cur === NEW_GROUP || (cur && providers.some((p) => p.name === cur)) ? cur : first?.name ?? null));
+    const first = visibleProviders.find((p) => p.type !== "fake" && p.available);
+    setSelected((cur) => (cur === CHATGPT_ENTRY || cur === CLAUDE_CODE_ENTRY || cur === NEW_GROUP || (cur && visibleProviders.some((p) => p.name === cur)) ? cur : first?.name ?? null));
   }, [open, providers]);
 
   useEffect(() => {
@@ -144,7 +148,7 @@ export default function SettingsDialog() {
         <aside className="flex w-60 shrink-0 flex-col border-r border-line">
           <div className="px-4 pb-2 pt-4 text-sm font-semibold">模型厂商</div>
           <nav className="flex-1 overflow-y-auto px-2">
-            {providers.map((p) => (
+            {visibleProviders.map((p) => (
               <button
                 key={p.name}
                 className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm ${p.name === selected ? "bg-panel-2" : "hover:bg-panel-2/60"}`}
@@ -171,6 +175,12 @@ export default function SettingsDialog() {
               </button>
             )}
             <button
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${selected === CLAUDE_CODE_ENTRY ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
+              onClick={() => setSelected(CLAUDE_CODE_ENTRY)}
+            >
+              使用 Claude Code 订阅登录
+            </button>
+            <button
               className={`w-full rounded-lg border border-dashed px-3 py-2 text-sm ${selected === null ? "border-accent text-accent" : "border-line hover:bg-panel-2"}`}
               onClick={() => setSelected(null)}
             >
@@ -190,7 +200,7 @@ export default function SettingsDialog() {
         <section className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-12 shrink-0 items-center border-b border-line px-5">
             <span className="text-sm font-medium">
-              {selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : selected === NEW_GROUP ? t("添加模型组") : current?.type === "group" ? t("编辑模型组：{name}", { name: current.name }) : current ? `编辑：${current.name}` : "添加厂商"}
+              {selected === CHATGPT_ENTRY ? t("ChatGPT 账号") : selected === CLAUDE_CODE_ENTRY ? "Claude Code 登录" : selected === NEW_GROUP ? t("添加模型组") : current?.type === "group" ? t("编辑模型组：{name}", { name: current.name }) : current ? `编辑：${current.name}` : "添加厂商"}
             </span>
           </header>
           {error && <div className="border-b border-danger/40 bg-danger/10 px-5 py-2 text-sm text-danger">{error}</div>}
@@ -198,6 +208,8 @@ export default function SettingsDialog() {
             <div className="flex-1 overflow-y-auto px-5 py-4">
               <ChatGPTAccount onLoggedIn={() => setSelected("chatgpt")} />
             </div>
+          ) : selected === CLAUDE_CODE_ENTRY ? (
+            <div className="flex-1 overflow-y-auto px-5 py-4"><ClaudeCodeAccount /></div>
           ) : selected === NEW_GROUP || current?.type === "group" ? (
             <GroupEditor key={selected ?? "__g__"} name={selected === NEW_GROUP ? null : current?.name ?? null} providers={providers} onSaved={(n) => setSelected(n)} />
           ) : (

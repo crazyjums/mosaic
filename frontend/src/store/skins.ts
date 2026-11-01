@@ -44,8 +44,8 @@ export const BUILTIN_SKINS: Skin[] = [
   {
     id: "default",
     name: "默认",
-    dark: p("#0b1220", "#111b2e", "#18243a", "#263552", "#e8eef9", "#93a3bf", "#7c9cff", "#0b1330", "#a78bfa", "#4ade80", "#fbbf24", "#f87171"),
-    light: p("#f5f7fb", "#ffffff", "#f1f4f9", "#e2e8f0", "#172b49", "#62718a", "#416bea", "#ffffff", "#7c3aed", "#16a34a", "#b45309", "#dc2626"),
+    dark: p("#0e1014", "#171a21", "#20242e", "#262a34", "#e9ecf2", "#9ba2b1", "#8c9bff", "#0b0e1a", "#a78bfa", "#4ade80", "#fbbf24", "#f87171"),
+    light: p("#fafafb", "#ffffff", "#eef0f4", "#e1e4ea", "#14171f", "#5a6170", "#2f43d6", "#ffffff", "#7c5ce0", "#0e7c7c", "#b45309", "#c23b3b"),
   },
   {
     // 汝窑天青：雨过天青的冷灰青色，配合金色"正在执行"拼块。规范来自 Mosaic 皮肤参考稿的 Ruyao Celadon。

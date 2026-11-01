@@ -73,14 +73,19 @@ export default function ContextPanel({ active }: { active: boolean }) {
   const parts = data?.parts ?? [];
   const total = data?.total ?? 0;
   const largest = data?.largest ?? [];
+  const cells = total > 0 ? Array.from({ length: 60 }, (_, i) => {
+    const position = (i + 0.5) / 60 * total;
+    let count = 0;
+    return parts.find((part) => (count += part.tokens) >= position)?.kind;
+  }) : [];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 text-xs">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3 text-xs">
 
       {/* 真实值：厂商返回的最近一次请求的上下文大小 */}
       <div className="card px-3.5 py-3">
         <div className="text-[11px] text-muted">{t("最近一次请求（厂商返回）")}</div>
-        <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+        <div className="mt-2 font-mono text-[40px] font-medium leading-tight tabular-nums tracking-tight">
           {actual !== null ? fmtTokens(actual) : "—"}
           {ctxWindow ? <span className="text-xs font-normal text-muted"> / {fmtTokens(ctxWindow)}</span> : null}
         </div>
@@ -103,10 +108,8 @@ export default function ContextPanel({ active }: { active: boolean }) {
         <span className="tabular-nums text-muted">≈ {fmtTokens(total)}</span>
       </div>
       {total > 0 && (
-        <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-line" role="img" aria-label={t("组成（估算）")}>
-          {parts.map((p) => (
-            <div key={p.kind} style={{ width: `${(p.tokens / total) * 100}%`, background: KINDS[p.kind].color }} title={`${t(KINDS[p.kind].label)} ${fmtTokens(p.tokens)}`} />
-          ))}
+        <div className="mosaic-context-tiles mt-3" role="img" aria-label={t("组成（估算）")}>
+          {cells.map((kind, i) => <span key={i} style={{ background: kind ? KINDS[kind].color : "var(--border)" }} />)}
         </div>
       )}
       <ul className="mt-2 space-y-1">

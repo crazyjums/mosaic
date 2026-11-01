@@ -54,43 +54,19 @@ export default function SidePanel() {
   return (
     <div className="hidden h-full shrink-0 lg:flex">
       {open && (
-        <section className={`flex h-full min-h-0 flex-col border-l border-line bg-side ${tab === "artifacts" ? "w-[26rem]" : "w-72"}`} aria-label={t(TABS.find((x) => x.id === tab)!.label)}>
-          <div className="flex h-10 shrink-0 items-center border-b border-line px-3">
-            <span className="text-sm font-semibold">{tab === "context" ? t("上下文明细") : t("产物")}</span>
-            {tab === "artifacts" && count > 0 && <span className="ml-1.5 rounded-full bg-panel-2 px-1.5 text-[10px] text-muted">{count}</span>}
-            <div className="flex-1" />
-            {tab === "artifacts" && first && (
-              <button className="mr-1 rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => setZoom(true)} title={t("放大预览")} aria-label={t("放大预览")}>
-                ⤢
-              </button>
-            )}
-            <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => void update({ contextPanel: false })} title={t("折叠（点右侧的标签可以重新展开）")} aria-label={t("折叠面板")}>
-              ›
-            </button>
-          </div>
+        <section className={`flex h-full min-h-0 flex-col border-l border-line bg-side ${tab === "artifacts" ? "w-[26rem]" : "w-[332px]"}`} aria-label={t(TABS.find((x) => x.id === tab)!.label)}>
+          <nav className="m-3 flex shrink-0 gap-1 rounded-xl border border-line bg-panel p-1" aria-label={t("右侧面板")}>
+            {TABS.map((x) => <button key={x.id}
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold ${tab === x.id ? "bg-accent text-on-accent" : "text-muted hover:bg-panel-2"}`}
+              onClick={() => void update({ contextPanel: true, sideTab: x.id })}
+              aria-pressed={tab === x.id}
+            >{t(x.label)} {x.id === "artifacts" && count > 0 && <span className="rounded-full bg-panel/30 px-1.5 text-[10px]">{count}</span>}</button>)}
+            {tab === "artifacts" && first && <button className="rounded-lg px-2 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => setZoom(true)} aria-label={t("放大预览")}>⤢</button>}
+            <button className="rounded-lg px-2 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => void update({ contextPanel: false })} aria-label={t("折叠面板")}>›</button>
+          </nav>
           {tab === "context" ? <ContextPanel active /> : <ArtifactsPanel />}
         </section>
       )}
-      {/* 侧边标签栏：折叠时也在，点标签展开 */}
-      <nav className="flex h-full w-10 shrink-0 flex-col items-center gap-1 border-l border-line bg-side py-2" aria-label={t("右侧面板")}>
-        {TABS.map((x) => {
-          const active = open && tab === x.id;
-          return (
-            <button
-              key={x.id}
-              className={`flex w-8 shrink-0 flex-col items-center gap-1 rounded-ctl px-0.5 py-2 text-[11px] hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-accent ${active ? "bg-accent-soft text-fg" : "text-muted"}`}
-              onClick={() => toggleSideTab(x.id)}
-              aria-pressed={active}
-              aria-label={t(x.label)}
-              title={active ? `${t(x.label)} · ${t("折叠")}` : t(x.label)}
-            >
-              <span aria-hidden="true" className="shrink-0 text-base leading-none">{x.icon}</span>
-              
-              {x.id === "artifacts" && count > 0 && <span className="rounded-full bg-accent px-1 text-[9px] leading-3 text-on-accent">{count}</span>}
-            </button>
-          );
-        })}
-      </nav>
       {zoom && first && <ZoomedArtifacts onClose={() => setZoom(false)} workspace={workspace} />}
     </div>
   );

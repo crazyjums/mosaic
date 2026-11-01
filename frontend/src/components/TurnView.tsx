@@ -40,6 +40,8 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
   const thoughts = items.filter((it) => it.blocks.some((b) => b.type === "thinking")).length;
   const hasProcess = allTools.length > 0 || thoughts > 0 || items.length > 1 || (answer.length === 0 && last.blocks.length > 0);
   const waiting = allTools.filter((x) => x.status === "awaiting_permission");
+  const finished = allTools.filter((x) => x.status === "done").length;
+  const settled = finished + failed;
 
   const handoffs = items.reduce((n, it) => n + (it.route?.handedOn.length ?? 0), 0);
   let stats: string;
@@ -48,7 +50,6 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
   else stats = t("{n} 步", { n: items.length });
   if (handoffs > 0) stats += ` · ${t("转交 {n} 次", { n: handoffs })}`;
   if (last.turnMs) stats += ` · ${fmtDuration(last.turnMs)}`;
-  const summary = `${title} · ${stats}`;
 
   return (
     <div className="space-y-3">
@@ -76,14 +77,27 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
           </section>
         ) : (
           <button
-            className="flex w-full items-center gap-2.5 rounded-ctl border border-line bg-panel px-3 py-2 text-left text-xs text-muted shadow-card hover:border-accent/40 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="mosaic-process-summary flex w-full flex-col gap-2.5 rounded-card border border-line bg-panel px-4 py-3 text-left text-xs shadow-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             onClick={() => setUserOpen(true)}
             title={t("展开查看每一步的思考和工具调用")}
+            aria-expanded={false}
           >
-            <MosaicMark size="xs" />
-            <span className="min-w-0 flex-1 truncate">{summary}</span>
-            {failed > 0 && <span className="rounded-full bg-danger/10 px-2 py-0.5 font-medium text-danger">{t("{n} 次失败", { n: failed })}</span>}
-            <span className="shrink-0 text-gold-ink">{t("展开")} ▾</span>
+            <span className="flex w-full items-center gap-2.5">
+              <MosaicMark size="xs" />
+              <span className="shrink-0 font-semibold text-fg">{title}</span>
+              <span className="min-w-0 flex-1 truncate text-muted">{stats}</span>
+              {failed > 0 && <span className="rounded-full bg-danger/10 px-2 py-0.5 font-medium text-danger">{t("{n} 次失败", { n: failed })}</span>}
+              <span className="shrink-0 rounded-ctl border border-line bg-panel-2 px-2.5 py-1 font-medium text-fg">{t("展开")} ▾</span>
+            </span>
+            {settled > 0 && (
+              <span className="flex w-full flex-col gap-1.5">
+                <span className="flex h-1.5 w-full gap-1 overflow-hidden rounded-full bg-panel-2">
+                  <span className="rounded-full bg-accent/65" style={{ width: `${(finished / settled) * 100}%` }} />
+                  {failed > 0 && <span className="rounded-full bg-danger" style={{ width: `${(failed / settled) * 100}%` }} />}
+                </span>
+                <span className="font-mono text-[11px] text-muted">成功 {finished} {failed > 0 ? `· 失败 ${failed}` : ""}</span>
+              </span>
+            )}
           </button>
         ))}
       {/* 只有最终回答、没有过程可折叠时，转交的标记也要让人看得到 */}

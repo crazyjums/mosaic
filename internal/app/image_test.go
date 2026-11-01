@@ -40,3 +40,13 @@ func TestIsWebURL(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoModeReadsExternalImages(t *testing.T) {
+	ws, outside := t.TempDir(), t.TempDir()
+	path := filepath.Join(outside, "diagram.svg")
+	if err := os.WriteFile(path, []byte("<svg/>"), 0o644); err != nil { t.Fatal(err) }
+	if _, err := readWorkspaceImage(ws, path); err == nil { t.Fatal("default must reject outside image") }
+	if got, err := readWorkspaceImageWithAccess(ws, path, true); err != nil || !strings.HasPrefix(got, "data:image/svg+xml;base64,") {
+		t.Fatalf("auto read image: %q %v", got, err)
+	}
+}

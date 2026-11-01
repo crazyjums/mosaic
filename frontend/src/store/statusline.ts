@@ -17,7 +17,7 @@ export interface ItemMeta {
 
 /** 所有状态栏项，顺序即默认顺序。 */
 export const ITEMS: Record<ItemId, ItemMeta> = {
-  model: { label: "厂商 / 模型", description: "当前使用的厂商和模型，可以直接点击切换", defaultEnabled: true },
+  model: { label: "厂商 / 模型", description: "当前使用的厂商和模型，可以直接点击切换", defaultEnabled: false },
   tokens: { label: "Token 用量", description: "本会话累计的输入 / 输出 token", defaultEnabled: true },
   context: { label: "上下文占用", description: "最近一次请求的上下文大小；配置了模型的上下文窗口时显示占比和进度条", defaultEnabled: true },
   cost: { label: "预估花费", description: "按模型单价估算的本会话花费；没配置单价的模型不显示", defaultEnabled: true },
@@ -30,7 +30,7 @@ export const ITEMS: Record<ItemId, ItemMeta> = {
   ttft: { label: "首字延迟", description: "最近一次模型调用从发出请求到收到第一个字（含思考）的时间；悬停查看本会话平均值", defaultEnabled: true },
   workspace: { label: "工作区", description: "当前会话的工作区（工具读写文件的根目录），点击可以为这个会话切换", defaultEnabled: true },
   git: { label: "Git 分支", description: "工作区是 git 仓库时显示分支，以及未提交改动的文件数", defaultEnabled: true },
-  permission: { label: "权限模式", description: "只读 / 默认 / 自动接受编辑 / 全部放行，可直接切换", defaultEnabled: true },
+  permission: { label: "权限模式", description: "只读 / 默认 / 自动接受编辑 / 全部放行，可直接切换", defaultEnabled: false },
   running: { label: "运行状态", description: "空闲 / 运行中 / 等待确认", defaultEnabled: true },
   script: { label: "脚本输出", description: "自定义命令输出的第一行（在下方“自定义脚本”中设置；没有设置时不显示）", defaultEnabled: true },
 };

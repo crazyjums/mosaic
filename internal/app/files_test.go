@@ -79,3 +79,28 @@ func TestOpenWorkspaceFile(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoModeAllowsExternalDocumentsButNotExecutables(t *testing.T) {
+	ws := newWS(t)
+	outside := t.TempDir()
+	path := filepath.Join(outside, "report.html")
+	if err := os.WriteFile(path, []byte("<p>outside</p>"), 0o644); err != nil { t.Fatal(err) }
+	if _, err := readWorkspaceText(ws, path); err == nil { t.Fatal("default mode must reject outside paths") }
+	f, err := readWorkspaceTextWithAccess(ws, path, true)
+	if err != nil || f.Text != "<p>outside</p>" { t.Fatalf("auto read: %+v %v", f, err) }
+	var opened string
+	if err := openWorkspaceFileWithAccess(ws, path, true, func(p string) error { opened = p; return nil }); err != nil || opened != path {
+		t.Fatalf("auto open: %q %v", opened, err)
+	}
+	exe := filepath.Join(outside, "run.bat")
+	if err := os.WriteFile(exe, []byte("echo hi"), 0o644); err != nil { t.Fatal(err) }
+	if err := openWorkspaceFileWithAccess(ws, exe, true, func(string) error { t.Fatal("never execute"); return nil }); err == nil {
+		t.Fatal("auto mode must not auto-execute programs from a link")
+	}
+}
+
+func TestFileURLPath(t *testing.T) {
+	if got := cleanPath("file:///tmp/a%20b.html"); got != filepath.FromSlash("/tmp/a b.html") {
+		t.Fatalf("decoded file url: %q", got)
+	}
+}

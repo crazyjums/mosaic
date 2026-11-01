@@ -76,7 +76,14 @@ const isAbs = (p: string) => p.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(p) || p
  * 只是显示用的拼接，不做符号链接解析；真正打开时由后端解析并校验。
  */
 export function absPath(workspace: string, p: string): string {
-  const clean = p.replace(/^file:\/\//, "").replace(/^\.\//, "");
+  let clean = p.replace(/^\.\//, "");
+  if (/^file:\/\//i.test(clean)) {
+    try {
+      const u = new URL(clean);
+      clean = (u.host && u.host !== "localhost" ? "//" + u.host : "") + decodeURIComponent(u.pathname);
+      if (/^\/[a-zA-Z]:\//.test(clean)) clean = clean.slice(1);
+    } catch { return p; }
+  }
   if (isAbs(clean) || !workspace) return clean;
   const win = workspace.includes("\\") && !workspace.includes("/");
   const sep = win ? "\\" : "/";

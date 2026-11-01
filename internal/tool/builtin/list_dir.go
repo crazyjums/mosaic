@@ -63,7 +63,7 @@ func (t *ListDir) Execute(ctx context.Context, call tool.Call) tool.Result {
 	if err := decode(call.Input, &in); err != nil {
 		return tool.Errorf("%v", err)
 	}
-	path, err := resolvePath(call.Workspace, in.Path)
+	path, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}

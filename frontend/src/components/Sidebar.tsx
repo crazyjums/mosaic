@@ -43,6 +43,7 @@ function ActivityMark({ act }: { act: { running: boolean; waiting: number; unrea
 
 export default function Sidebar() {
   const { sessions, sessionId, newSession, loadSession, deleteSession, renameSession, running, backendKind } = useChat();
+  const usage = useChat((s) => s.sessionUsage);
   const queue = useChat((s) => s.queue);
   const activity = useChat((s) => s.activity);
   const waitingHere = useChat((s) => s.permissions.length);
@@ -92,7 +93,7 @@ export default function Sidebar() {
 
   return (
     <aside className="flex w-[var(--sidebar-width)] shrink-0 flex-col border-r border-line bg-side">
-      <div className="flex h-12 items-center gap-2.5 px-4">
+      <div className="flex h-14 items-center gap-2.5 px-4">
         <MosaicMark size="sm" state={phase} decorative={false} />
         <span className="text-[17px] font-semibold tracking-tight">Mosaic</span>
         {backendKind === "demo" && <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[10px] text-warn">{t("演示模式")}</span>}
@@ -101,14 +102,14 @@ export default function Sidebar() {
           «
         </button>
       </div>
-      <div className="space-y-2 px-3">
+      <div className="space-y-2.5 px-3 pt-1">
         <button
-          className="w-full rounded-ctl bg-brand px-3 py-2 text-sm font-medium text-on-brand shadow-card hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+          className="w-full rounded-xl bg-brand px-3 py-3 text-sm font-semibold text-on-brand shadow-card hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
           onClick={() => void newSession()}
         >
           {t("＋ 新会话")}
         </button>
-        <label className="flex items-center gap-2 rounded-ctl border border-line bg-panel px-2.5 py-1.5 text-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--focus-ring)]">
+        <label className="flex h-10 items-center gap-2 rounded-ctl border border-line bg-panel px-2.5 text-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--focus-ring)]">
           <span className="text-muted" aria-hidden="true">⌕</span>
           <input
             ref={searchRef}
@@ -141,7 +142,7 @@ export default function Sidebar() {
               return (
                 <div
                   key={s.id}
-                  className={`group relative flex cursor-pointer items-center rounded-ctl px-2.5 py-1.5 text-sm ${active ? "bg-accent-soft" : "hover:bg-panel-2/70"}`}
+                  className={`group relative flex min-h-[52px] cursor-pointer items-center rounded-ctl border px-2.5 py-2 text-sm ${active ? "border-line bg-panel shadow-card" : "border-transparent hover:bg-panel-2/70"}`}
                   onClick={() => editing !== s.id && s.id !== sessionId && void loadSession(s.id)}
                   aria-current={active ? "true" : undefined}
                 >
@@ -197,7 +198,11 @@ export default function Sidebar() {
           </section>
         ))}
       </nav>
-      <div className="border-t border-line p-2">
+      <div className="border-t border-line px-3 pt-3 pb-2">
+        <div className="mb-2 rounded-xl border border-line bg-panel px-3 py-2.5 text-xs">
+          <div className="mb-1 font-semibold text-muted">本会话用量</div>
+          <div className="flex justify-between gap-2 font-mono text-[11px]"><span>输入 {usage.input_tokens.toLocaleString()}</span><span>输出 {usage.output_tokens.toLocaleString()}</span></div>
+        </div>
         <button
           className="flex w-full items-center gap-2 rounded-ctl px-2 py-2 text-left text-sm text-muted hover:bg-panel-2 hover:text-fg disabled:opacity-50"
           onClick={() => void openSettings()}

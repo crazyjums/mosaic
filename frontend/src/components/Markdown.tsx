@@ -85,7 +85,7 @@ function makeComponents(streaming: boolean): Components {
 
 // 默认的 URL 过滤会去掉 C:\... 这样的 Windows 绝对路径（看起来像一个未知协议），这里放行它们；
 // 其余仍按默认规则（javascript: 之类会被清掉）。
-const urlTransform = (url: string) => (/^[a-zA-Z]:[\\/]/.test(url) ? url : defaultUrlTransform(url));
+const urlTransform = (url: string) => (/^[a-zA-Z]:[\\/]/.test(url) || /^file:\/\//i.test(url) ? url : defaultUrlTransform(url));
 
 // 复制到剪贴板：优先用异步剪贴板接口；某些 WebView 里不可用时退回到选中文本再 execCommand。
 export async function copyText(text: string): Promise<boolean> {

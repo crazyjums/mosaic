@@ -31,7 +31,7 @@ export default function StatusBar() {
     .map((it) => ({ id: it.id, node: <Item id={it.id} /> }));
 
   return (
-    <div className="mt-2 flex w-full shrink-0 flex-wrap items-center gap-y-1 border-t border-line bg-side px-6 py-1.5 text-xs text-muted">
+    <div className="mosaic-statusline flex w-full shrink-0 items-center gap-x-4 overflow-x-auto border-t border-line bg-side px-4 py-1 text-[11px] text-muted">
       {rendered.map(({ id, node }) => (
         // statusline-item 的分隔线和"空项隐藏"写在 index.css 里
         <span key={id} className="statusline-item">
@@ -82,7 +82,7 @@ function Tip({ tip, children, className = "" }: { tip: string; children: ReactNo
   );
 }
 
-function ModelItem() {
+export function ModelItem() {
   const { provider, model, profiles, running, setModel } = useChat();
   const openSettings = useSettings((s) => s.show);
   const isDemo = profiles.find((p) => p.name === provider)?.type === "fake";

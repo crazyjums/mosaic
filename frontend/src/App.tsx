@@ -38,10 +38,11 @@ export default function App() {
   }, [init, loadPrefs]);
 
   return (
-    <div key={lang} className="flex h-full bg-bg text-fg">
+    <div key={lang} className="flex h-full flex-col bg-bg text-fg">
+      <div className="flex min-h-0 flex-1">
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center border-b border-line px-5 text-sm">
+        <header className="flex h-14 shrink-0 items-center border-b border-line px-7 text-sm">
           <HeaderTitle title={title} />
           <div className="flex-1" />
           <UpdateButton />
@@ -82,11 +83,13 @@ export default function App() {
               <ActivityPanel />
             </div>
             <Composer />
-            <StatusBar />
+
           </div>
           <SidePanel />
         </div>
       </main>
+      </div>
+      <StatusBar />
       <PermissionDialog />
       <UpdateDialog />
       <GitWindow />

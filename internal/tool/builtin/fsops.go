@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/crazyjums/myllmapp/internal/permission"
@@ -54,7 +55,7 @@ func (t *Mkdir) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Path == "" {
 		return tool.Errorf("path is required")
 	}
-	path, err := resolvePath(call.Workspace, in.Path)
+	path, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
@@ -102,15 +103,15 @@ func (t *MoveFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Source == "" || in.Destination == "" {
 		return tool.Errorf("source 和 destination 不能为空")
 	}
-	src, err := resolvePath(call.Workspace, in.Source)
+	src, err := resolveToolPath(call, in.Source)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
-	dst, err := resolvePath(call.Workspace, in.Destination)
+	dst, err := resolveToolPath(call, in.Destination)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
-	if src == filepath.Clean(call.Workspace) {
+	if src == filepath.Clean(call.Workspace) || filepath.Dir(src) == src {
 		return tool.Errorf("不能移动工作区根目录")
 	}
 	if _, err := os.Lstat(src); err != nil {
@@ -158,19 +159,26 @@ func (t *DeleteFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Path == "" {
 		return tool.Errorf("path is required")
 	}
-	src, err := resolvePath(call.Workspace, in.Path)
+	src, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
 	trash := filepath.Join(call.Workspace, filepath.FromSlash(TrashDir))
-	if src == filepath.Clean(call.Workspace) || within(filepath.Join(call.Workspace, ".myllmapp"), src) {
+	if src == filepath.Clean(call.Workspace) || filepath.Dir(src) == src || within(filepath.Join(call.Workspace, ".myllmapp"), src) {
 		return tool.Errorf("不能删除工作区根目录或 .myllmapp 目录")
 	}
 	if _, err := os.Lstat(src); err != nil {
 		return tool.Errorf("未找到 %s，建议先用 list_dir 确认路径", in.Path)
 	}
 	// 回收站里按时间戳分目录，保留原来的相对路径：同名文件删两次也不会互相覆盖。
-	dst := filepath.Join(trash, time.Now().Format("20060102-150405.000"), relPath(call.Workspace, src))
+	rel := relPath(call.Workspace, src)
+	if !within(call.Workspace, src) {
+		// 工作区外文件也移入当前工作区回收站，防止 ../ 逃逸或覆盖其他文件。
+		external := strings.TrimLeft(filepath.ToSlash(src), "/")
+		external = strings.ReplaceAll(external, ":", "_")
+		rel = filepath.Join("_external", filepath.FromSlash(external))
+	}
+	dst := filepath.Join(trash, time.Now().Format("20060102-150405.000"), rel)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return tool.Errorf("mkdir failed: %v", err)
 	}
