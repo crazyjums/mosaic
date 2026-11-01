@@ -93,6 +93,7 @@ export function createDemoPlugins() {
   return {
     startPluginLogin: async (id: string): Promise<PluginLoginState> => {
       const p = find(id);
+      if (!p.enabled) throw new Error("插件已停用，不能登录");
       if (!p.login) throw new Error("这个插件没有登录流程"); // 演示后端不检查依赖，方便预览登录界面
       const cur = logins.get(id);
       if (cur?.state.state === "running") return cur.state;
@@ -190,6 +191,7 @@ export function createDemoPlugins() {
     },
     runPluginAction: async (id: string, action: string): Promise<PluginActionResult> => {
       const p = find(id);
+      if (!p.enabled) throw new Error("插件已停用，不能运行操作");
       if (!p.actions.some((a) => a.id === action)) throw new Error(`插件没有操作 "${action}"`);
       const miss = p.requires.filter((r) => !r.found).map((r) => r.command);
       if (miss.length) return { output: "", exit_code: 0, error: `缺少依赖：${miss.join("、")}` };
