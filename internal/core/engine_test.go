@@ -836,3 +836,32 @@ func TestSensitiveToolRespectsDeny(t *testing.T) {
 		t.Fatalf("拒绝后不应执行: %d", st.ran)
 	}
 }
+
+// 取消多工具调用时，尚未执行的工具也必须有终态事件，前端不能永久显示 queued。
+func TestCancelledRemainingToolsEmitResults(t *testing.T) {
+	script := fake.Script{Steps: []fake.Step{{ToolCalls: []fake.ToolSpec{
+		{Name: "list_dir", Input: json.RawMessage(`{"path":"."}`)},
+		{Name: "list_dir", Input: json.RawMessage(`{"path":"."}`)},
+	}}}}
+	h := newHarness(t, script, 0, nil)
+	seen := 0
+	h.engine.Bus().Subscribe(func(ev event.Event) {
+		if _, ok := ev.Data.(event.ToolResult); ok {
+			seen++
+			if seen == 1 {
+				h.engine.Cancel()
+			}
+		}
+	})
+	res, err := h.engine.Send(context.Background(), "列目录")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Reason != event.TurnCancelled {
+		t.Fatalf("应取消本轮: %+v", res)
+	}
+	results := payloads[event.ToolResult](h.rec)
+	if len(results) != 2 || !results[1].IsError || !strings.Contains(results[1].Output, "cancelled") {
+		t.Fatalf("每个工具都应有结果，未执行的工具应标记取消: %+v", results)
+	}
+}
