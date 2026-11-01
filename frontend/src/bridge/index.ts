@@ -5,7 +5,7 @@ import type { Backend } from "./types";
 import { createWailsBackend, isWails } from "./wails";
 
 export type {
-  Backend, ChatGPTStatus, ChatGPTUsage, Quota, QuotaWindow, ContextBreakdown, ContextItem, ContextPart, DataInfo, General, GeneralView, Attachment, SkillInfo, HistoryPage, LoadedSession, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, ChatGPTStatus, ChatGPTUsage, ClaudeCodeStatus, Quota, QuotaWindow, ContextBreakdown, ContextItem, ContextPart, DataInfo, General, GeneralView, Attachment, SkillInfo, HistoryPage, LoadedSession, KeychainStatus, MCPServerConfig, MCPServerStatus, ModelMeta, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, GroupConfig, GroupInput, GroupMember, GroupStatus, GroupStrategy, GroupView, MemberState, MemberStatus, ProxyView, UsageBy, UsageNode, UsageRange, UsageReport, UsageRequest, UsageTotals, ReleaseNotes, ChangeKind, UpdateInfo, UpdateStatus, WorkspaceInfo,
   WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginActionResult, PluginConfigView, PluginServerView, SlashCommandInfo, GitBranch, GitChangedFile, GitCommit, GitCommitDetail, GitDiff, GitFileChange, GitOverview, GitRef, GitStatus,
 } from "./types";
