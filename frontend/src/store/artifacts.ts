@@ -23,7 +23,14 @@ const KIND_BY_EXT: Record<string, ArtifactKind> = {
   html: "html", htm: "html", svg: "svg", mmd: "mermaid", mermaid: "mermaid", dot: "dot", gv: "dot",
   md: "markdown", markdown: "markdown",
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", bmp: "image", ico: "image",
-  txt: "text", json: "text", csv: "text",
+  txt: "text", json: "text", csv: "text", sql: "text", xml: "text", yaml: "text", yml: "text", toml: "text",
+  ini: "text", cfg: "text", conf: "text", properties: "text", log: "text", env: "text",
+  py: "text", ipynb: "text", js: "text", jsx: "text", ts: "text", tsx: "text", mjs: "text", cjs: "text",
+  go: "text", java: "text", kt: "text", kts: "text", rs: "text", c: "text", h: "text", cc: "text",
+  cpp: "text", hpp: "text", cs: "text", rb: "text", php: "text", swift: "text", vue: "text",
+  css: "text", scss: "text", less: "text", sh: "text", bash: "text", zsh: "text",
+  bat: "text", cmd: "text", ps1: "text", psm1: "text", psd1: "text",
+  dockerfile: "text", makefile: "text", gradle: "text", groovy: "text", tf: "text", hcl: "text", lock: "text",
 };
 
 export function kindOf(path: string): ArtifactKind {
@@ -34,8 +41,8 @@ export function kindOf(path: string): ArtifactKind {
 /** 能在面板里预览（而不只是"打开"）的类型 */
 export const previewable = (k: ArtifactKind) => k !== "other";
 
-/** 能用系统默认程序打开的类型（与后端 internal/app/files.go 的白名单一致：不含可执行类型） */
-export const OPENABLE_EXT = /\.(html?|svg|md|markdown|txt|mmd|mermaid|dot|gv|json|csv|pdf|png|jpe?g|gif|webp|bmp|ico)$/i;
+/** 用户可点击打开的常见产物类型。后端按文件类型决定默认程序/文本编辑器/文件管理器，绝不直接执行脚本。 */
+export const OPENABLE_EXT = /\.(html?|svg|md|markdown|txt|mmd|mermaid|dot|gv|json|csv|pdf|png|jpe?g|gif|webp|bmp|ico|py|ipynb|js|jsx|ts|tsx|mjs|cjs|go|java|kt|kts|rs|c|h|cc|cpp|hpp|cs|rb|php|swift|vue|css|scss|less|sql|xml|ya?ml|toml|ini|cfg|conf|properties|log|env|sh|bash|zsh|bat|cmd|ps1|psm1|psd1|tf|hcl|gradle|groovy|lock)$/i;
 
 function pathsOf(tool: ToolView): string[] {
   const o = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
