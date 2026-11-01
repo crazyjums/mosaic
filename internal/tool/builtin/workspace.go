@@ -105,6 +105,26 @@ func resolvePath(workspace, p string) (string, error) {
 	return abs, nil
 }
 
+// resolveToolPath 对应工具的一次调用；只有 Engine 授权的 auto 模式允许工作区外路径。
+// 相对路径仍然以当前工作区为基准，绝对路径和 .. 可以跨目录。
+func resolveToolPath(call tool.Call, p string) (string, error) {
+	if !call.AllowOutsideWorkspace {
+		return resolvePath(call.Workspace, p)
+	}
+	if p == "" { p = "." }
+	if call.Workspace == "" && !filepath.IsAbs(p) {
+		return "", fmt.Errorf("workspace is not set")
+	}
+	abs := p
+	if !filepath.IsAbs(p) { abs = filepath.Join(call.Workspace, p) }
+	abs = filepath.Clean(abs)
+	// 仍然拒绝悬空符号链接，避免意外写入无法确认的目标位置。
+	if _, err := evalExisting(abs); err != nil {
+		return "", fmt.Errorf("resolve %q: %v", p, err)
+	}
+	return abs, nil
+}
+
 func within(root, p string) bool {
 	rel, err := filepath.Rel(root, p)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
