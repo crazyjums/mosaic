@@ -44,6 +44,11 @@ func importAgentComponents(dir string, m *Manifest) error {
     // stdio and streamable-http entries only; validation is reused below.
     p := filepath.Join(dir, "mcp.json")
     raw, err := os.ReadFile(p)
+    if os.IsNotExist(err) {
+        // Older Codex plugin packages commonly use .mcp.json.
+        p = filepath.Join(dir, ".mcp.json")
+        raw, err = os.ReadFile(p)
+    }
     if os.IsNotExist(err) { return nil }
     if err != nil { return err }
     if len(raw) > maxManifestBytes { return fmt.Errorf("mcp.json 超过大小限制") }
@@ -77,6 +82,12 @@ func importAgentComponents(dir string, m *Manifest) error {
             return fmt.Errorf("mcp 服务 %q 使用了不支持的传输类型 %q", name, c.Type)
         }
         m.MCP = append(m.MCP, spec)
+        // Portable MCP declarations do not have Mosaic's requires block.
+        // Detect plain executable names up front, rather than failing only
+        // after an async MCP handshake timeout. Paths are not LookPath targets.
+        if spec.Transport == mcp.TransportStdio && reqNameRe.MatchString(spec.Command) && !contains(m.Requires.Commands, spec.Command) {
+            m.Requires.Commands = append(m.Requires.Commands, spec.Command)
+        }
     }
     return nil
 }
