@@ -94,6 +94,10 @@ func (u *Updater) get(ctx context.Context, rawURL string, limit int64) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
+	// latest/download 会经过 GitHub 和可能的用户代理：要求中间缓存重新验证，
+	// 避免刚发布新版本时仍收到旧 manifest/signature。
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
 	resp, err := u.client().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("无法连接更新服务器: %w", err)

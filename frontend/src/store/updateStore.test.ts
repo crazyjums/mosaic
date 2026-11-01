@@ -71,7 +71,17 @@ describe("后台更新检查", () => {
     await useUpdate.getState().check(true);
     const state = useUpdate.getState();
     expect(state.error).toContain("connection failed");
-    expect(state.autoError).toBe("");
+    expect(state.autoError).toContain("connection failed");
+    expect(updateIndicator(state, "")).toBe("none");
+  });
+
+  it("后端禁用自动更新时应明确显示原因，而非静默当作最新版本", async () => {
+    mocked.checkUpdate.mockResolvedValueOnce({ current: "dev", latest: "", available: false, manual: false, disabled: "开发版本不检查更新" });
+    await useUpdate.getState().check(false);
+    const state = useUpdate.getState();
+    expect(state.info?.disabled).toContain("开发版本");
+    expect(state.autoError).toContain("开发版本");
+    expect(state.lastCheckedAt).toBe(0);
     expect(updateIndicator(state, "")).toBe("none");
   });
 

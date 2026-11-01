@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"sync/atomic"
 	"time"
 
 	"github.com/crazyjums/myllmapp/internal/bootstrap"
@@ -96,5 +97,58 @@ func TestGetVersionHistory(t *testing.T) {
 	got := a.GetVersionHistory()
 	if len(got) != 2 || got[0].Version != "1.1.0" || got[1].Version != "1.0.0" {
 		t.Fatalf("应跳过 Unreleased，最新在前: %+v", got)
+	}
+}
+
+func TestCheckUpdateUsesSavedGlobalProxy(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+
+	pubB64, priv, err := update.GenerateKey()
+	if err != nil { t.Fatal(err) }
+	pub, err := update.ParsePublicKey(pubB64)
+	if err != nil { t.Fatal(err) }
+	m := update.Manifest{Version: "1.1.0", Platforms: map[string]update.Asset{}}
+	body, _ := json.Marshal(m)
+	sig, err := update.Sign(priv, body)
+	if err != nil { t.Fatal(err) }
+
+	var proxyRequests atomic.Int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyRequests.Add(1)
+		if !r.URL.IsAbs() || r.URL.Host != "127.0.0.1:1" {
+			http.Error(w, "not routed via configured proxy", http.StatusBadRequest)
+			return
+		}
+		switch r.URL.Path {
+		case "/m.json":
+			_, _ = w.Write(body)
+		case "/m.json.sig":
+			_, _ = w.Write(sig)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer proxy.Close()
+
+	a := New(built.Engine, built.Settings, func(context.Context, string, ...any) {})
+	// 无监听端口的更新服务器，只有通过用户配置的应用代理才可能成功。
+	a.upd = &update.Updater{ManifestURL: "http://127.0.0.1:1/m.json", PubKey: pub, Current: "1.0.0", GOOS: "darwin", GOARCH: "arm64"}
+	if err := a.SetProxy(proxy.URL); err != nil { t.Fatal(err) }
+	result, err := a.CheckUpdate()
+	if err != nil || !result.Available || result.Latest != "1.1.0" {
+		t.Fatalf("更新检查应经全局代理成功: %+v %v", result, err)
+	}
+	if got := proxyRequests.Load(); got != 2 {
+		t.Fatalf("清单与签名都应通过代理，实际 %d 次", got)
+	}
+	if err := a.SetProxy(""); err != nil { t.Fatal(err) }
+	if _, err := a.CheckUpdate(); err == nil {
+		t.Fatal("清空代理后应回到直连（127.0.0.1:1 无服务）")
 	}
 }

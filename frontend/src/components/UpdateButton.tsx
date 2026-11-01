@@ -13,16 +13,28 @@ export default function UpdateButton() {
 
   const base = "mr-2 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs";
   if (state === "none") {
-    const failed = autoEnabled && !!autoError && !checking;
+    // 检查失败与禁用状态不是“没更新”。明确显示在标题栏，避免用户误以为检测成功。
+    const reason = autoEnabled ? (info?.disabled || autoError) : "";
+    const failed = !!reason && !checking;
+    const skippedLatest = !!info?.available && info.latest === skipped;
+    const noAutomaticCheck = !autoEnabled;
+    const hint = failed
+      ? t("更新检查失败：{reason}；点击查看详情", { reason })
+      : skippedLatest
+        ? t("已跳过版本 {v}，点击仍可查看更新", { v: info!.latest })
+        : noAutomaticCheck
+          ? t("自动检查已关闭，点击手动检查")
+          : t("检查更新");
     return (
       <button
-        className={`${base} ${failed ? "text-warn hover:text-fg" : "text-muted hover:text-fg"}`}
+        className={`${base} ${failed ? "bg-warn/10 font-medium text-warn hover:bg-warn/15" : "text-muted hover:text-fg"}`}
         onClick={openDialog}
-        title={failed ? t("自动检查更新失败，点击重试：{reason}", { reason: autoError }) : t("检查更新")}
+        title={hint}
+        aria-label={failed ? t("更新检查失败，点击重试") : hint}
         disabled={checking}
       >
         {failed && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-warn" />}
-        {checking ? t("正在检查…") : t("检查更新")}
+        {checking ? t("正在检查…") : failed ? t("更新检查失败") : skippedLatest ? t("已跳过 {v}", { v: info!.latest }) : noAutomaticCheck ? t("手动检查更新") : t("检查更新")}
       </button>
     );
   }
