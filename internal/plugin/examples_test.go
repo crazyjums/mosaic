@@ -78,7 +78,15 @@ func TestExampleEchoMCPEndToEnd(t *testing.T) {
 	if _, err := h.Install(p.Token, nil); err != nil { // 不勾选：按 exec 运行
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool { _, ok := reg.Get("mcp__echo-mcp__echo"); return ok })
+	waitUntil(t, func() bool {
+		if _, ok := reg.Get("mcp__echo-mcp__echo"); ok { return true }
+		for _, st := range mgr.Statuses() {
+			if st.State == mcp.StateFailed {
+				t.Fatalf("echo-mcp 启动失败：%s", st.Error)
+			}
+		}
+		return false
+	})
 	echo, _ := reg.Get("mcp__echo-mcp__echo")
 	if echo.Spec().Risk != "exec" {
 		t.Fatalf("没确认的 read 声明应按 exec: %v", echo.Spec().Risk)
