@@ -9,7 +9,7 @@ import ContextPanel from "./ContextPanel";
 // 右侧面板：一排标签（上下文 / 产物）+ 当前标签的内容。
 //
 //   - 最右边有一条始终可见的窄标签栏（像编辑器的侧边栏，只放图标，悬停显示名称）：点一个标签展开它；再点当前标签，或点面板上的 ›，把面板折叠回标签栏；
-//   - 面板从顶到底占满高度，内容区自己滚动；
+//   - 两个标签共用固定宽度（26rem），切换标签时对话区及输入框不发生横向跳动；\n//   - 面板从顶到底占满高度，内容区自己滚动；
 //   - 窗口不够宽时整个右侧面板隐藏（和以前的上下文明细一致），标题栏上的按钮也一起隐藏。
 
 type Tab = UIPrefs["sideTab"];
@@ -54,7 +54,7 @@ export default function SidePanel() {
   return (
     <div className="hidden h-full shrink-0 lg:flex">
       {open && (
-        <section className={`flex h-full min-h-0 flex-col border-l border-line bg-side ${tab === "artifacts" ? "w-[26rem]" : "w-[332px]"}`} aria-label={t(TABS.find((x) => x.id === tab)!.label)}>
+        <section className="flex h-full w-[26rem] min-h-0 shrink-0 flex-col border-l border-line bg-side" aria-label={t(TABS.find((x) => x.id === tab)!.label)}>
           <nav className="m-3 flex shrink-0 gap-1 rounded-xl border border-line bg-panel p-1" aria-label={t("右侧面板")}>
             {TABS.map((x) => <button key={x.id}
               className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold ${tab === x.id ? "bg-accent text-on-accent" : "text-muted hover:bg-panel-2"}`}
