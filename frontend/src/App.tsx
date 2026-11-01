@@ -32,9 +32,10 @@ export default function App() {
   const artifactCount = useArtifactCount();
 
   useEffect(() => {
-    void loadPrefs();
+    // 自动检查更新依赖用户设置：必须先加载 updateCheck 偏好再启动调度。
+    // 避免偏好还没读取完时按默认值发起检查，且不会阻塞聊天初始化。
+    void loadPrefs().then(() => useUpdate.getState().init());
     void init();
-    void useUpdate.getState().init();
   }, [init, loadPrefs]);
 
   return (
