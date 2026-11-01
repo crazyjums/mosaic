@@ -66,6 +66,21 @@ describe("演示模式的插件", () => {
     expect(await b.listPlugins()).toEqual([]);
   });
 
+  it("V2 诊断将已安装/已启用与真实可用区分开，停用后拒绝运行操作", async () => {
+    const b = createDemoPlugins();
+    await b.installPlugin((await b.previewPlugin("/x/hello")).token, []);
+    const ready = await b.getPluginDiagnostics("hello");
+    expect(ready).toMatchObject({ state: "ready", enabled: true, tool_count: 0, commands: ["hello"] });
+    expect((await b.listPluginDiagnostics())[0].state).toBe("ready");
+    await b.installPlugin((await b.previewPlugin("/x/feishu")).token, []);
+    expect(await b.getPluginDiagnostics("feishu")).toMatchObject({ state: "needs_setup", code: "DEPENDENCY_NOT_FOUND" });
+    await b.setPluginEnabled("feishu", false);
+    expect(await b.getPluginDiagnostics("feishu")).toMatchObject({ state: "disabled", code: "PLUGIN_DISABLED" });
+    await expect(b.runPluginAction("feishu", "init")).rejects.toThrow("已停用");
+    await expect(b.startPluginLogin("feishu")).rejects.toThrow("已停用");
+    await expect(b.reconnectPlugin("feishu")).rejects.toThrow();
+  });
+
   it("插件市场：列出内置和 Git 来源，装好后标记已安装；Git 地址只收 https", async () => {
     const b = createDemoPlugins();
     const list = await b.listPluginCatalog();

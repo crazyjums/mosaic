@@ -1,4 +1,4 @@
-import type { PluginActionResult, PluginCatalogEntry, PluginLoginState, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
+import type { PluginActionResult, PluginCatalogEntry, PluginDiagnostics, PluginLoginState, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
 
 // 演示模式（浏览器预览 / 截图 / 测试）里的插件：内存里的假实现，行为尽量和后端 internal/plugin 一致。
 // 选择路径里带 "hello" 得到一个只有技能和命令的插件，带 "bad" 得到校验失败，其余得到一个带 MCP 工具和配置表单的“飞书”示例。
@@ -73,9 +73,27 @@ export function createDemoPlugins() {
     return p;
   };
 
+  const diagnose = (id: string): PluginDiagnostics => {
+    const p = warn(find(id));
+    const missing = p.requires.filter((r) => !r.found).map((r) => r.command);
+    const state: PluginDiagnostics["state"] = !p.enabled ? "disabled"
+      : p.error ? "failed"
+      : missing.length || p.warning ? "needs_setup"
+      : p.servers.length ? "starting" : "ready";
+    return {
+      id, enabled: p.enabled, state,
+      code: !p.enabled ? "PLUGIN_DISABLED" : missing.length ? "DEPENDENCY_NOT_FOUND" : p.warning ? "CONFIG_REQUIRED" : p.servers.length ? "MCP_CONNECTING" : undefined,
+      message: p.error || p.warning || (missing.length ? "缺少外部命令：" + missing.join("、") : p.servers.length ? "正在连接 MCP 服务" : "技能和斜杠命令已就绪"),
+      skills: [...p.skills], commands: p.commands.map((c) => c.name),
+      servers: p.servers.map((srv) => ({ name: srv.name, state: "connecting" as const, tools: [] })),
+      tool_count: 0, missing, checked_at: new Date().toISOString(),
+    };
+  };
+
   return {
     startPluginLogin: async (id: string): Promise<PluginLoginState> => {
       const p = find(id);
+      if (!p.enabled) throw new Error("插件已停用，不能登录");
       if (!p.login) throw new Error("这个插件没有登录流程"); // 演示后端不检查依赖，方便预览登录界面
       const cur = logins.get(id);
       if (cur?.state.state === "running") return cur.state;
@@ -110,6 +128,13 @@ export function createDemoPlugins() {
       return stage(id === "hello" ? hello() : id === "feishu" ? feishu() : simple(id, c.name, c.summary?.zh ?? "", ["skill"], Array.from({ length: c.commands ?? 0 }, (_, n) => `${id}-${n + 1}`)));
     },
     listPlugins: async (): Promise<PluginInfo[]> => installed.map(warn),
+    getPluginDiagnostics: async (id: string): Promise<PluginDiagnostics> => diagnose(id),
+    listPluginDiagnostics: async (): Promise<PluginDiagnostics[]> => installed.map((p) => diagnose(p.id)),
+    reconnectPlugin: async (id: string): Promise<PluginDiagnostics> => {
+      const p = find(id);
+      if (!p.enabled || !p.servers.length) throw new Error("插件未启用或没有 MCP 服务");
+      return diagnose(id);
+    },
     previewPlugin: async (src: string): Promise<PluginPreview> => {
       if (/^https:\/\//i.test(src.trim()) === false && /^[a-z][a-z0-9+.-]*:\/\//i.test(src.trim())) throw new Error("Git 地址必须是 https:// 开头的完整地址");
       if (src.includes("bad")) throw new Error("plugin.json 不是合法的 JSON：invalid character '}' looking for beginning of object key string");
@@ -166,6 +191,7 @@ export function createDemoPlugins() {
     },
     runPluginAction: async (id: string, action: string): Promise<PluginActionResult> => {
       const p = find(id);
+      if (!p.enabled) throw new Error("插件已停用，不能运行操作");
       if (!p.actions.some((a) => a.id === action)) throw new Error(`插件没有操作 "${action}"`);
       const miss = p.requires.filter((r) => !r.found).map((r) => r.command);
       if (miss.length) return { output: "", exit_code: 0, error: `缺少依赖：${miss.join("、")}` };

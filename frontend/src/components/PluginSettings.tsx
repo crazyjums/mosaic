@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginPreview, type PluginStatus } from "../bridge";
+import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginDiagnostics, type PluginPreview, type PluginStatus } from "../bridge";
 import { t } from "../i18n";
 import PluginInstallDialog from "./PluginInstallDialog";
 import { CATEGORIES, FeaturedCard, PluginCard, PluginIcon, matches } from "./PluginMarket";
@@ -17,6 +17,20 @@ const DOCS_URL = "https://github.com/crazyjums/mosaic/blob/master/docs/plugin-de
 
 export default function PluginSettings() {
   const [plugins, setPlugins] = useState<PluginInfo[] | null>(null);
+  const [health, setHealth] = useState<Record<string, PluginDiagnostics>>({});
+  const [healthError, setHealthError] = useState("");
+  const reloadHealth = useCallback(async () => {
+    try {
+      const list = await backend().listPluginDiagnostics();
+      setHealth(Object.fromEntries(list.map((h) => [h.id, h])));
+      setHealthError("");
+    } catch (e) { setHealthError(errMsg(e)); }
+  }, []);
+  useEffect(() => {
+    void reloadHealth();
+    const timer = setInterval(() => void reloadHealth(), 8000);
+    return () => clearInterval(timer);
+  }, [reloadHealth]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<PluginPreview | null>(null);
@@ -39,11 +53,12 @@ export default function PluginSettings() {
     try {
       const list = await backend().listPlugins();
       setPlugins(list);
+      void reloadHealth();
       setSelected((cur) => (cur && list.some((p) => p.id === cur) ? cur : (list[0]?.id ?? null)));
     } catch (e) {
       setError(errMsg(e));
     }
-  }, []);
+  }, [reloadHealth]);
   useEffect(() => void reload(), [reload]);
 
   // 市场：先显示本地已有的列表（内置的加上上次刷新的），再在后台刷新一次在线列表；离线时刷新失败不影响使用。
@@ -126,7 +141,10 @@ export default function PluginSettings() {
   };
   const openDocs = () => void backend().openExternalURL(DOCS_URL).catch((e) => setError(errMsg(e)));
 
-  const replace = (p: PluginInfo) => setPlugins((list) => (list ? list.map((x) => (x.id === p.id ? p : x)) : list));
+  const replace = (p: PluginInfo) => {
+    setPlugins((list) => (list ? list.map((x) => (x.id === p.id ? p : x)) : list));
+    void reloadHealth();
+  };
   const updateOf = (id: string) => market.find((c) => c.id === id && c.update_available);
   const toggleEnabled = async (p: PluginInfo) => {
     try {
@@ -141,6 +159,12 @@ export default function PluginSettings() {
   const rest = shown.filter((c) => !featured.includes(c));
   const usedCategories = CATEGORIES.filter(([k]) => market.some((c) => c.category === k));
   const installed = (plugins ?? []).filter((p) => !query.trim() || [p.id, p.name, p.description ?? ""].some((x) => x.toLowerCase().includes(query.trim().toLowerCase())));
+  const healthSummary = Object.values(health).reduce((acc, h) => {
+    if (h.state === "ready") acc.ready++;
+    else if (h.state === "needs_setup") acc.setup++;
+    else if (h.state === "failed" || h.state === "degraded") acc.failed++;
+    return acc;
+  }, { ready: 0, setup: 0, failed: 0 });
   const current = plugins?.find((p) => p.id === selected);
 
   const menuItem = (label: string, hint: string, run: () => void) => (
@@ -282,6 +306,10 @@ export default function PluginSettings() {
       ) : (
         <div className="flex min-h-0 flex-1">
           <aside className="flex w-64 shrink-0 flex-col border-r border-line">
+            <div className="border-b border-line px-3 py-2.5 text-[11px] text-muted">
+              {t("已就绪")} {healthSummary.ready} · {t("待配置")} {healthSummary.setup} · {t("异常")} {healthSummary.failed}
+              {healthError && <div className="mt-1 text-warn" title={healthError}>{t("插件状态读取失败")}</div>}
+            </div>
             <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2" aria-label={t("已安装的插件")}>
               {plugins === null && <li className="px-2 py-2 text-xs text-muted">{t("加载中…")}</li>}
               {plugins?.length === 0 && (
@@ -300,8 +328,8 @@ export default function PluginSettings() {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{p.name}</span>
                       <span className="flex items-center gap-1.5 truncate text-[11px] text-muted">
-                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.error ? "bg-danger" : p.warning ? "bg-warn" : p.enabled ? "bg-ok" : "bg-muted/50"}`} aria-hidden="true" />
-                        v{p.version} · {p.error ? t("不可用") : p.enabled ? t("已启用") : t("已停用")}
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${pluginStateDot(health[p.id]?.state)}`} aria-hidden="true" />
+                        v{p.version} · {health[p.id] ? t(PLUGIN_HEALTH_LABEL[health[p.id].state]) : t("检测中…")}
                         {updateOf(p.id) && <span className="rounded-full bg-accent-soft px-1.5 text-accent">{t("有更新")}</span>}
                       </span>
                     </span>
@@ -325,6 +353,8 @@ export default function PluginSettings() {
               <PluginDetail
                 key={current.id}
                 plugin={current}
+                diagnostics={health[current.id]}
+                onRefreshHealth={reloadHealth}
                 onChange={replace}
                 onRemoved={() => void reload()}
                 update={updateOf(current.id) ? { version: updateOf(current.id)!.version ?? "", busy: fetching === current.id, onUpdate: () => getFromMarket(updateOf(current.id)!) } : undefined}
@@ -344,7 +374,20 @@ export default function PluginSettings() {
 const STATUS_DOT: Record<PluginStatus["state"], string> = { ok: "bg-ok", bad: "bg-danger", missing_dependency: "bg-warn", unknown: "bg-warn", none: "" };
 const STATUS_TEXT: Record<PluginStatus["state"], string> = { ok: "状态正常", bad: "状态异常", missing_dependency: "缺少依赖", unknown: "无法判断状态", none: "" };
 
-function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: PluginInfo; onChange: (p: PluginInfo) => void; onRemoved: () => void; update?: { version: string; busy: boolean; onUpdate: () => void } }) {
+const PLUGIN_HEALTH_LABEL: Record<PluginDiagnostics["state"], string> = {
+  ready: "已就绪", needs_setup: "待配置", starting: "连接中", degraded: "部分可用", failed: "运行异常", disabled: "已停用",
+};
+function pluginStateDot(state?: PluginDiagnostics["state"]): string {
+  switch (state) {
+    case "ready": return "bg-ok";
+    case "failed": return "bg-danger";
+    case "starting": return "bg-accent";
+    case "needs_setup": case "degraded": return "bg-warn";
+    default: return "bg-muted/50";
+  }
+}
+
+function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRemoved, update }: { plugin: PluginInfo; diagnostics?: PluginDiagnostics; onRefreshHealth: () => Promise<void>; onChange: (p: PluginInfo) => void; onRemoved: () => void; update?: { version: string; busy: boolean; onUpdate: () => void } }) {
   const [error, setError] = useState("");
   const [statusTick, setStatusTick] = useState(0); // 登录完成后让“状态”马上重新检查
   const [busy, setBusy] = useState(false);
@@ -398,10 +441,11 @@ function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: Plug
       {p.warning && <div className="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">{p.warning}</div>}
       {error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
-      {!p.error && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
-      {!p.error && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
+      <PluginHealthBlock plugin={p} health={diagnostics} onRefresh={onRefreshHealth} />
+      {!p.error && p.enabled && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
+      {!p.error && p.enabled && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
-      {!p.error && p.actions.length > 0 && <ActionsBlock plugin={p} />}
+      {!p.error && p.enabled && p.actions.length > 0 && <ActionsBlock plugin={p} />}
 
       <Block title={t("提供的内容")}>
         <div className="space-y-1 text-sm">
@@ -442,6 +486,76 @@ function PluginDetail({ plugin: p, onChange, onRemoved, update }: { plugin: Plug
         </button>
       </div>
     </div>
+  );
+}
+
+// “已启用”仅表示允许加载，以下状态来自运行时 MCP 连接及已注册工具。
+function PluginHealthBlock({ plugin, health, onRefresh }: { plugin: PluginInfo; health?: PluginDiagnostics; onRefresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const reconnect = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await backend().reconnectPlugin(plugin.id);
+      await onRefresh();
+    } catch (e) { setError(errMsg(e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Block title={t("实际可用状态")}>
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${pluginStateDot(health?.state)}`} aria-hidden="true" />
+          <strong>{health ? t(PLUGIN_HEALTH_LABEL[health.state]) : t("检测中…")}</strong>
+          <div className="flex-1" />
+          <button className="btn px-2 py-0.5 text-xs" onClick={() => void onRefresh()}>{t("刷新状态")}</button>
+          {plugin.enabled && plugin.servers.length > 0 && (
+            <button className="btn px-2 py-0.5 text-xs" onClick={() => void reconnect()} disabled={busy}>
+              {busy ? t("重连中…") : t("重连 MCP")}
+            </button>
+          )}
+        </div>
+        {health?.message && <p className="text-xs text-muted">{health.message}</p>}
+        {health?.code && <div className="text-[11px] text-muted">{t("诊断代码")}：<code>{health.code}</code></div>}
+        {!!health?.missing.length && <p className="text-xs text-warn">{t("缺少依赖")}：{health.missing.join("、")}</p>}
+        {error && <div className="text-xs text-danger">{error}</div>}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+          <span>Skill：{health?.skills.length ?? plugin.skills.length}</span>
+          <span>{t("命令")}：{health?.commands.length ?? plugin.commands.length}</span>
+          <span>MCP：{health?.servers.length ?? plugin.servers.length}</span>
+          <span>{t("可用工具")}：{health?.tool_count ?? 0}</span>
+        </div>
+        {health?.servers.map((srv) => (
+          <div key={srv.name} className="rounded-ctl border border-line bg-panel-2 px-2.5 py-2 text-xs">
+            <div className="flex gap-2">
+              <code className="min-w-0 flex-1 truncate">{srv.name}</code>
+              <span className={srv.state === "connected" && srv.tools.length ? "text-ok" : srv.state === "failed" ? "text-danger" : "text-warn"}>
+                {srv.state === "connected" ? t("已连接") : srv.state === "failed" ? t("连接失败") : t("连接中")}
+              </span>
+            </div>
+            <div className="mt-1 text-muted">{t("已注册工具")}：{srv.tools.length ? srv.tools.join("、") : "—"}</div>
+            {srv.error && <div className="mt-1 break-words text-danger">{srv.error}</div>}
+          </div>
+        ))}
+        {plugin.commands.length > 0 && (
+          <div className="rounded-ctl border border-line p-2.5 text-xs">
+            <div className="mb-1 font-medium">{t("如何使用")}</div>
+            <div className="text-muted">{t("在对话框输入以下命令即可使用，或复制后粘贴发送")}：</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {plugin.commands.map((cmd) => (
+                <button key={cmd.name} className="rounded-ctl border border-line px-2 py-1 font-mono text-accent hover:bg-accent-soft"
+                  title={t("复制命令")}
+                  onClick={() => void navigator.clipboard.writeText("/" + cmd.name).catch((e) => setError(errMsg(e)))}>
+                  /{cmd.name} · {t("复制")}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {plugin.login && <p className="text-xs text-muted">{t("账号授权与工具连接是两回事，请在下方完成登录并检查插件状态")}</p>}
+      </div>
+    </Block>
   );
 }
 

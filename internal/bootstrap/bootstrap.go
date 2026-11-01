@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -199,6 +200,9 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		Catalog:    pluginCatalog.FS,
 		// 在线列表只增加“可以安装的来源”，装之前仍要用户确认；离线或失败时用内置的那一份。
 		RegistryURL: pluginRegistryURL,
+		HTTPClient: func() (*http.Client, error) {
+			return provider.NewHTTPClientWithProxy(settingsMgr.UpdateProxyURL())
+		},
 	})
 	if err != nil {
 		mcpMgr.Close()

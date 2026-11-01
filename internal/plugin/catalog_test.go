@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -341,4 +342,27 @@ func TestScaffoldInstallsAsIs(t *testing.T) {
 	if _, err := Scaffold(filepath.Join(parent, "nope"), "ok"); err == nil {
 		t.Fatal("目录不存在应报错")
 	}
+}
+
+func TestRefreshCatalogUsesConfiguredProxy(t *testing.T) {
+    var count int
+    proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        count++
+        if !r.URL.IsAbs() || r.URL.Host != "127.0.0.1:1" {
+            t.Errorf("expected absolute proxy request, got %s", r.URL)
+        }
+        w.Header().Set("Content-Type", "application/json")
+        _, _ = w.Write([]byte(`{"version":1,"plugins":[{"id":"remote","name":"Remote","git":"https://github.com/example/remote"}]}`))
+    }))
+    defer proxy.Close()
+    proxyURL, err := url.Parse(proxy.URL)
+    if err != nil { t.Fatal(err) }
+    h, _ := newCatalogHost(t, "http://127.0.0.1:1/registry.json")
+    h.opts.HTTPClient = func() (*http.Client, error) {
+        return &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}, nil
+    }
+    got, err := h.RefreshCatalog(context.Background())
+    if err != nil || count != 1 || len(got) == 0 {
+        t.Fatalf("online catalog must use the app proxy: %d %+v %v", count, got, err)
+    }
 }

@@ -11,7 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ClaudeCodeStatus, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
-  WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
+  WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginDiagnostics, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -60,6 +60,9 @@ interface GoApp {
   SavePluginConfig(id: string, values: Record<string, string>): Promise<PluginInfo>;
   ClearPluginSecret(id: string, key: string): Promise<PluginInfo>;
   GetPluginStatus(id: string): Promise<PluginStatus>;
+  GetPluginDiagnostics(id: string): Promise<PluginDiagnostics>;
+  ListPluginDiagnostics(): Promise<PluginDiagnostics[] | null>;
+  ReconnectPlugin(id: string): Promise<PluginDiagnostics>;
   RunPluginAction(id: string, action: string): Promise<PluginActionResult>;
   ListCommands(): Promise<SlashCommandInfo[] | null>;
   ExpandCommand(name: string, args: string): Promise<{ found: boolean; text: string }>;
@@ -191,6 +194,9 @@ export function createWailsBackend(): Backend {
     savePluginConfig: (id, values) => app.SavePluginConfig(id, values),
     clearPluginSecret: (id, key) => app.ClearPluginSecret(id, key),
     getPluginStatus: (id) => app.GetPluginStatus(id),
+    getPluginDiagnostics: (id) => app.GetPluginDiagnostics(id),
+    listPluginDiagnostics: async () => (await app.ListPluginDiagnostics()) ?? [],
+    reconnectPlugin: (id) => app.ReconnectPlugin(id),
     runPluginAction: (id, action) => app.RunPluginAction(id, action),
     listCommands: async () => (await app.ListCommands()) ?? [],
     expandCommand: (name, args) => app.ExpandCommand(name, args),

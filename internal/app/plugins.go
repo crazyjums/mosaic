@@ -117,6 +117,28 @@ func (a *App) ClearPluginSecret(id, key string) (plugin.Info, error) {
 	return a.plugins.ClearSecret(id, key)
 }
 
+// GetPluginDiagnostics 只读取可用的 Skill/Command 与 MCP 真实注册状态，不执行插件代码。
+func (a *App) GetPluginDiagnostics(id string) (plugin.PluginDiagnostics, error) {
+    if a.plugins == nil { return plugin.PluginDiagnostics{}, errNoPlugins }
+    return a.plugins.Diagnostics(id)
+}
+
+// ListPluginDiagnostics 返回已安装插件的真实运行状态，用于列表页区分“已启用”和“已就绪”。
+func (a *App) ListPluginDiagnostics() []plugin.PluginDiagnostics {
+    if a.plugins == nil { return []plugin.PluginDiagnostics{} }
+    result := []plugin.PluginDiagnostics{}
+    for _, item := range a.plugins.List() {
+        if d, err := a.plugins.Diagnostics(item.ID); err == nil { result = append(result, d) }
+    }
+    return result
+}
+
+// ReconnectPlugin 仅重新连接指定插件的 MCP 服务，不影响用户单独配置的 MCP。
+func (a *App) ReconnectPlugin(id string) (plugin.PluginDiagnostics, error) {
+    if a.plugins == nil { return plugin.PluginDiagnostics{}, errNoPlugins }
+    return a.plugins.ReconnectPlugin(id)
+}
+
 // GetPluginStatus 运行插件声明的状态检查。
 func (a *App) GetPluginStatus(id string) (plugin.StatusResult, error) {
 	if a.plugins == nil {
