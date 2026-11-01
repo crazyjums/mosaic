@@ -4,14 +4,22 @@
 #   1. go run ./cmd/mkmanifest genkey
 #   2. 公钥写进 internal/update/pubkey.txt 并提交
 #   3. 私钥保存为仓库的加密变量 UPDATE_SIGNING_KEY（Settings → Secrets and variables → Actions）
-# 发布方式（二选一）：
+# 发布方式（三选一）：
 #   A. 命令行：git tag v1.2.3 && git push origin v1.2.3
 #   B. 手动运行（手机上的 GitHub app 也行）：Actions → release → Run workflow，在 "tag" 里填 v1.2.3。
 #      只能在默认分支上运行；tag 会在最后创建 Release 时一并创建，指向被运行的那个提交，所以不需要先建 tag。
+#   C. 自动：master 的 CI 全平台测试通过且 CHANGELOG 最新版本没有 Tag 时，调用 workflow_dispatch 独立触发本工作流。
 #
 # 带连字符的 tag（v1.2.3-beta.1）会标成预发布，不会成为"最新版本"，所以正式版用户不会收到它。
 
 name: release
+# 独立的 workflow_dispatch 运行在 Actions 中显示为「release v1.2.3」。
+run-name: release ${{ inputs.tag || github.ref_name }}
+
+# 同一版本的手动/自动发布不能并发创建相同 Tag 或覆盖资产。
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 on:
   push:
@@ -29,7 +37,7 @@ on:
         required: true
         type: string
 
-# 下面各处的 TAG：tag 触发时是被推送的 tag，手动运行时是输入的版本号。
+# 下面各处的 TAG：tag 触发时是被推送的 tag，手动与自动 dispatch 时是输入的版本号。
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
 
@@ -42,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # 手动运行与 CI 调用时没有 tag 约束，这里补上：格式要对、只能发默认分支、tag 不能已经存在。
+      # workflow_dispatch 与 workflow_call 时没有 tag 约束，这里补上：格式要对、只能发默认分支、tag 不能已经存在。
       - name: 检查手动运行的参数
         if: inputs.tag != ''
         run: |
