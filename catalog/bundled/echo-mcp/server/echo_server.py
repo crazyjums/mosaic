@@ -12,6 +12,14 @@ import json
 import os
 import sys
 
+# MCP 的 stdio 传输是 UTF-8 JSON-RPC。Windows 的 Python 管道有时默认使用
+# 系统代码页（如 cp1252），写入中文工具描述时会 UnicodeEncodeError 并退出。
+# 显式设置管道编码，避免握手后 tools/list 因编码错误断开。
+if hasattr(sys.stdin, "reconfigure"):
+    sys.stdin.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 PROTOCOL = "2024-11-05"
 
 
