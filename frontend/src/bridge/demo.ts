@@ -446,6 +446,7 @@ export function createDemoBackend(): Backend {
     respondPermission: async (id, decision) => {
       pendings.get(id)?.resolve(decision);
     },
+    getClaudeCodeStatus: async () => ({ installed: false, logged_in: false, message: "演示模式无法检测本机 Claude Code CLI" }),
     getChatGPT: async () => ({ state: "logged_out", registered: false, error: demoOnly }),
     loginChatGPT: async () => {
       throw new Error(demoOnly);
