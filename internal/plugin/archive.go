@@ -158,7 +158,7 @@ func copyDir(src, dst string) error {
 
 // pluginRoot 找到清单所在的目录：dir 下直接有 plugin.json，或者只有一个子目录且里面有。
 func pluginRoot(dir string) (string, error) {
-	if fileExists(filepath.Join(dir, FileName)) {
+	if fileExists(filepath.Join(dir, FileName)) || fileExists(filepath.Join(dir, ".codex-plugin", FileName)) {
 		return dir, nil
 	}
 	entries, err := os.ReadDir(dir)
@@ -171,7 +171,7 @@ func pluginRoot(dir string) (string, error) {
 			subs = append(subs, e.Name())
 		}
 	}
-	if len(subs) == 1 && fileExists(filepath.Join(dir, subs[0], FileName)) {
+	if len(subs) == 1 && (fileExists(filepath.Join(dir, subs[0], FileName)) || fileExists(filepath.Join(dir, subs[0], ".codex-plugin", FileName))) {
 		return filepath.Join(dir, subs[0]), nil
 	}
 	return "", fmt.Errorf("找不到 %s（要放在插件目录或压缩包的最外层）", FileName)
