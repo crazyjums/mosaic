@@ -9,7 +9,7 @@ import type { AgentEvent, Decision } from "../protocol/events";
 import { isKnownEvent } from "../protocol/events";
 import { createReorderBuffer } from "./reorder";
 import type {
-  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
+  Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ClaudeCodeStatus, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
   WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
@@ -78,6 +78,7 @@ interface GoApp {
   GetDataInfo(): Promise<DataInfo>;
   OpenDataDir(): Promise<void>;
   ClearSessions(): Promise<number>;
+  GetClaudeCodeStatus(): Promise<ClaudeCodeStatus>;
   GetChatGPT(): Promise<ChatGPTStatus>;
   LoginChatGPT(newAccount: boolean): Promise<string>;
   CancelChatGPTLogin(): Promise<void>;
@@ -212,6 +213,7 @@ export function createWailsBackend(): Backend {
     getDataInfo: () => app.GetDataInfo(),
     openDataDir: () => app.OpenDataDir(),
     clearSessions: () => app.ClearSessions(),
+    getClaudeCodeStatus: () => app.GetClaudeCodeStatus(),
     getChatGPT: () => app.GetChatGPT(),
     loginChatGPT: (newAccount) => app.LoginChatGPT(newAccount),
     cancelChatGPTLogin: () => app.CancelChatGPTLogin(),
