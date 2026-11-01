@@ -24,16 +24,21 @@ var imageTypes = map[string]string{
 
 // ReadWorkspaceImage 读取当前会话工作区内的图片，返回 data URL。path 可以是相对工作区的路径或工作区内的绝对路径。
 func (a *App) ReadWorkspaceImage(path string) (string, error) {
-	return readWorkspaceImage(a.engine.Status().Workspace, path)
+	st := a.engine.Status()
+	return readWorkspaceImageWithAccess(st.Workspace, path, st.PermissionMode == "auto")
 }
 
 func readWorkspaceImage(workspace, p string) (string, error) {
-	p = strings.TrimPrefix(strings.TrimSpace(p), "file://")
+	return readWorkspaceImageWithAccess(workspace, p, false)
+}
+
+func readWorkspaceImageWithAccess(workspace, p string, allowOutside bool) (string, error) {
+	p = cleanPath(p)
 	mime, ok := imageTypes[strings.ToLower(filepath.Ext(p))]
 	if !ok {
 		return "", fmt.Errorf("不支持的图片类型：%s", p)
 	}
-	real, fi, err := resolveWorkspaceFile(workspace, p)
+	real, fi, err := resolveWorkspaceFileWithAccess(workspace, p, allowOutside)
 	if err != nil {
 		return "", err
 	}
