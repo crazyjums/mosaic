@@ -55,6 +55,7 @@ func TestPluginDiagnosticsAndDisabledActions(t *testing.T) {
     m := baseManifest("demo")
     m["status"] = map[string]any{"command": helperCmd("plain-ok")}
     m["actions"] = []any{map[string]any{"id":"selftest","label":"Selftest","command":helperCmd("plain-ok")}}
+    m["login"] = map[string]any{"start":helperCmd("plain-ok"),"finish":helperCmd("plain-ok"),"url_hosts":[]string{"example.com"}}
     writePlugin(t, dir, m)
     installDir(t, h, dir)
 
@@ -76,10 +77,8 @@ func TestPluginDiagnosticsAndDisabledActions(t *testing.T) {
     if err != nil || !strings.Contains(out.Error, "已停用") {
         t.Fatalf("disabled action should be blocked: %+v %v", out, err)
     }
-    if _, err := h.StartLogin("demo"); err == nil {
-        // The manifest does not declare login. Either way, a disabled plugin
-        // cannot start any executable action.
-        t.Fatal("disabled plugin must not launch login")
+    if _, err := h.StartLogin("demo"); err == nil || !strings.Contains(err.Error(), "已停用") {
+        t.Fatalf("disabled plugin must not launch login: %v", err)
     }
 }
 
