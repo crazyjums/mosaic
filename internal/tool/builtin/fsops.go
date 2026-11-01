@@ -54,7 +54,7 @@ func (t *Mkdir) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Path == "" {
 		return tool.Errorf("path is required")
 	}
-	path, err := resolvePath(call.Workspace, in.Path)
+	path, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
@@ -102,11 +102,11 @@ func (t *MoveFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Source == "" || in.Destination == "" {
 		return tool.Errorf("source 和 destination 不能为空")
 	}
-	src, err := resolvePath(call.Workspace, in.Source)
+	src, err := resolveToolPath(call, in.Source)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
-	dst, err := resolvePath(call.Workspace, in.Destination)
+	dst, err := resolveToolPath(call, in.Destination)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
@@ -158,7 +158,7 @@ func (t *DeleteFile) Execute(_ context.Context, call tool.Call) tool.Result {
 	if in.Path == "" {
 		return tool.Errorf("path is required")
 	}
-	src, err := resolvePath(call.Workspace, in.Path)
+	src, err := resolveToolPath(call, in.Path)
 	if err != nil {
 		return tool.Errorf("%v", err)
 	}
