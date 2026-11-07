@@ -159,8 +159,64 @@ jobs:
           name: ${{ matrix.out }}
           path: dist/${{ matrix.out }}
 
+  # Electron 版安装包（迁移阶段 5，见 docs/design/electron-migration.md），与 Wails 版并行构建。
+  # 失败不影响 Wails 版发布：release 只在 Wails 三平台都成功时运行，Electron 产物有就带上、没有就跳过。
+  build-electron:
+    needs: preflight
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            builder: --win
+            stage: ""
+          - os: ubuntu-latest
+            builder: --linux
+            stage: ""
+          - os: macos-latest
+            builder: --mac --universal
+            stage: --universal
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_SHA }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - name: 构建并打包
+        shell: bash
+        run: |
+          VERSION="${TAG#v}"
+          (cd frontend && npm ci --no-audit --no-fund)
+          cd desktop
+          npm ci --no-audit --no-fund
+          npm test
+          node scripts/stage.mjs --version "$VERSION" ${{ matrix.stage }}
+          npx electron-builder ${{ matrix.builder }} -c.extraMetadata.version="$VERSION"
+          ls -lh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.dmg
+            desktop/release/*.zip
+
   release:
-    needs: build
+    needs: [build, build-electron]
+    # build-electron 失败或被跳过也要发布 Wails 版；Wails 版任何平台失败则不发布。
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -186,12 +242,21 @@ jobs:
           range=${prev:+$prev..}${end}
           git log --no-merges --pretty='%s' "$range" > commits.txt
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          # Electron 安装包有就放进清单（平台键带 -electron，Wails 客户端看不到）。macOS 不自动更新，不进清单。
+          # 文件名由 electron-builder 的 artifactName 决定（Mosaic-<版本>-<系统>-<架构>.<扩展名>），用通配符找，不写死系统/架构那一段。
+          electron_assets=()
+          win=$(ls dist/Mosaic-*.exe 2>/dev/null | head -n1 || true)
+          lin=$(ls dist/Mosaic-*.AppImage 2>/dev/null | head -n1 || true)
+          if [ -n "$win" ]; then electron_assets+=(-asset "windows-amd64-electron=$win"); fi
+          if [ -n "$lin" ]; then electron_assets+=(-asset "linux-amd64-electron=$lin"); fi
+          echo "Electron 资产：${electron_assets[*]:-无}"
           # 更新日志优先取 CHANGELOG.md 里本版本的小节；没有就用提交标题兜底（并输出警告）。
           go run ./cmd/mkmanifest sign -version "${TAG}" -base-url "$base" \
             -changelog CHANGELOG.md -commits-file commits.txt -notes-out notes.md \
             -page "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" -out dist \
             -asset windows-amd64=dist/mosaic-windows-amd64.exe \
-            -asset linux-amd64=dist/mosaic-linux-amd64
+            -asset linux-amd64=dist/mosaic-linux-amd64 \
+            "${electron_assets[@]}"
           # 更新日志会公开发布：不能带 Claude 会话链接（可能泄露隐私）。mkmanifest 已经清理过，这里再兜底检查一次。
           if grep -qiE 'claude\.(ai|com)/code|Claude-Session|Co-Authored-By' notes.md dist/manifest.json; then
             echo "::error::更新日志里出现了 Claude 会话链接或署名行，请检查 CHANGELOG.md 和提交信息"
