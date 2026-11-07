@@ -50,6 +50,9 @@ type Result struct {
 	Err    error
 	// Resume 是下一轮要带上的恢复凭据；引擎没有变化时原样返回 Request.Resume。
 	Resume string
+	// ResumeLost 表示引擎找不到 Request.Resume 指向的会话（比如会话文件被清理了），并且这一轮什么都没做、没发过事件。
+	// 内核据此丢掉旧的恢复凭据，把完整的背景补给引擎再重跑一次；否则对话会悄悄丢掉上下文。
+	ResumeLost bool
 	// Usage 是这一轮的 token 用量（引擎不报告时为零）。
 	Usage provider.Usage
 	// Messages 是这一轮要追加进会话历史的消息（用户消息之后的部分：助手文本、工具调用、工具结果）。

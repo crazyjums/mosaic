@@ -436,3 +436,33 @@ func TestHarnessStateLegacyFormatIsCodex(t *testing.T) {
 		t.Fatalf("旧格式应恢复原来的 Codex 线程且不重复补背景: %+v", seen[0])
 	}
 }
+
+// 引擎的会话没了（ResumeLost）：内核丢掉旧凭据，把整段历史补给引擎再跑一次，不悄悄丢上下文。
+func TestHarnessResumeLostReplaysHistory(t *testing.T) {
+	lost := false
+	he := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		if lost && req.Resume != "" {
+			return ext.Result{Reason: event.TurnError, Err: errors.New("会话文件不见了"), ResumeLost: true, Resume: req.Resume}
+		}
+		return ext.Result{Reason: event.TurnCompleted, Resume: "thread-new"}
+	}}
+	eng, _, _, _ := newHarnessEngine(t, he, nil)
+	ctx := context.Background()
+	if _, err := eng.Send(ctx, "第一句：暗号-7"); err != nil {
+		t.Fatal(err)
+	}
+	lost = true
+	if _, err := eng.Send(ctx, "还记得吗"); err != nil {
+		t.Fatal(err)
+	}
+	if len(he.seen) != 3 {
+		t.Fatalf("应重试一次，共 3 次调用，实际 %d", len(he.seen))
+	}
+	first, retry := he.seen[1], he.seen[2]
+	if first.Resume == "" || first.Text != "还记得吗" {
+		t.Fatalf("第二轮应带着恢复凭据、不补背景: %+v", first)
+	}
+	if retry.Resume != "" || !strings.Contains(retry.Text, "第一句：暗号-7") || !strings.HasSuffix(retry.Text, "还记得吗") {
+		t.Fatalf("重试应丢掉凭据并补全部历史: resume=%q text=%q", retry.Resume, retry.Text)
+	}
+}
