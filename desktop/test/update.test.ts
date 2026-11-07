@@ -7,10 +7,12 @@ import { test } from "node:test";
 import { installUpdate, updatesDir, validateUpdatePath, type InstallDeps } from "../src/update";
 
 test("下载目录和 Go 的 os.UserCacheDir()/mosaic/updates 一致", () => {
-  assert.equal(updatesDir({ LOCALAPPDATA: "C:\\L" }, "win32", "C:\\u").replace(/\\/g, "/"), "C:/L/mosaic/updates");
-  assert.equal(updatesDir({}, "darwin", "/Users/a"), "/Users/a/Library/Caches/mosaic/updates");
-  assert.equal(updatesDir({ XDG_CACHE_HOME: "/x" }, "linux", "/home/a"), "/x/mosaic/updates");
-  assert.equal(updatesDir({}, "linux", "/home/a"), "/home/a/.cache/mosaic/updates");
+  // Windows 上 path.join 用反斜杠，统一成正斜杠再比。
+  const d = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform, home: string) => updatesDir(env, platform, home).replace(/\\/g, "/");
+  assert.equal(d({ LOCALAPPDATA: "C:\\L" }, "win32", "C:\\u"), "C:/L/mosaic/updates");
+  assert.equal(d({}, "darwin", "/Users/a"), "/Users/a/Library/Caches/mosaic/updates");
+  assert.equal(d({ XDG_CACHE_HOME: "/x" }, "linux", "/home/a"), "/x/mosaic/updates");
+  assert.equal(d({}, "linux", "/home/a"), "/home/a/.cache/mosaic/updates");
 });
 
 test("只接受下载目录里后端命名的安装包", () => {
