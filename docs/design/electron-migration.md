@@ -1,6 +1,6 @@
 # 用 Electron 重构桌面端：计划
 
-状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置和工作流已写（实测数据与 CSP 待补），阶段 3 起待做。本文是迁移的依据，与代码不一致时以代码为准。
+状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置和工作流已写（实测数据与 CSP 待补），阶段 3 的更新机制已实现（Electron 渠道的发布与老用户迁移提示待阶段 5 前后接上），阶段 4 起待做。本文是迁移的依据，与代码不一致时以代码为准。
 
 ## 1. 为什么要做
 
@@ -63,7 +63,7 @@ flowchart LR
 - 每个请求在独立的 goroutine 里执行（和 Wails 一样可以并发），回应按完成顺序写出，用 `id` 配对。
 - 保留的方法：
   - `rpc.hello` → `{"protocol":1,"event_protocol":1,"version":"1.7.10","methods":[…]}`：握手，主进程据此确认版本并建立白名单；
-  - 不可调用：`Startup`、`Shutdown`、`SetHost`、`SetPlugins`、`SetChangelog`、`DisableSelfUpdate` 这些生命周期方法。
+  - 不可调用：`Startup`、`Shutdown`、`SetHost`、`SetPlugins`、`SetChangelog`、`UseShellUpdater` 这些生命周期方法。
 
 ### 4.3 Go → Electron
 
@@ -82,7 +82,7 @@ flowchart LR
 
 - `internal/app` 不再 import Wails：桌面能力都走 `app.Host` 接口；Wails 的实现放在仓库根的 `main` 包（`wails_host.go`），行为不变。
 - `internal/rpc`：通用的 stdio JSON-RPC 对等端（请求、通知、反向请求，反射分发方法）。
-- `cmd/mosaicd`：读配置 → 组装内核 → 在 stdio 上服务 `App` 的全部方法。`InstallUpdate` 在这里被禁用（自更新改由壳负责，见阶段 3）。
+- `cmd/mosaicd`：读配置 → 组装内核 → 在 stdio 上服务 `App` 的全部方法。更新改由壳安装：后端 `UseShellUpdater` 只检查、下载并校验，再请壳运行安装程序（见阶段 3）。
 - **验证**：现有测试全部通过；`cmd/mosaicd` 的测试用演示厂商通过 stdio 跑完整的一轮（新建会话 → 发消息 → 收事件 → 回答权限确认 → `turn_end`），并覆盖反向请求；`scripts/mosaicd-smoke.mjs` 用 Node 从外部跑同样的流程（这就是 Electron 主进程将来要做的事）；`internal/archtest` 禁止 `internal/` 再导入 Wails。Wails 版照常构建和发布。
 
 ### 阶段 1：Electron 最小壳（已完成）
@@ -106,6 +106,11 @@ flowchart LR
 
 - Electron 版用 `electron-updater`（Windows NSIS、Linux AppImage），**下载后先按现有的 ed25519 签名清单校验 sha256 再安装**——保留现在“只信任内置公钥签过的清单”的安全模型，不因为换壳变弱。macOS 没有签名公证时仍是“提示并打开下载页”（和现在一样）。
 - 老用户迁移：最后一个 Wails 版本的清单把所有平台标成“手动更新”，提示下载 Electron 安装包；数据目录和钥匙串不变，装上即用。
+- **已实现**：没有引入 `electron-updater`，而是复用现有的 Go 更新逻辑，信任模型一点没变——
+  - 后端 `App.UseShellUpdater(dir)`：同一份签名清单里取 `<平台>-electron` 的安装包（Wails 版取不带后缀的单文件，互不干扰），下载到 `os.UserCacheDir()/mosaic/updates`（保留扩展名）并校验大小和 sha256；然后用反向请求 `host.installUpdate` 请壳安装，自己不替换自己。前端仍是原来的“检查更新 → 安装”，一行不改。
+  - 壳 `desktop/src/update.ts`：只接受上面下载目录里、后端命名规则（`.myllmapp-update-*`）、扩展名与平台相符的文件，拒绝后端消息里任意指定的路径。Windows 静默运行 NSIS 安装程序（`/S --updated --force-run`）；Linux 仅在从 AppImage 运行时原地覆盖并延迟重启；macOS 与现在一样是手动更新。
+  - 发布侧：`mkmanifest sign -asset linux-amd64-electron=…`（平台键本来就是任意字符串，不用改代码）。**还没接进 `release.yml`**——接入点是阶段 5 切换前后：清单里加上 `*-electron` 资产后，Electron 客户端才有东西可更新。
+  - 老用户迁移：最后一个 Wails 版本发布时，清单里**不放 Wails 资产**，该平台自动变成“手动更新、打开发布页”（`Check` 对缺资产的平台本来就这样处理，已有测试覆盖），发布页放 Electron 安装包；数据目录和钥匙串不变。
 - **验证**：Windows / Linux 上从 Electron vX 自动更新到 vX+1；从最后一个 Wails 版换到 Electron 版后会话、设置、插件、登录状态都在。
 
 ### 阶段 4：桌面能力
