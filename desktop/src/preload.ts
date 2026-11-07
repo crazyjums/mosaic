@@ -11,5 +11,11 @@ contextBridge.exposeInMainWorld("mosaic", {
     ipcRenderer.on("mosaic:event", listener);
     return () => ipcRenderer.removeListener("mosaic:event", listener);
   },
+  /** 壳要求界面跳转：打开某个会话（点通知）或新建会话并聚焦输入框（全局快捷键）。 */
+  onNavigate: (cb: (target: unknown) => void): (() => void) => {
+    const listener = (_e: unknown, target: unknown) => cb(target);
+    ipcRenderer.on("mosaic:navigate", listener);
+    return () => ipcRenderer.removeListener("mosaic:navigate", listener);
+  },
   platform: process.platform,
 });

@@ -8,6 +8,8 @@ export interface Paths {
   frontend: string;
   /** CHANGELOG.md（设置 → 关于里的版本历史）。 */
   changelog: string;
+  /** 托盘图标（PNG）。 */
+  icon: string;
   /** 仓库根目录（开发模式才有）。 */
   repo: string | null;
 }
@@ -20,10 +22,10 @@ export interface Paths {
 export function resolvePaths(opts: { packaged: boolean; resources: string; appDir: string; env: NodeJS.ProcessEnv }): Paths {
   const exe = process.platform === "win32" ? "mosaicd.exe" : "mosaicd";
   if (opts.packaged) {
-    return { mosaicd: join(opts.resources, exe), frontend: join(opts.resources, "frontend"), changelog: join(opts.resources, "CHANGELOG.md"), repo: null };
+    return { mosaicd: join(opts.resources, exe), frontend: join(opts.resources, "frontend"), changelog: join(opts.resources, "CHANGELOG.md"), icon: join(opts.resources, "icon.png"), repo: null };
   }
   const repo = join(opts.appDir, "..");
   const built = join(repo, "build", "bin", exe);
   const mosaicd = opts.env.MOSAIC_MOSAICD || (existsSync(built) ? built : null);
-  return { mosaicd, frontend: join(repo, "frontend", "dist"), changelog: join(repo, "CHANGELOG.md"), repo };
+  return { mosaicd, frontend: join(repo, "frontend", "dist"), changelog: join(repo, "CHANGELOG.md"), icon: join(repo, "build", "appicon.png"), repo };
 }

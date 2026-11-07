@@ -19,6 +19,7 @@ extraResources:
       - "mosaicd*"
       - frontend/**
       - CHANGELOG.md
+      - icon.png
 # 测试版和正式版的安装包文件名里带上平台和架构，方便在 Release 页面区分。
 artifactName: Mosaic-${version}-${os}-${arch}.${ext}
 win:
