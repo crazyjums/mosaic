@@ -1,6 +1,6 @@
 # 外部 agent 引擎（Harness）：Codex、Claude Code、pi
 
-状态：**Codex 已实现**（§3）；**Claude Code 已实现**（§4，仅 Electron 版）；pi 还没做（§5）。
+状态：**Codex 已实现**（§3）；**Claude Code 已实现**（§4，仅 Electron 版）；**pi 已实现**（§5，仅 Electron 版）。
 
 ## 1. 为什么
 
@@ -95,7 +95,7 @@ Go ◀──harness.emit / harness.ask── 壳 ◀── utilityProcess
 Go（用户点停止）──host.harness.cancel──▶ 壳 ──cancel──▶ worker
 ```
 
-- **注册**：壳启动后端后发 `harness.register {engines}`（能提供的引擎，目前 `claudecode`），Go 才把这些类型的会话交给它们（`Engine.RegisterHarness`）。Go 端写死白名单，壳报告什么都不会无条件注册。
+- **注册**：壳启动后端后发 `harness.register {engines}`（能提供的引擎，目前 `claudecode`、`pi`），Go 才把这些类型的会话交给它们（`Engine.RegisterHarness`）。Go 端写死白名单，壳报告什么都不会无条件注册。
 - **安全**：`harness.*` 只有壳的主进程调得到（渲染进程的白名单是握手时的绑定方法，里面没有）；Go 校验 `run_id` 必须是进行中的轮、事件类型只能是引擎有权发的那几种（不能伪造 `turn_end`、`permission_*`），审批请求跟着这一轮的 ctx 一起取消。
 - **顺序**：worker 的事件在壳里按顺序一个接一个送到 Go，结束前等它们送完，所以 `turn_end` 不会跑到事件前面；等用户回答的审批不挡住后面的事件。
 - **取消**：用户点停止 → `host.harness.cancel` → worker 中止 SDK、等待中的确认按拒绝处理 → 交回已有的内容；8 秒内没交回就强制结束，按已取消返回。
@@ -111,6 +111,14 @@ Go（用户点停止）──host.harness.cancel──▶ 壳 ──cancel──
 - **验证**：翻译器用真实探测的消息形状写了测试；worker 用假 SDK 覆盖审批、取消、错误；`HarnessManager` 用假 worker 覆盖顺序、审批、取消、崩溃；Go 端用假壳走完整的 stdio 流程。**真机端到端**（`desktop/scripts/harness-e2e.mjs`，会真的调用一次模型，不在 CI 里跑）：打包后的 Electron 应用 → Go → utilityProcess 里的 SDK → 真实 `claude`，写文件、权限确认走 Mosaic 弹窗、第二轮能记得上一轮做过什么（恢复有效）。
 - **没验证**：Windows / macOS 上 SDK 启动 `claude`（Windows 的 `claude.cmd` 脚本可能需要经过 shell，优先找 `.exe`）；取消的真实时序（取消只有单元测试覆盖）。
 
-## 5. pi（还没做）
+## 5. pi（`desktop/src/workers/pi.ts`）
 
-同样走 §4 的通道，worker 换成 pi 的 SDK。
+走 §4 的通道，worker 里跑 pi 的官方 SDK（`@earendil-works/pi-coding-agent`，旧包名 `@mariozechner/pi-coding-agent` 已弃用），`createAgentSession()` 在进程内运行，不需要用户另装命令。
+
+- **模型和登录是用户自己的 pi 配置**（`~/.pi/agent` 下的 `settings.json`、`auth.json`、`models.json`）：Mosaic 不读不存。模型名填 `default` 用 pi 的默认模型，或写成 `提供商/模型ID`（`ModelRuntime.getModel`）；没有任何可用模型时提示去终端 `pi` 里 `/login`。
+- **权限**：pi 自己没有逐次确认的机制（它的安全文档明说“不会在每次调用前询问”）。这里注册一个内联扩展，在 `tool_call` 钩子里把调用变成 Mosaic 的权限确认，拒绝则返回 `{block: true}`（模型会收到“用户拒绝了这次操作”的工具结果）。规则：默认模式 → 写类和执行类都问；自动接受编辑 → 只问执行类；自动 → 都不问；只读 → 只开 `read/grep/find/ls` 四个工具，不留写/执行工具。「本会话允许」按工具名记在这一轮的 worker 里。
+- **事件映射**（依据对真实 SDK 1.5.0 的探测：假的 OpenAI 兼容服务器 + 真 pi）：`message_start`（助手）→ `message_start`；`message_update` 里的 `text_delta` / `thinking_delta` → 对应增量，`toolcall_end` → `tool_call`；`tool_execution_end` → `tool_result`（含被拦截时的错误结果）；`message_end`（助手）→ `message_end` 和用量；`system` / `user` 消息不转发。pi 不抛模型错误（鉴权失败、额度用完），错误在最后一条助手消息的 `errorMessage` 里，worker 据此报错。
+- **恢复**：pi 的会话是 JSONL 文件，路径作为恢复凭据（`SessionManager.open`）；文件被清理就当新会话开始。会话文件在 pi 自己的目录里，也可以用 pi 命令行接着聊。
+- **打包**：pi 依赖较多，`node_modules` 整体放在 `app.asar.unpacked`（约 60MB）。
+- **验证**：翻译器和 worker 用真实探测的事件形状写了测试；真 SDK + 假模型服务器验证过：拒绝时文件没写、允许时写入、下一轮能记得上一轮（恢复有效）。
+- **没验证**：用真实模型账号跑一轮（环境里没有 pi 的凭证）；Windows / macOS；取消的真实时序；图片附件和子 agent 不支持。
