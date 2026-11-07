@@ -149,6 +149,34 @@ export async function runSmoke(win: BrowserWindow, cspViolations: string[] = [],
   await win.webContents.executeJavaScript('window.mosaic.openWindow("git")', true);
   if (BrowserWindow.getAllWindows().length !== reopenCount) throw new Error("同一种独立窗口应该只开一个");
   aux.close();
+
+  // 独立的产物窗口：参数经壳校验，地址里带路径，窗口里渲染产物预览（文件不存在时显示读取失败，但路径和工具栏在）。
+  const badArtifact = (await win.webContents.executeJavaScript(
+    'window.mosaic.openWindow("artifact", { path: "/x/a.exe", workspace: "/x", kind: "exe" }).then(() => "opened", (e) => String(e.message || e))',
+    true,
+  )) as string;
+  if (badArtifact === "opened") throw new Error("不合法的产物窗口参数不应该能打开");
+  const art = '{ path: "/tmp/smoke ws/报告 & 图.html", workspace: "/tmp/smoke ws", kind: "html" }';
+  const beforeArt = BrowserWindow.getAllWindows().length;
+  await win.webContents.executeJavaScript(`window.mosaic.openWindow("artifact", ${art})`, true);
+  let artWin: BrowserWindow | undefined;
+  for (let i = 0; i < 50 && !artWin; i++) {
+    artWin = BrowserWindow.getAllWindows().find((w) => w !== win && w.webContents.getURL().includes("window=artifact"));
+    if (!artWin) await new Promise((res) => setTimeout(res, 100));
+  }
+  if (!artWin) throw new Error("没有打开独立的产物窗口");
+  let artText = "";
+  for (let i = 0; i < 100 && !artText.includes("报告 & 图.html"); i++) {
+    artText = (await artWin.webContents.executeJavaScript("document.body.innerText", true)) as string;
+    await new Promise((res) => setTimeout(res, 100));
+  }
+  if (!artText.includes("报告 & 图.html")) throw new Error(`独立产物窗口里没有显示文件路径：${artText.slice(0, 200)}`);
+  if (/发送|新对话/.test(artText)) throw new Error("独立产物窗口里不应该有聊天界面");
+  await win.webContents.executeJavaScript(`window.mosaic.openWindow("artifact", ${art})`, true);
+  if (BrowserWindow.getAllWindows().length !== beforeArt + 1) throw new Error("同一个文件的产物窗口应该只开一个");
+  await win.webContents.executeJavaScript('window.mosaic.openWindow("artifact", { path: "/tmp/smoke ws/other.md", workspace: "/tmp/smoke ws", kind: "markdown" })', true);
+  if (BrowserWindow.getAllWindows().length !== beforeArt + 2) throw new Error("不同文件应该各开一个窗口");
+  for (const w of BrowserWindow.getAllWindows()) if (w !== win) w.close();
   // 桌面设置：能读、能改；写法对但注册不了的快捷键被拒绝并原样保留旧设置。
   const cfg = (await win.webContents.executeJavaScript(
     `(async () => {
