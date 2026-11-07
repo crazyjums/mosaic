@@ -17,7 +17,7 @@ const FEATURES: [string, string][] = [
 ];
 
 export default function AboutSettings() {
-  const { version, info, checking, error, autoError, lastAttemptAt, lastCheckedAt, status, check, install } = useUpdate();
+  const { version, info, checking, error, autoError, lastAttemptAt, lastCheckedAt, status, check, download, applyNow, applyQueued, openDialog } = useUpdate();
   const prefs = useUIPrefs((s) => s.prefs);
   const update = useUIPrefs((s) => s.update);
   const [history, setHistory] = useState<ReleaseNotes[]>([]);
@@ -82,7 +82,24 @@ export default function AboutSettings() {
             {checking ? t("正在检查…") : t("检查更新")}
           </button>
           {info && !checking && !error && !info.disabled && !info.available && <span className="text-sm text-ok">{t("已是最新版本")}</span>}
-          {info?.available && !busy && (
+          {status.state === "ready" && (
+            <>
+              <span className="text-sm">{t("新版本 {v} 已下载完成", { v: status.version || info?.latest || "" })}</span>
+              {applyQueued ? (
+                <span className="text-sm text-muted">{t("已排队：对话结束后自动安装")}</span>
+              ) : (
+                <button className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90" onClick={() => void applyNow()}>
+                  {t("立即安装")}
+                </button>
+              )}
+            </>
+          )}
+          {busy && (
+            <button className="btn" onClick={openDialog}>
+              {t("查看进度")}
+            </button>
+          )}
+          {info?.available && !busy && status.state !== "ready" && (
             <>
               <span className="text-sm">{t("发现新版本 {v}", { v: info.latest })}</span>
               <LevelBadge info={info} />
@@ -91,8 +108,8 @@ export default function AboutSettings() {
                   {t("前往下载页")}
                 </button>
               ) : (
-                <button className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90" onClick={() => void install()}>
-                  {t("立即更新")}
+                <button className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90" onClick={() => void download()}>
+                  {t("下载更新")}
                 </button>
               )}
             </>

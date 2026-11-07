@@ -6,6 +6,8 @@
 
 import { create } from "zustand";
 import { backend, type UpdateInfo, type UpdateStatus } from "../bridge";
+import { anyRunning } from "./activity";
+import { useChat } from "./chatStore";
 import { useUIPrefs } from "./uiPrefs";
 
 interface UpdateState {
@@ -23,11 +25,18 @@ interface UpdateState {
   status: UpdateStatus;
   /** 更新窗口是否打开 */
   dialogOpen: boolean;
+  /** 用户已经确认“现在安装”，但还有会话在运行：等它们都结束后自动安装 */
+  applyQueued: boolean;
   /** 本次运行中用户已经看过更新内容的版本：看过之后按钮不再闪烁（下次启动或有更新的版本再闪） */
   seen: string;
   init(): Promise<void>;
   check(manual: boolean): Promise<void>;
-  install(): Promise<void>;
+  /** 第一步：后台下载并校验新版本（窗口可以最小化，下载完成后会再弹出来问是否安装） */
+  download(): Promise<void>;
+  /** 第二步：用户确认安装。有会话在运行就排队，等它们结束再装；否则立即安装并重启 */
+  applyNow(): Promise<void>;
+  /** 取消排队中的安装（安装包还在，可以稍后手动安装） */
+  cancelQueued(): void;
   /** 打开更新窗口；没有新版本时顺便检查一次 */
   openDialog(): void;
   /** 关闭更新窗口（"稍后"） */
@@ -45,6 +54,62 @@ const ONLINE_RECHECK_MS = 30 * 1000;
 let started = false;
 let autoTimer: ReturnType<typeof setTimeout> | undefined;
 let poller: ReturnType<typeof setInterval> | undefined;
+let applyTimer: ReturnType<typeof setInterval> | undefined;
+let polledState = "idle";
+
+/** 下载期间轮询进度。下载完成（ready）时把更新窗口再弹出来，问用户是否现在安装——即使用户之前把它最小化了。 */
+function startPolling() {
+  clearInterval(poller);
+  poller = setInterval(async () => {
+    try {
+      const st = await backend().getUpdateStatus();
+      const was = polledState;
+      polledState = st.state;
+      useUpdate.setState({ status: st });
+      if (st.state === "ready" && was === "downloading") {
+        useUpdate.setState((u) => ({ dialogOpen: true, seen: u.info?.available ? u.info.latest : u.seen }));
+      }
+      if (st.state === "error" || st.state === "idle" || st.state === "ready") clearInterval(poller);
+    } catch {
+      // 应用退出重启时连接断开是正常的
+    }
+  }, 500);
+}
+
+/**
+ * 尝试安装已下载好的版本。有会话在运行就保持排队（由 chatStore 的订阅和定时重试在空闲时再来）；
+ * 后端也会拒绝（比如界面还不知道的运行中任务），同样保持排队。
+ */
+async function tryApply() {
+  const st = useUpdate.getState();
+  if (!st.applyQueued || st.status.state !== "ready") return;
+  if (anyRunning(useChat.getState())) {
+    ensureApplyTimer();
+    return;
+  }
+  try {
+    await backend().applyUpdate();
+  } catch (e) {
+    const msg = String(e instanceof Error ? e.message : e);
+    if (/正在运行/.test(msg)) {
+      ensureApplyTimer();
+      return;
+    }
+    clearInterval(applyTimer);
+    useUpdate.setState({ applyQueued: false, status: { ...useUpdate.getState().status, error: msg } });
+    return;
+  }
+  clearInterval(applyTimer);
+  useUpdate.setState({ applyQueued: false, status: { ...useUpdate.getState().status, state: "installing", error: undefined } });
+  polledState = "installing";
+  startPolling();
+}
+
+/** 排队期间每隔几秒再试一次：覆盖界面状态和后端状态不一致的情况。 */
+function ensureApplyTimer() {
+  if (applyTimer) clearInterval(applyTimer);
+  applyTimer = setInterval(() => void tryApply(), 3000);
+}
 
 function scheduleAutoCheck(delay: number) {
   clearTimeout(autoTimer);
@@ -77,6 +142,7 @@ export const useUpdate = create<UpdateState>((set, get) => ({
   lastCheckedAt: 0,
   status: IDLE,
   dialogOpen: false,
+  applyQueued: false,
   seen: "",
 
   init: async () => {
@@ -96,6 +162,10 @@ export const useUpdate = create<UpdateState>((set, get) => ({
       if (next.prefs.updateCheck === previous.prefs.updateCheck) return;
       if (next.prefs.updateCheck === "auto") scheduleAutoCheck(0);
       else clearTimeout(autoTimer);
+    });
+    // 排队等待安装时，最后一个会话结束的那一刻立即安装。
+    useChat.subscribe((chat, prev) => {
+      if (useUpdate.getState().applyQueued && anyRunning(prev) && !anyRunning(chat)) void tryApply();
     });
     try {
       set({ version: await backend().getVersion() });
@@ -128,25 +198,25 @@ export const useUpdate = create<UpdateState>((set, get) => ({
     }
   },
 
-  install: async () => {
+  download: async () => {
     set({ error: "", status: { state: "downloading", done: 0, total: get().info?.size ?? 0 } });
     try {
-      await backend().installUpdate();
+      await backend().downloadUpdate();
     } catch (e) {
       set({ status: { state: "error", done: 0, total: 0, error: String(e instanceof Error ? e.message : e) } });
       return;
     }
-    // 下载在后台进行，轮询进度；成功后应用会自己重启，窗口随之关闭。
-    clearInterval(poller);
-    poller = setInterval(async () => {
-      try {
-        const st = await backend().getUpdateStatus();
-        set({ status: st });
-        if (st.state === "error" || st.state === "idle") clearInterval(poller);
-      } catch {
-        // 应用退出重启时连接断开是正常的
-      }
-    }, 500);
+    startPolling();
+  },
+
+  applyNow: async () => {
+    set({ applyQueued: true, error: "" });
+    await tryApply();
+  },
+
+  cancelQueued: () => {
+    clearInterval(applyTimer);
+    set({ applyQueued: false });
   },
 
   openDialog: () => {
@@ -169,13 +239,17 @@ export const useUpdate = create<UpdateState>((set, get) => ({
  *   steady —— 有新版本但这次运行里已经看过（点了"稍后"）：保持高亮，不再闪；
  *   none   —— 没有新版本，或者用户选了"跳过此版本"：只是一个普通的"检查更新"入口。
  */
-export type UpdateIndicator = "none" | "blink" | "steady" | "busy";
+export type UpdateIndicator = "none" | "blink" | "steady" | "busy" | "ready";
 
 export function updateIndicator(s: Pick<UpdateState, "info" | "seen" | "status">, skipped: string): UpdateIndicator {
+  if (s.status.state === "ready") return "ready"; // 已下载好，等用户安装
   if (s.status.state !== "idle" && s.status.state !== "error") return "busy";
   if (!s.info?.available || s.info.latest === skipped) return "none";
   return s.info.latest === s.seen ? "steady" : "blink";
 }
+
+/** 安装包是否已下载好、正在等用户确认或等会话结束。 */
+export const isReady = (s: Pick<UpdateState, "status">) => s.status.state === "ready";
 
 export function fmtMB(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;

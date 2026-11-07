@@ -47,3 +47,8 @@ export function reconcileRunning(act: Record<string, SessionActivity>, running: 
 
 /** 会话列表里需要特别标记的会话数（运行中或有未读结果） */
 export const attentionCount = (act: Record<string, SessionActivity>) => Object.values(act).filter((a) => a.running || a.waiting > 0 || a.unread).length;
+
+/** 有没有任何会话在运行（当前会话看 running，其他会话看 activity）。更新要等它们都结束再安装，免得重启打断任务。 */
+export function anyRunning(s: { running: boolean; sessionId: string | null; activity: Record<string, SessionActivity> }): boolean {
+  return s.running || Object.entries(s.activity).some(([id, a]) => id !== s.sessionId && a.running);
+}

@@ -453,8 +453,12 @@ export interface Backend {
   listSkills(): Promise<SkillInfo[]>;
   /** 随程序打包的全部历史版本更新日志，最新的在前；离线可用 */
   getVersionHistory(): Promise<ReleaseNotes[]>;
-  /** 下载并安装最近一次检查到的版本，然后重启；立即返回，进度用 getUpdateStatus 轮询 */
+  /** 下载并安装最近一次检查到的版本，然后重启；立即返回，进度用 getUpdateStatus 轮询（命令行等场景；界面用下面两步） */
   installUpdate(): Promise<void>;
+  /** 第一步：在后台下载并校验新版本（不影响正在做的事）；完成后 getUpdateStatus 变成 ready */
+  downloadUpdate(): Promise<void>;
+  /** 第二步：安装已下载好的版本并重启。agent 在运行时会被拒绝，调用方等这一轮结束再试 */
+  applyUpdate(): Promise<void>;
   getUpdateStatus(): Promise<UpdateStatus>;
   // ---- 上下文明细 ----
   getContextBreakdown(): Promise<ContextBreakdown>;
@@ -514,10 +518,13 @@ export interface UpdateInfo {
 }
 
 export interface UpdateStatus {
-  state: "idle" | "downloading" | "installing" | "restarting" | "error";
+  /** ready：已下载并校验，等用户确认安装（这时带 error 表示上一次安装失败了，安装包还在） */
+  state: "idle" | "downloading" | "ready" | "installing" | "restarting" | "error";
   done: number;
   total: number;
   error?: string;
+  /** ready / installing / restarting 时对应的版本号 */
+  version?: string;
 }
 
 export type UsageBy = "day" | "session" | "model" | "profile";

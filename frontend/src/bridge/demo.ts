@@ -503,6 +503,12 @@ export function createDemoBackend(): Backend {
     installUpdate: async () => {
       throw new Error(demoOnly);
     },
+    downloadUpdate: async () => {
+      throw new Error(demoOnly);
+    },
+    applyUpdate: async () => {
+      throw new Error(demoOnly);
+    },
     getUpdateStatus: async () => ({ state: "idle" as const, done: 0, total: 0 }),
     openChatGPTUsage: async () => {
       window.open("https://chatgpt.com/settings/usage", "_blank", "noopener");

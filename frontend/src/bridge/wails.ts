@@ -106,6 +106,8 @@ export interface GoApp {
   SendMessage(text: string, attachments: Attachment[]): Promise<void>;
   GetVersionHistory(): Promise<ReleaseNotes[] | null>;
   InstallUpdate(): Promise<void>;
+  DownloadUpdate(): Promise<void>;
+  ApplyUpdate(): Promise<void>;
   GetUpdateStatus(): Promise<UpdateStatus>;
   GetContextBreakdown(): Promise<ContextBreakdown>;
   ListTools(): Promise<ToolInfo[] | null>;
@@ -252,6 +254,8 @@ export function createBackendFrom(app: GoApp, runtime: EventRuntime, kind: "wail
     listSkills: async () => (await app.ListSkills()) ?? [],
     getVersionHistory: async () => (await app.GetVersionHistory()) ?? [],
     installUpdate: () => app.InstallUpdate(),
+    downloadUpdate: () => app.DownloadUpdate(),
+    applyUpdate: () => app.ApplyUpdate(),
     getUpdateStatus: () => app.GetUpdateStatus(),
     getContextBreakdown: () => app.GetContextBreakdown(),
     listTools: async () => (await app.ListTools()) ?? [],
