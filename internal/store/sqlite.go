@@ -73,6 +73,8 @@ var migrations = []string{
 	);
 	CREATE INDEX idx_usage_day ON usage_events(day, profile, model);
 	CREATE INDEX idx_usage_session ON usage_events(session_id);`,
+	// 4：外部 agent 引擎（Codex 等）的恢复凭据，内容由引擎自己定义；内置引擎的会话为空。
+	`ALTER TABLE sessions ADD COLUMN harness_state TEXT NOT NULL DEFAULT '';`,
 }
 
 // OpenSQLite 打开（必要时创建）数据库文件并执行迁移。
@@ -141,12 +143,13 @@ func (s *SQLite) SaveSession(ctx context.Context, sess *core.Session) error {
 	defer tx.Rollback() // Commit 之后再 Rollback 是无害的空操作
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO sessions (id, title, provider, model, workspace, usage_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO sessions (id, title, provider, model, workspace, harness_state, usage_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title, provider = excluded.provider, model = excluded.model,
-			workspace = excluded.workspace, usage_json = excluded.usage_json, updated_at = excluded.updated_at`,
-		sess.ID, sess.Title, sess.Provider, sess.Model, sess.Workspace, string(usage),
+			workspace = excluded.workspace, harness_state = excluded.harness_state,
+			usage_json = excluded.usage_json, updated_at = excluded.updated_at`,
+		sess.ID, sess.Title, sess.Provider, sess.Model, sess.Workspace, sess.HarnessState, string(usage),
 		sess.CreatedAt.UnixMilli(), sess.UpdatedAt.UnixMilli())
 	if err != nil {
 		return fmt.Errorf("store: upsert session: %w", err)
@@ -178,8 +181,8 @@ func (s *SQLite) LoadSession(ctx context.Context, id string) (*core.Session, err
 		created, updated int64
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, title, provider, model, workspace, usage_json, created_at, updated_at FROM sessions WHERE id = ?`, id).
-		Scan(&sess.ID, &sess.Title, &sess.Provider, &sess.Model, &sess.Workspace, &usage, &created, &updated)
+		`SELECT id, title, provider, model, workspace, harness_state, usage_json, created_at, updated_at FROM sessions WHERE id = ?`, id).
+		Scan(&sess.ID, &sess.Title, &sess.Provider, &sess.Model, &sess.Workspace, &sess.HarnessState, &usage, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: %s", core.ErrSessionNotFound, id)
 	}

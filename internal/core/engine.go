@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/harness"
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/tool"
@@ -25,6 +26,9 @@ type EngineConfig struct {
 	Policy    permission.Policy
 	Compactor Compactor
 	Subagents *SubagentRegistry
+	// Harnesses 是外部 agent 引擎，键是厂商配置档的 type（例如 "codex"）。配置档的 type 在这里有对应项时，
+	// 这个配置档的会话整轮交给引擎处理，而不是走内置的 agent 循环（见 harness.go）。
+	Harnesses map[string]harness.Harness
 
 	// Workspace 是默认工作区：没有选过工作区的会话使用它。每个会话可以有自己的工作区（Session.Workspace）。
 	Workspace string
@@ -519,24 +523,30 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 
 	// 步骤 2：组装一个主 agent 并运行。每轮新建 Agent 很便宜（只是一份配置），
 	// 这样切换模型后不需要任何"刷新"逻辑。
-	agent := NewAgent(AgentConfig{
-		ID:        event.RootAgentID,
-		Provider:  p,
-		Model:     snap.Model,
-		System:    rt.SystemPrompt,
-		MaxTokens: rt.MaxTokens,
-		MaxSteps:  rt.MaxSteps,
-		Tools:     e.cfg.Tools,
-		Policy:    &sessionPolicy{Policy: e.cfg.Policy, grants: e.grants, sid: sid},
-		Broker:    e.broker,
-		Publisher: endWatcher{Publisher: e.bus, r: r},
-		Compactor: e.compactorFor(p, pcfg, snap.Model),
-		Workspace: rt.Workspace,
-		AllowOutsideWorkspace: func() bool { return e.permissionMode() == string(permission.ModeAuto) },
-		SessionID: sid,
-		Disabled:  disabled,
-	})
-	res := agent.RunInput(ctx, sess, in)
+	// 配置档是外部引擎（Codex 等）时，整轮交给引擎，内核只做前后的事。
+	var res TurnResult
+	if h := e.cfg.Harnesses[pcfg.Type]; h != nil {
+		res = e.runHarness(ctx, sess, h, pcfg, snap.Model, rt, in, endWatcher{Publisher: e.bus, r: r})
+	} else {
+		agent := NewAgent(AgentConfig{
+			ID:                    event.RootAgentID,
+			Provider:              p,
+			Model:                 snap.Model,
+			System:                rt.SystemPrompt,
+			MaxTokens:             rt.MaxTokens,
+			MaxSteps:              rt.MaxSteps,
+			Tools:                 e.cfg.Tools,
+			Policy:                &sessionPolicy{Policy: e.cfg.Policy, grants: e.grants, sid: sid},
+			Broker:                e.broker,
+			Publisher:             endWatcher{Publisher: e.bus, r: r},
+			Compactor:             e.compactorFor(p, pcfg, snap.Model),
+			Workspace:             rt.Workspace,
+			AllowOutsideWorkspace: func() bool { return e.permissionMode() == string(permission.ModeAuto) },
+			SessionID:             sid,
+			Disabled:              disabled,
+		})
+		res = agent.RunInput(ctx, sess, in)
+	}
 
 	// 步骤 3：持久化。即使本轮出错/取消也要保存——用户已经看到的内容不应该丢。
 	// 用 context.Background()：本轮被取消时保存仍需完成。

@@ -17,6 +17,7 @@ func TestCoreImportBoundaries(t *testing.T) {
 	const module = "github.com/crazyjums/myllmapp/"
 	allowedInternal := map[string]bool{
 		module + "internal/event":      true,
+		module + "internal/harness":    true, // 只有契约，不含具体引擎
 		module + "internal/provider":   true, // 只有接口与中立消息模型，不含具体厂商
 		module + "internal/tool":       true,
 		module + "internal/permission": true,
