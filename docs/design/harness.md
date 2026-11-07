@@ -1,6 +1,6 @@
 # 外部 agent 引擎（Harness）：Codex、Claude Code、pi
 
-状态：**Codex 已实现**（本文 §3）；Claude Code 和 pi 还没做（§4，接下来做）。
+状态：**Codex 已实现**（§3）；**Claude Code 已实现**（§4，仅 Electron 版）；pi 还没做（§5）。
 
 ## 1. 为什么
 
@@ -85,6 +85,32 @@ Codex 的 `item/commandExecution/requestApproval` / `item/fileChange/requestAppr
 - 真实 Codex 0.167：握手、`account/read`、没登录的提示（`MOSAIC_CODEX_BIN=… go test ./internal/harness/codex -run Real`）。
 - **没验证**：真实登录后的完整对话（这个环境没有 Codex 凭证）。事件映射依据 schema 和假服务器，真实输出的细节（例如 `fileChange` 的 `kind` 形状）可能还需要在有账号的机器上校对。
 
-## 4. Claude Code 和 pi（接下来）
+## 4. 远程引擎的通道，与 Claude Code
 
-两者的官方 SDK 是 Node 包，不能直接用 Go 驱动。方案（见 [electron-migration.md](electron-migration.md) 阶段 6）：SDK 跑在 Electron 的 `utilityProcess` 里，通过 `harness.*` 反向请求接回 Go——Go 侧是一个 `Harness` 实现，把 `Run` 转成发给主进程的请求，事件和权限回调沿同一条通道回来。因此它们只在 Electron 版里可用。
+Claude Code 和 pi 的官方 SDK 是 Node 包，Go 不能直接调用。做法：SDK 跑在 Electron 的 `utilityProcess` 里（每一轮一个进程），Go 这边只是一个很薄的 `Harness`（`internal/harness/remote`），把一轮对话变成发给壳的反向请求。所以它们只在 Electron 版里可用；Wails 版和命令行里对应的配置档会给出明确的提示。
+
+```
+Go（Run）──host.harness.run {run_id, spec}──▶ 壳（HarnessManager）──▶ utilityProcess（SDK）
+Go ◀──harness.emit / harness.ask── 壳 ◀── utilityProcess
+Go（用户点停止）──host.harness.cancel──▶ 壳 ──cancel──▶ worker
+```
+
+- **注册**：壳启动后端后发 `harness.register {engines}`（能提供的引擎，目前 `claudecode`），Go 才把这些类型的会话交给它们（`Engine.RegisterHarness`）。Go 端写死白名单，壳报告什么都不会无条件注册。
+- **安全**：`harness.*` 只有壳的主进程调得到（渲染进程的白名单是握手时的绑定方法，里面没有）；Go 校验 `run_id` 必须是进行中的轮、事件类型只能是引擎有权发的那几种（不能伪造 `turn_end`、`permission_*`），审批请求跟着这一轮的 ctx 一起取消。
+- **顺序**：worker 的事件在壳里按顺序一个接一个送到 Go，结束前等它们送完，所以 `turn_end` 不会跑到事件前面；等用户回答的审批不挡住后面的事件。
+- **取消**：用户点停止 → `host.harness.cancel` → worker 中止 SDK、等待中的确认按拒绝处理 → 交回已有的内容；8 秒内没交回就强制结束，按已取消返回。
+
+### 4.1 Claude Code（`desktop/src/workers/claudecode.ts`）
+
+- **用的是真正的官方 SDK**（`@anthropic-ai/claude-agent-sdk`，`query()` 加 `canUseTool`），不是自己重写。
+- **不打包原生 `claude`**：SDK 的平台包里是 300MB 以上的原生可执行文件，不进安装包；用用户自己装的 `claude` 命令（PATH 里找，或配置档的「Claude Code 命令」）。SDK 本体和 worker 放在 `app.asar.unpacked`，因为 utilityProcess 要像普通进程一样 import 它们。
+- **登录与计费是用户自己的**：用用户的 Claude Code 登录或环境里的 `ANTHROPIC_API_KEY`；Mosaic 不读不存。请按 Anthropic 的使用条款使用（第三方应用通常应使用 API Key 方式认证）。
+- **事件映射**（依据对真实 SDK 0.3.319 + claude 2.1.319 的探测）：`stream_event` 的文字 / 思考增量 → `text_delta` / `thinking_delta`；`assistant` 里完整的 `tool_use` → `tool_call`；`user` 里的 `tool_result` → `tool_result`；`result` → 用量、会话 ID、成败。子 agent 里的过程（`parent_tool_use_id` 非空）不显示。
+- **权限映射**：只读 → SDK 的 `plan`（可读不可改不可执行）；默认 → `default`；自动接受编辑 → `acceptEdits`；自动 → `bypassPermissions`（与 Mosaic 自动模式“放行一切”一致）。SDK 的 `canUseTool` 变成 Mosaic 的权限确认；「本会话允许」把 SDK 建议的权限更新交回去，同类操作不再询问。Claude Code 自己的设置（`CLAUDE.md`、MCP、技能、它自己的权限规则）照常生效。
+- **恢复**：用 SDK 的会话 ID 作为恢复凭据（`options.resume`）。
+- **验证**：翻译器用真实探测的消息形状写了测试；worker 用假 SDK 覆盖审批、取消、错误；`HarnessManager` 用假 worker 覆盖顺序、审批、取消、崩溃；Go 端用假壳走完整的 stdio 流程。**真机端到端**（`desktop/scripts/harness-e2e.mjs`，会真的调用一次模型，不在 CI 里跑）：打包后的 Electron 应用 → Go → utilityProcess 里的 SDK → 真实 `claude`，写文件、权限确认走 Mosaic 弹窗、第二轮能记得上一轮做过什么（恢复有效）。
+- **没验证**：Windows / macOS 上 SDK 启动 `claude`（Windows 的 `claude.cmd` 脚本可能需要经过 shell，优先找 `.exe`）；取消的真实时序（取消只有单元测试覆盖）。
+
+## 5. pi（还没做）
+
+同样走 §4 的通道，worker 换成 pi 的 SDK。
