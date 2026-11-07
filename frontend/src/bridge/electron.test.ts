@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElectronBackend, isElectron } from "./electron";
+import { createElectronBackend, isElectron, onShellNavigate, parseShellTarget } from "./electron";
 
 // window.mosaic 是 Electron preload 注入的；这里用假的验证“按方法名、按位置传参”的约定，以及事件订阅。
 function install(call: (m: string, a: unknown[]) => Promise<unknown>) {
@@ -57,5 +57,31 @@ describe("Electron 桥接", () => {
     expect(got).toEqual([1, 2, 3]);
     off();
     expect(h.count()).toBe(0);
+  });
+});
+
+describe("壳的跳转请求", () => {
+  it("只认两种形状", () => {
+    expect(parseShellTarget({ kind: "new-session" })).toEqual({ kind: "new-session" });
+    expect(parseShellTarget({ kind: "session", id: "s1" })).toEqual({ kind: "session", id: "s1" });
+    for (const bad of [null, undefined, 1, {}, { kind: "session" }, { kind: "session", id: "" }, { kind: "session", id: 3 }, { kind: "eval", id: "x" }]) {
+      expect(parseShellTarget(bad)).toBeUndefined();
+    }
+  });
+
+  it("订阅、过滤、取消订阅；没有 bridge 时是空操作", () => {
+    let cb: (t: unknown) => void = () => undefined;
+    const off = vi.fn();
+    (globalThis as unknown as { window: unknown }).window = { mosaic: { call: vi.fn(), onEvent: vi.fn(), onNavigate: (f: (t: unknown) => void) => ((cb = f), off), platform: "linux" } };
+    const got: unknown[] = [];
+    const un = onShellNavigate((t) => got.push(t));
+    cb({ kind: "session", id: "s1" });
+    cb({ kind: "bogus" });
+    expect(got).toEqual([{ kind: "session", id: "s1" }]);
+    un();
+    expect(off).toHaveBeenCalled();
+
+    (globalThis as unknown as { window: unknown }).window = {};
+    expect(() => onShellNavigate(() => undefined)()).not.toThrow();
   });
 });
