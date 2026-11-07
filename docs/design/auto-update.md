@@ -121,6 +121,10 @@ sequenceDiagram
 
 重启时新进程会带环境变量 `MYLLMAPP_UPDATED_FROM=<旧进程 pid>`，启动时先等旧进程退出（最多 10 秒）再初始化，避免两个实例同时打开同一个 SQLite 数据库。
 
+### Electron 版（迁移中）
+
+Electron 版的 Go 后端 `mosaicd` 只是安装包里的子程序，不替换自己，而是 `App.UseShellUpdater`：清单里取 `<平台>-electron` 的安装包（如 `windows-amd64-electron`，`mkmanifest sign -asset` 的平台键本来就是任意字符串），下载到 `os.UserCacheDir()/mosaic/updates` 并校验 sha256，再请壳运行（Windows 静默 NSIS、Linux 覆盖 AppImage、macOS 仍是手动）。验签、校验流程和上面完全相同。见 [electron-migration.md](electron-migration.md) 阶段 3。
+
 程序目录不可写（例如装在 `C:\Program Files` 且没有管理员权限）时，下载这一步就会失败并提示手动安装；更新不会尝试提权。
 
 ## 代码位置

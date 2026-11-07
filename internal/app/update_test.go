@@ -152,3 +152,76 @@ func TestCheckUpdateUsesSavedGlobalProxy(t *testing.T) {
 		t.Fatal("清空代理后应回到直连（127.0.0.1:1 无服务）")
 	}
 }
+
+type installerHost struct {
+	Host
+	got chan string
+}
+
+func (h *installerHost) InstallUpdate(_ context.Context, path string) error {
+	h.got <- path
+	return nil
+}
+
+// Electron 版：后端下载并校验安装包，再交给壳运行；不替换自己，也不自己重启。
+func TestShellUpdater(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+
+	pubB64, priv, _ := update.GenerateKey()
+	pub, _ := update.ParsePublicKey(pubB64)
+	asset := []byte("installer")
+	sum := sha256.Sum256(asset)
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	m := update.Manifest{Version: "2.0.0", Notes: "新功能", Platforms: map[string]update.Asset{
+		"linux-amd64-electron": {URL: srv.URL + "/pkg.AppImage", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(asset))},
+	}}
+	mux.HandleFunc("/m.json", func(w http.ResponseWriter, _ *http.Request) { b, _ := json.Marshal(m); w.Write(b) })
+	mux.HandleFunc("/m.json.sig", func(w http.ResponseWriter, _ *http.Request) {
+		b, _ := json.Marshal(m)
+		sig, _ := update.Sign(priv, b)
+		w.Write(sig)
+	})
+	mux.HandleFunc("/pkg.AppImage", func(w http.ResponseWriter, _ *http.Request) { w.Write(asset) })
+
+	exe := filepath.Join(t.TempDir(), "mosaicd")
+	_ = os.WriteFile(exe, []byte("old"), 0o755)
+	dir := filepath.Join(t.TempDir(), "updates")
+	a := New(built.Engine, built.Settings, func(context.Context, string, ...any) {})
+	a.upd = &update.Updater{ManifestURL: srv.URL + "/m.json", PubKey: pub, Current: "1.0.0", GOOS: "linux", GOARCH: "amd64", ExePath: exe}
+	a.UseShellUpdater(dir)
+
+	if _, err := a.CheckUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	// 壳不支持安装时要明确拒绝，而不是下载完才失败。
+	if err := a.InstallUpdate(); err == nil {
+		t.Fatal("没有支持安装的壳时应拒绝")
+	}
+	h := &installerHost{got: make(chan string, 1)}
+	a.SetHost(h)
+	if err := a.InstallUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p := <-h.got:
+		if filepath.Dir(p) != dir || filepath.Ext(p) != ".AppImage" {
+			t.Fatalf("安装包位置不对: %s", p)
+		}
+		if b, _ := os.ReadFile(p); string(b) != string(asset) {
+			t.Fatal("安装包内容不对")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("没有交给壳安装: %+v", a.GetUpdateStatus())
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old" {
+		t.Fatal("后端不应替换自己")
+	}
+}

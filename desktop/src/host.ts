@@ -1,3 +1,4 @@
+import { installUpdate, defaultDeps, updatesDir, validateUpdatePath } from "./update.js";
 import { BrowserWindow, dialog, shell, type FileFilter, type OpenDialogOptions } from "electron";
 
 // 后端（mosaicd）通过 host.* 消息请壳做的事。参数格式见 docs/design/electron-migration.md §4.3，
@@ -50,6 +51,11 @@ export function createHostHandler({ window, quit }: HostDeps) {
       case "host.quit":
         quit();
         return null;
+      case "host.installUpdate": {
+        const path = validateUpdatePath(p.path, updatesDir(), process.platform);
+        installUpdate(path, defaultDeps(quit));
+        return null;
+      }
       case "host.openFile": {
         const r = await run(win, { title: str(p.title), defaultPath: str(p.default_directory), filters: toElectronFilters(p.filters as Filter[]), properties: ["openFile" as const] });
         return r.canceled ? "" : (r.filePaths[0] ?? "");
