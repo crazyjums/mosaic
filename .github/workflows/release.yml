@@ -8,7 +8,9 @@
 #   A. 命令行：git tag v1.2.3 && git push origin v1.2.3
 #   B. 手动运行（手机上的 GitHub app 也行）：Actions → release → Run workflow，在 "tag" 里填 v1.2.3。
 #      只能在默认分支上运行；tag 会在最后创建 Release 时一并创建，指向被运行的那个提交，所以不需要先建 tag。
-#   C. 自动：master 的 CI 全平台测试通过且 CHANGELOG 最新版本没有 Tag 时，调用 workflow_dispatch 独立触发本工作流。
+#   C. 自动（默认）：每次合并到 master、CI 全平台测试通过后，ci.yml 自动把版本号加 0.0.1（或用 CHANGELOG 最上面
+#      手写的更大版本），把 [Unreleased] 写成这个版本的小节并提交回 master，再用 workflow_dispatch 触发本工作流，
+#      并通过 sha 输入固定构建的提交。不想发布的合并在 PR 标题里写 [skip release]。
 #
 # 带连字符的 tag（v1.2.3-beta.1）会标成预发布，不会成为"最新版本"，所以正式版用户不会收到它。
 
@@ -30,16 +32,26 @@ on:
         description: "经 CI 验证后自动发布的版本号，例如 v1.7.4"
         required: true
         type: string
+      sha:
+        description: "要构建的提交（可选，默认是触发时的分支最新提交）"
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       tag:
         description: "要发布的版本，例如 v1.3.0（预发布：v1.3.0-beta.1）。必须在 CHANGELOG.md 里有对应小节"
         required: true
         type: string
+      sha:
+        description: "要构建的提交（可选，自动发布时由 ci.yml 传入；手动运行留空即可）"
+        required: false
+        type: string
 
 # 下面各处的 TAG：tag 触发时是被推送的 tag，手动与自动 dispatch 时是输入的版本号。
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
+  # 构建并打 tag 的提交：自动发布时固定为 ci.yml 写好更新日志的那个提交，避免中途又有合并进来、发出没测过的代码。
+  BUILD_SHA: ${{ inputs.sha || github.sha }}
 
 permissions:
   contents: write
@@ -50,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_SHA }}
       # workflow_dispatch 与 workflow_call 时没有 tag 约束，这里补上：格式要对、只能发默认分支、tag 不能已经存在。
       - name: 检查手动运行的参数
         if: inputs.tag != ''
@@ -108,6 +122,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_SHA }}
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -149,6 +165,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.BUILD_SHA }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
@@ -188,4 +205,4 @@ jobs:
           flags=""
           case "$TAG" in *-*) flags="--prerelease";; esac
           # --target：手动运行时 tag 还不存在，会在这个提交上创建；tag 触发时 tag 已存在，--target 被忽略。
-          gh release create "$TAG" $flags --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md dist/*
+          gh release create "$TAG" $flags --target "$BUILD_SHA" --title "$TAG" --notes-file notes.md dist/*

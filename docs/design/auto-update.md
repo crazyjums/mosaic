@@ -83,7 +83,7 @@ sequenceDiagram
 
 ### 日志从哪来
 
-1. `CHANGELOG.md`：**手写，面向用户**，不要写内部实现细节。发布前把 `[Unreleased]` 的内容挪到新版本的小节下，再打 tag。程序会把 `CHANGELOG.md` 打包进自己，设置 → 关于里的"版本历史"只显示已经有小节的版本（`[Unreleased]` 不显示），而已发布的程序里改不了；所以发布流水线的 preflight 会在正式版的 tag 缺少对应小节时直接失败（预发布 tag 不检查），`internal/update` 里还有一条测试检查 CHANGELOG 格式。
+1. `CHANGELOG.md`：**手写，面向用户**，不要写内部实现细节。平时写在 `[Unreleased]` 下面；合并到 master 后自动发布时，`mkmanifest bump` 会把它变成新版本的小节（见下面“合并后自动发布”）。程序会把 `CHANGELOG.md` 打包进自己，设置 → 关于里的"版本历史"只显示已经有小节的版本（`[Unreleased]` 不显示），而已发布的程序里改不了；所以发布流水线的 preflight 会在正式版的 tag 缺少对应小节时直接失败（预发布 tag 不检查），`internal/update` 里还有一条测试检查 CHANGELOG 格式。
 2. CI 里 `mkmanifest sign -changelog CHANGELOG.md -commits-file commits.txt` 解析它，取最近 10 个版本写进清单的 `releases`，同时生成 GitHub Release 的正文。
 3. 如果 `CHANGELOG.md` 里没有本版本的小节，自动退回用提交标题生成，并在 Actions 里输出警告 `CHANGELOG.md 里没有 x.y.z 的小节`。能发布，但自动生成的日志远不如人写的好读，建议补写。
 
@@ -130,8 +130,9 @@ sequenceDiagram
 | `internal/update/` | 版本比较、清单验签、下载校验、替换、重启（不依赖 Wails，可直接 `go test`） |
 | `internal/update/pubkey.txt` | 内置公钥（base64）。**为空时更新功能不可用**，界面上会说明原因 |
 | `internal/app/update.go` | 绑定：`GetVersion`、`CheckUpdate`、`InstallUpdate`（后台下载）、`GetUpdateStatus`（前端轮询进度） |
-| `cmd/mkmanifest/` | 发布侧工具：`genkey` 生成密钥，`sign` 生成并签名清单 |
-| `.github/workflows/release.yml` | 打 tag 触发：三平台打包 → 签名清单 → 创建 Release |
+| `cmd/mkmanifest/` | 发布侧工具：`genkey` 生成密钥，`sign` 生成并签名清单，`bump` 决定自动发布的版本号并写更新日志 |
+| `.github/workflows/release.yml` | 打 tag、手动运行或自动发布触发：三平台打包 → 签名清单 → 创建 Release |
+| `.github/workflows/ci.yml` | 三平台测试；master 上测试通过后自动决定版本号、写更新日志并触发发布 |
 | `frontend/src/store/updateStore.ts`、`UpdateBanner.tsx`、`AboutSettings.tsx` | 检查调度、横幅、设置 → 关于 |
 
 前端只触发"检查"和"安装"；**安装时用的下载地址和 sha256 取自后端保存的最近一次检查结果**，不接受前端传来的任何地址。
@@ -141,13 +142,25 @@ sequenceDiagram
 1. 生成密钥：`go run ./cmd/mkmanifest genkey`。
 2. 把**公钥**写进 `internal/update/pubkey.txt` 并提交。
 3. 把**私钥**保存为 GitHub 仓库的加密变量 `UPDATE_SIGNING_KEY`（Settings → Secrets and variables → Actions）。**私钥绝不能提交进仓库，也不要发给任何人**；丢失或泄露时需要重新生成密钥，并发布一个用新公钥打包的版本——旧版本客户端只认旧公钥，所以泄露后旧用户只能手动重装一次。
-4. 发布，二选一：① 命令行 `git tag v1.2.3 && git push origin v1.2.3`；② 在 GitHub 的 Actions → release → Run workflow（手机 app 也可以）里填 `tag`，只能在默认分支上运行，tag 会随 Release 一起创建。流水线的第一步 `preflight` 会运行 `mkmanifest check-key`，确认私钥已配置、`pubkey.txt` 非空且与私钥是同一对；不通过就直接失败，不会发布一个没人能更新的版本。
+4. 发布：**默认合并到 master 后自动发布**（见下）；也可以手动：① 命令行 `git tag v1.2.3 && git push origin v1.2.3`；② 在 GitHub 的 Actions → release → Run workflow（手机 app 也可以）里填 `tag`，只能在默认分支上运行，tag 会随 Release 一起创建。流水线的第一步 `preflight` 会运行 `mkmanifest check-key`，确认私钥已配置、`pubkey.txt` 非空且与私钥是同一对；不通过就直接失败，不会发布一个没人能更新的版本。
 
 ### 流水线做了什么（`.github/workflows/release.yml`）
 
 1. `preflight`：检查签名密钥（见上）。
 2. `build`（Windows / Linux / macOS 三个平台并行）：跑 Go 和前端测试 → `wails build`（带 `-ldflags` 写入版本号）→ 上传产物。产物名：`mosaic-windows-amd64.exe`、`mosaic-linux-amd64`、`mosaic-darwin-universal.zip`。
 3. `release`：下载三个产物 → 用 git 提交记录生成更新说明 → `mkmanifest sign` 生成并签名 `manifest.json` / `manifest.json.sig` → `gh release create` 创建 Release，上传全部文件。带连字符的 tag 标为预发布。
+
+### 合并后自动发布
+
+`ci.yml` 的 `auto_release`：master 收到推送、三个平台的测试都通过后——
+
+1. 如果 master 在这期间又有新提交，跳过（新提交的那次 CI 会把这次的改动一起发出去）；提交信息里有 `[skip release]` 也跳过。
+2. `mkmanifest bump` 决定版本号：默认是最新正式版 tag 加 0.0.1；`CHANGELOG.md` 最上面手写了一个更大、还没打 tag 的版本（升次版本号 / 主版本号的办法）就用它。
+3. 同一个工具让 `CHANGELOG.md` 里有这个版本的小节：`[Unreleased]` 有内容就归到新版本下；为空就用上一个 tag 以来合并的 PR 标题生成（按 Conventional Commits 前缀分类）；全是 docs / ci / chore 时写一条“内部维护”。这样每个版本在应用的“版本历史”里都有内容，preflight 的检查也照样生效。
+4. 把改好的 `CHANGELOG.md` 以 `chore(release): vX.Y.Z [skip release]` 提交回 master（用 `GITHUB_TOKEN` 推送的提交不会再触发 CI，所以不会循环；不强推，master 变了就放弃这次）。
+5. 用 `workflow_dispatch` 触发 `release.yml`，并传入 `sha`，让三个平台都构建这个提交、tag 也打在它上面——中途再有合并进来也不会被带进这个版本。
+
+前提：master 如果开了分支保护，要允许 `github-actions` 推送，否则第 4 步失败（Actions 里会报错）。
 
 仓库需要允许 Actions 写入：Settings → Actions → General → Workflow permissions 选 "Read and write permissions"（工作流里已声明 `contents: write`，组织仓库有时会被上层策略覆盖）。
 
