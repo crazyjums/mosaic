@@ -12,6 +12,8 @@
 
 ## [Unreleased]
 
+## [1.7.16] - 2026-11-07
+
 ### 新增
 
 - 每个版本的发布页里多了 **Electron 版安装包（试用）**：Windows 安装程序、Linux AppImage、macOS dmg / zip。它支持关窗后在托盘继续运行、任务完成或需要确认时系统通知、全局快捷键 Ctrl/Cmd+Shift+M 快速提问；Windows 和 Linux 版能自动更新。数据和设置与现有版本共用，装上即用。现有版本的使用和更新方式不变；Electron 版尚未签名，macOS 需要手动更新。
