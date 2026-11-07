@@ -1,9 +1,11 @@
+import { randomBytes } from "node:crypto";
 import { app, BrowserWindow, globalShortcut, ipcMain, net, Notification, protocol, type Tray } from "electron";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Activity, alertText, type Alert } from "./activity";
+import { handlePreview, PREVIEW_SCHEME, PreviewStore } from "./preview";
 import { createHostHandler, isWebURL, openExternal } from "./host";
 import { resolvePaths } from "./paths";
 import { Sidecar } from "./sidecar";
@@ -19,7 +21,30 @@ const APP_ORIGIN = "mosaic://app";
 
 // 前端用自定义协议提供，而不是 file://：构建产物里的资源用的是绝对路径（/assets/…），
 // 而且 ES 模块脚本在 file:// 下会被当成跨域；自定义协议下有正常的来源，将来也能给页面加 CSP。
-protocol.registerSchemesAsPrivileged([{ scheme: "mosaic", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+protocol.registerSchemesAsPrivileged([
+  { scheme: "mosaic", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+  { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+]);
+
+// 应用页面的内容安全策略。脚本只能来自自己（打包的前端）；'wasm-unsafe-eval' 给 Graphviz（WebAssembly）；
+// 样式要 'unsafe-inline'（KaTeX、Mermaid 和 React 的 style 属性）；图片允许 data:/blob:/https:（Markdown 里的网络图片）；
+// 所有后端调用走 IPC，所以 connect-src 只留自己和预览协议；产物里的网页在 mosaic-preview:// 的沙箱 iframe 里（见 preview.ts）。
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  `connect-src 'self' ${PREVIEW_SCHEME}:`,
+  "worker-src 'self' blob:",
+  `frame-src ${PREVIEW_SCHEME}:`,
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+// 存网页预览用的令牌：一次运行一个，只交给应用页面的 preload（见 preview.ts）。
+const previewToken = randomBytes(32).toString("hex");
+const cspViolations: string[] = []; // 冒烟测试用：页面里出现的 CSP 违规
 
 let win: BrowserWindow | undefined;
 let sidecar: Sidecar | undefined;
@@ -119,6 +144,9 @@ function isTrustedSender(url: string | undefined): boolean {
 }
 
 function registerIpc(): void {
+  ipcMain.on("mosaic:preview-token", (event) => {
+    event.returnValue = isTrustedSender(event.senderFrame?.url) ? previewToken : "";
+  });
   ipcMain.handle("mosaic:call", (event, method: unknown, args: unknown) => {
     // 只接受我们自己的页面发来的调用（不信任 iframe、被导航走的页面）。
     if (!isTrustedSender(event.senderFrame?.url) || typeof method !== "string" || !Array.isArray(args)) {
@@ -132,13 +160,20 @@ function registerIpc(): void {
 /** mosaic://app/<路径> → 前端构建目录里的文件；不允许跳出这个目录。 */
 function registerAppProtocol(): void {
   const root = normalize(paths.frontend + sep);
-  protocol.handle("mosaic", (req) => {
+  protocol.handle("mosaic", async (req) => {
     const { pathname } = new URL(req.url);
     const rel = decodeURIComponent(pathname === "/" ? "/index.html" : pathname);
     const file = normalize(join(paths.frontend, rel));
     if (!file.startsWith(root)) return new Response("forbidden", { status: 403 });
-    return net.fetch(pathToFileURL(file).toString());
+    const res = await net.fetch(pathToFileURL(file).toString());
+    // 只给页面本身加（开发时指向 vite 的页面不在这里）；脚本、样式等资源不需要。
+    if (!(res.headers.get("content-type") ?? "").includes("text/html")) return res;
+    const headers = new Headers(res.headers);
+    headers.set("content-security-policy", CSP);
+    return new Response(res.body, { status: res.status, headers });
   });
+  const previews = new PreviewStore();
+  protocol.handle(PREVIEW_SCHEME, (req) => handlePreview(req, previews, APP_ORIGIN, previewToken));
 }
 
 function createWindow(): BrowserWindow {
@@ -152,6 +187,11 @@ function createWindow(): BrowserWindow {
     show: !SMOKE,
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  if (SMOKE) {
+    w.webContents.on("console-message", (e) => {
+      if (/Content Security Policy/i.test(e.message)) cspViolations.push(e.message.slice(0, 300));
+    });
+  }
   // 页面里的链接一律交给系统浏览器（只放行 http / https），窗口本身不能被导航走、不能开新窗口。
   w.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
@@ -195,7 +235,7 @@ async function main(): Promise<void> {
   }
   if (SMOKE) {
     win.webContents.once("did-finish-load", () => {
-      runSmoke(win!)
+      runSmoke(win!, cspViolations, DEV_URL ? undefined : paths.frontend)
         .then((summary) => {
           console.log("SMOKE OK", JSON.stringify(summary));
           app.exit(0);

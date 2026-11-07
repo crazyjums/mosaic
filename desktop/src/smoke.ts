@@ -1,5 +1,6 @@
-import { writeFileSync } from "node:fs";
-import type { BrowserWindow } from "electron";
+import { readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { app, type BrowserWindow } from "electron";
 
 // 冒烟测试：在真实的渲染进程里验证整条链路——页面加载、React 渲染出来、window.mosaic 可用、
 // 通过 IPC 调后端跑完一轮演示对话（含权限确认）。用 `npm run smoke` 运行（Linux 上用 xvfb-run）。
@@ -30,7 +31,78 @@ const SCRIPT = `
 })()
 `;
 
-export async function runSmoke(win: BrowserWindow): Promise<unknown> {
+// 在带 CSP 的真实页面里，把 Mermaid / Graphviz(wasm) / KaTeX 的打包产物加载出来并真的渲染一次。
+// 这些库是按需分包的，导出名被压缩过，所以按“有没有 render / instance / renderToString”来找。
+const PROBE = (files: { mermaid: string; viz: string; katex: string }) => `
+(async () => {
+  const out = {};
+  const load = (f) => import("/assets/" + f);
+  try {
+    const m = await load(${JSON.stringify(files.mermaid)});
+    const mermaid = Object.values(m).find((v) => v && typeof v.render === "function" && typeof v.initialize === "function");
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default", flowchart: { htmlLabels: false } });
+    out.mermaid = (await mermaid.render("smoke-mmd", "graph TD; A-->B")).svg.includes("<svg");
+  } catch (e) { out.mermaid = "ERR " + (e && e.message || e); }
+  try {
+    const v = await load(${JSON.stringify(files.viz)});
+    let svg = "";
+    for (const f of Object.values(v)) {
+      if (typeof f !== "function") continue;
+      try { const inst = await f(); if (inst && typeof inst.renderString === "function") { svg = inst.renderString("digraph { a -> b }", { format: "svg" }); break; } } catch {}
+    }
+    out.viz = svg.includes("<svg");
+  } catch (e) { out.viz = "ERR " + (e && e.message || e); }
+  try {
+    const k = await load(${JSON.stringify(files.katex)});
+    const katex = Object.values(k).find((v) => v && typeof v.renderToString === "function");
+    out.katex = katex.renderToString("x^2 + y^2", { throwOnError: true }).includes("katex");
+  } catch (e) { out.katex = "ERR " + (e && e.message || e); }
+  return out;
+})()
+`;
+
+function findChunks(frontendDir: string): { mermaid: string; viz: string; katex: string } {
+  const files = readdirSync(join(frontendDir, "assets"));
+  const pick = (re: RegExp) => {
+    const f = files.find((n) => re.test(n));
+    if (!f) throw new Error(`前端产物里找不到 ${re}`);
+    return f;
+  };
+  return { mermaid: pick(/^mermaid\.core-.*\.js$/), viz: pick(/^viz-.*\.js$/), katex: pick(/^katex-.*\.js$/) };
+}
+
+// 在真实页面里确认两件事：CSP 确实生效（eval 被拦），以及网页预览按设计工作
+// （允许脚本时脚本能跑，不允许时跑不了）。放在 CSP 违规检查之后：这里故意触发的违规不算。
+const POLICY_PROBE = `
+(async () => {
+  const out = {};
+  try { new Function("return 1")(); out.evalBlocked = false; } catch { out.evalBlocked = true; }
+  const store = async (html, scripts) => {
+    const res = await fetch("mosaic-preview://store/" + (scripts ? "?scripts=1" : ""), { method: "POST", body: html, headers: { "content-type": "text/plain", "x-mosaic-token": window.mosaic.previewToken } });
+    const text = await res.text();
+    if (!res.ok) throw new Error("store " + res.status + " " + text);
+    return JSON.parse(text).url;
+  };
+  const run = (url, sandbox) => new Promise((resolve) => {
+    const f = document.createElement("iframe");
+    f.setAttribute("sandbox", sandbox);
+    const on = (e) => { if (e.data === "preview-ran") { cleanup(); resolve(true); } };
+    const cleanup = () => { removeEventListener("message", on); f.remove(); };
+    addEventListener("message", on);
+    setTimeout(() => { cleanup(); resolve(false); }, 1500);
+    f.src = url;
+    document.body.appendChild(f);
+  });
+  const page = "<script>parent.postMessage('preview-ran','*')</script>";
+  out.previewScripts = await run(await store(page, true), "allow-scripts");
+  out.previewNoScripts = await run(await store(page, false), "");
+  return out;
+})()
+`;
+
+export async function runSmoke(win: BrowserWindow, cspViolations: string[] = [], frontendDir?: string): Promise<unknown> {
+  // 从进程启动到页面加载完成（含启动后端、握手）的毫秒数：冷启动速度的参考。
+  const loadMs = Math.round(process.uptime() * 1000);
   const r = (await win.webContents.executeJavaScript(SCRIPT, true)) as {
     rendered: boolean;
     hasBridge: boolean;
@@ -43,6 +115,20 @@ export async function runSmoke(win: BrowserWindow): Promise<unknown> {
   if (r.reason !== "completed") throw new Error(`这一轮没有正常结束：${r.reason}`);
   if ((r.counts.permission_request ?? 0) < 2 || !r.counts.turn_end) throw new Error(`事件不完整：${JSON.stringify(r.counts)}`);
   if (!r.rejected.includes("没有方法")) throw new Error(`生命周期方法不应该能被调用：${r.rejected}`);
+  // 带 CSP 的页面里，按需加载的图表库也要真的能用。
+  let libs: Record<string, unknown> | undefined;
+  if (frontendDir) {
+    libs = (await win.webContents.executeJavaScript(PROBE(findChunks(frontendDir)), true)) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(libs)) if (v !== true) throw new Error(`${k} 在 CSP 下不能用：${String(v)}`);
+  }
+  if (cspViolations.length > 0) throw new Error(`出现了 CSP 违规：\n${cspViolations.join("\n")}`);
+  const policy = (await win.webContents.executeJavaScript(POLICY_PROBE, true)) as { evalBlocked: boolean; previewScripts: boolean; previewNoScripts: boolean };
+  if (!policy.evalBlocked) throw new Error("CSP 没有生效：eval 没有被拦住");
+  if (!policy.previewScripts) throw new Error("允许脚本的网页预览里脚本没有运行");
+  if (policy.previewNoScripts) throw new Error("不允许脚本的网页预览里脚本竟然运行了");
+  // 内存：所有进程（主进程、渲染进程、GPU、后端 mosaicd 不在内）的工作集之和，单位 MB。
+  const rss = app.getAppMetrics().reduce((n, m) => n + m.memory.workingSetSize, 0) / 1024;
+  Object.assign(r, { libs, policy, loadMs, memoryMB: Math.round(rss) });
   // 调试用：MOSAIC_SCREENSHOT=路径 时把当前窗口存成 PNG（肉眼确认真实窗口里渲染正常）。
   if (process.env.MOSAIC_SCREENSHOT) {
     await new Promise((res) => setTimeout(res, 500));

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { backend } from "../bridge";
+import { isElectron, storePreview } from "../bridge/electron";
 import { t } from "../i18n";
 import { absPath, collectArtifacts, OPENABLE_EXT, type Artifact, type ArtifactKind } from "../store/artifacts";
 import { useChat } from "../store/chatStore";
@@ -193,12 +194,28 @@ function HtmlPreview({ html, scripts }: { html: string; scripts: boolean }) {
     const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">`;
     return csp + html;
   }, [html, scripts]);
+  // Electron 版：页面本身有 CSP，srcdoc 会继承它，所以改走壳的预览协议（沙箱由响应头保证）。
+  const viaShell = isElectron();
+  const [shell, setShell] = useState<{ url?: string; error?: string }>({});
+  useEffect(() => {
+    if (!viaShell) return;
+    let alive = true;
+    setShell({});
+    storePreview(html, scripts)
+      .then((url) => alive && setShell({ url }))
+      .catch((e) => alive && setShell({ error: String(e instanceof Error ? e.message : e) }));
+    return () => {
+      alive = false;
+    };
+  }, [viaShell, html, scripts]);
+  if (viaShell && shell.error) return <div className="text-xs text-warn">{shell.error}</div>;
+  if (viaShell && !shell.url) return null;
   return (
     <iframe
       title={t("网页预览")}
       className="h-full min-h-[18rem] w-full rounded-sm border-0 bg-white"
       sandbox={scripts ? "allow-scripts" : ""}
-      srcDoc={doc}
+      {...(viaShell ? { src: shell.url } : { srcDoc: doc })}
     />
   );
 }

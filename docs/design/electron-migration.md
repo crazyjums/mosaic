@@ -1,6 +1,6 @@
 # 用 Electron 重构桌面端：计划
 
-状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置和工作流已写（实测数据与 CSP 待补），阶段 3 的更新机制已实现（Electron 渠道的发布与老用户迁移提示待阶段 5 前后接上），阶段 4 已实现托盘、后台运行、通知和全局快捷键（多窗口还没做），阶段 5 进行中：Electron 安装包已并行发布，默认入口仍是 Wails。本文是迁移的依据，与代码不一致时以代码为准。
+状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置、工作流、CSP 和实测数据已完成，阶段 3 的更新机制已实现（Electron 渠道的发布与老用户迁移提示待阶段 5 前后接上），阶段 4 已实现托盘、后台运行、通知和全局快捷键（多窗口还没做），阶段 5 进行中：Electron 安装包已并行发布，默认入口仍是 Wails。本文是迁移的依据，与代码不一致时以代码为准。
 
 ## 1. 为什么要做
 
@@ -90,7 +90,7 @@ flowchart LR
 - `desktop/`：`src/main.ts`（窗口、单实例锁、白名单转发、导航限制）、`src/preload.ts`（`window.mosaic`）、`src/sidecar.ts`（拉起 `mosaicd`、握手、白名单、事件、退出）、`src/host.ts`（对话框、打开链接）、`src/rpc.ts`（协议）、`src/smoke.ts`（冒烟）。
 - 前端新增 `bridge/electron.ts`，与 Wails 版共用方法映射表（`wails.ts` 的 `createBackendFrom`）；`bridge/index.ts` 在 Electron / Wails / 演示模式里选一个。前端其余代码没改。
 - 前端用自定义协议 `mosaic://app/` 提供（不是 `file://`）：构建产物里的资源用绝对路径，而且 ES 模块脚本在 `file://` 下会被当成跨域；自定义协议下有正常的来源。
-- 安全：`contextIsolation`、`sandbox`、无 Node；IPC 只接受来自我们自己页面的调用；方法名只放行后端握手时报告的列表；页面里的链接交给系统浏览器（只放行 http / https），窗口不能被导航走。**还没有 CSP**：要等阶段 2 在打包后的页面上逐项验证 mermaid / viz（wasm）/ katex 后再加，避免一刀切把渲染弄坏。
+- 安全：`contextIsolation`、`sandbox`、无 Node；IPC 只接受来自我们自己页面的调用；方法名只放行后端握手时报告的列表；页面里的链接交给系统浏览器（只放行 http / https），窗口不能被导航走。**页面有 CSP**（`desktop/src/main.ts` 的 `CSP`）：脚本只能来自打包的前端（加 `'wasm-unsafe-eval'` 给 Graphviz），不允许 eval 和内联脚本，连接只留自己和预览协议；在真实窗口里验证过 Mermaid / Graphviz(wasm) / KaTeX 在 CSP 下都能渲染，且没有违规。产物面板里的网页预览走独立的 `mosaic-preview://` 协议（`desktop/src/preview.ts`）：srcdoc 会继承页面 CSP 导致“允许脚本”的预览全坏，独立来源则不继承，隔离改由响应头的 CSP `sandbox`（没有 `allow-same-origin`）保证，强度和 Wails 版一样；往里存网页要带一次运行一个的随机令牌，只有应用页面的 preload 拿得到（实测自定义协议的跨源请求 Origin 是 `null`、没有 Referer，光看请求头判断不了来源）。
 - 开发：`make desktop-install`；`make desktop-start`（先构建前端，后端用 `go run` 或 `MOSAIC_MOSAICD`）；`MOSAIC_DEV_URL=http://localhost:5173` 时连 vite 开发服务器。
 - **验证（已完成）**：`desktop` 的单元测试 10 个（协议分片和 U+2028、id 配对、断线、链接白名单、对话框过滤器，以及用真实 `mosaicd` 验证握手、白名单、一轮对话、反向请求、退出和崩溃）；**冒烟测试在真实的 Electron 45（Chromium 156）窗口里**加载前端、渲染出界面、通过 IPC 跑完一轮演示对话（2 次权限确认），并确认生命周期方法被拒绝。CI 的 `desktop` 任务在三个平台跑单元测试，在 Linux 上用 xvfb 跑冒烟。Windows / macOS 上的真实窗口还需要人工验证（对话框、托盘等）。
 
@@ -100,6 +100,15 @@ flowchart LR
 - `release.yml` 增加 Electron 产物，**与 Wails 产物并行发布**；Electron 版先以 `-beta` 预发布 tag 发给愿意尝鲜的用户（正式版用户收不到预发布）。
 - **已实现（本阶段第一步）**：`desktop/electron-builder.yml` + `desktop/scripts/stage.mjs`（构建前端和 `mosaicd`，macOS `--universal` 用 `lipo` 合并）+ 独立工作流 `.github/workflows/desktop-release.yml`。没有改 `release.yml`：Electron 版用 `electron-v<版本>` 的预发布 tag（不匹配 `v*`，不会触发 Wails 的发布流程，也不会成为"最新版本"），手动运行并勾选 publish 才创建；改打包配置的 PR 会自动跑一遍三平台打包（不发布）。安装包暂不签名。
 - **已验证**：Linux 上 `electron-builder --dir` 产出的目录包，用 xvfb 跑冒烟通过（后端从 `resources/mosaicd` 启动，前端从 `resources/frontend`）。Windows / macOS 的产物由 CI 验证。
+- **实测（Linux、xvfb 软件渲染、4 核；打包后的行为与此接近，Windows / macOS 未测）**：
+  | 项目 | Wails 版 | Electron 版 |
+  | --- | --- | --- |
+  | 安装包（Windows） | 23.9 MB | 133 MB（NSIS） |
+  | 安装包（Linux） | 23.1 MB | 140 MB（AppImage） |
+  | 安装包（macOS） | 17 MB（zip） | 249 MB（dmg）/ 242 MB（zip） |
+  | 启动到界面加载完成 | 未测（Linux 上没有 Wails 运行环境） | 约 0.25–0.35 秒（含启动后端、握手，进程启动算起） |
+  | 跑完一轮演示对话后所有 Electron 进程内存之和 | 未测 | 约 510 MB（工作集，共享页重复计算，偏高；不含 mosaicd） |
+  Windows 比计划估的（70–110MB 增量）多出约 110MB，是接受的代价里最明显的一项；内存没有 Wails 版对照，需要在真机上用任务管理器 / 活动监视器对比。
 - **验证**：下载三个平台的产物能启动、能对话；实测安装包大小、冷启动时间、空闲和长会话的内存，和 Wails 版对比写进本文。
 
 ### 阶段 3：自动更新与从 Wails 迁移

@@ -13,6 +13,8 @@ interface MosaicBridge {
   onEvent(cb: (data: unknown) => void): () => void;
   /** 壳要求界面跳转（点通知、全局快捷键）。旧版壳没有这个函数。 */
   onNavigate?(cb: (target: unknown) => void): () => void;
+  /** 存网页预览用的令牌，只有应用页面的 preload 能拿到。 */
+  previewToken?: string;
   platform: string;
 }
 
@@ -54,4 +56,19 @@ export function onShellNavigate(handler: (t: ShellTarget) => void): () => void {
     const t = parseShellTarget(raw);
     if (t) handler(t);
   });
+}
+
+/**
+ * 把网页产物交给壳，换回一个 mosaic-preview:// 地址放进沙箱 iframe。
+ * 为什么不用 srcdoc：iframe 会继承应用页面的 CSP（不允许内联脚本），“允许脚本”的预览就跑不起来；
+ * 走壳提供的独立来源，隔离靠响应头里的 CSP sandbox（见 desktop/src/preview.ts）。
+ */
+export async function storePreview(html: string, scripts: boolean): Promise<string> {
+  const res = await fetch(`mosaic-preview://store/${scripts ? "?scripts=1" : ""}`, {
+    method: "POST",
+    body: html,
+    headers: { "content-type": "text/plain", "x-mosaic-token": bridge()?.previewToken ?? "" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return ((await res.json()) as { url: string }).url;
 }
