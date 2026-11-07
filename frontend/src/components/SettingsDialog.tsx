@@ -48,7 +48,7 @@ const SOURCE_LABEL: Record<ProviderView["source"], string> = {
   account: "",
 };
 
-const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", codex: "Codex（本机 CLI）", group: "模型组" };
+const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", codex: "Codex（本机 CLI）", claudecode: "Claude Code（本机 CLI）", group: "模型组" };
 
 /** 左侧列表里"添加模型组"的选中值 */
 const NEW_GROUP = "\u0000newgroup";
@@ -276,7 +276,9 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
   // ChatGPT 账号：没有 Base URL 和 API Key，名称固定；表单只编辑模型列表和思考选项。
   const isChatGPT = form.type === "chatgpt";
   // Codex：整轮对话交给本机的 Codex CLI（见 docs/design/harness.md），没有 Base URL 和 API Key，登录由 codex login 完成。
-  const isCodex = form.type === "codex";
+  // Claude Code 同理，但它的官方 SDK 跑在 Electron 的后台进程里，只在 Electron 版里提供。
+  const isCodex = form.type === "codex" || form.type === "claudecode";
+  const isClaudeCode = form.type === "claudecode";
   const preset = PRESETS.find((p) => p.id === presetId);
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }));
 
@@ -402,12 +404,12 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </Field>
           <Field label="协议">
             <div className="flex gap-1 rounded-lg border border-line p-1">
-              {(["openai", "anthropic", "codex"] as const).map((t) => (
+              {(["openai", "anthropic", "codex", ...(isElectron() || form.type === "claudecode" ? (["claudecode"] as const) : [])] as const).map((t) => (
                 <button
                   key={t}
                   className={`flex-1 rounded-md px-2 py-1 text-sm ${form.type === t ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
                   onClick={() =>
-                    t === "codex"
+                    t === "codex" || t === "claudecode"
                       ? patch({ type: t, baseURL: "", apiKey: "", models: form.models.length ? form.models : ["default"], defaultModel: form.defaultModel || "default" })
                       : patch({ type: t })
                   }
@@ -420,17 +422,19 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
         </div>
 
         {isCodex && (
-          <Field label="Codex 命令">
+          <Field label={isClaudeCode ? "Claude Code 命令" : "Codex 命令"}>
             <input
               className="input font-mono"
               value={String(form.options.command ?? "")}
               onChange={(e) => patch({ options: { ...form.options, command: e.target.value || undefined } })}
-              placeholder="codex（留空则在 PATH 里查找）"
+              placeholder={isClaudeCode ? "claude（留空则在 PATH 里查找）" : "codex（留空则在 PATH 里查找）"}
               spellCheck={false}
               autoComplete="off"
             />
             <Hint>
-              对话整轮交给本机的 Codex CLI 完成：先安装（npm install -g @openai/codex）并在终端执行 codex login 登录。Mosaic 不读取也不保存 Codex 的登录凭证；权限确认仍然在 Mosaic 里弹出。模型名填 default 表示用 Codex 自己的默认模型，也可以填具体型号。暂不支持图片附件。
+              {isClaudeCode
+                ? "对话整轮交给 Claude Code（官方 Claude Agent SDK，运行在 Electron 的后台进程里）完成：先安装 Claude Code（npm install -g @anthropic-ai/claude-code）并登录，或在环境里设置 ANTHROPIC_API_KEY。Mosaic 不读取也不保存这些凭证，请按 Anthropic 的使用条款使用。权限确认仍然在 Mosaic 里弹出；Claude Code 自己的设置（CLAUDE.md、MCP、技能）会照常生效。模型名填 default 表示用 Claude Code 的默认模型。暂不支持图片附件。"
+                : "对话整轮交给本机的 Codex CLI 完成：先安装（npm install -g @openai/codex）并在终端执行 codex login 登录。Mosaic 不读取也不保存 Codex 的登录凭证；权限确认仍然在 Mosaic 里弹出。模型名填 default 表示用 Codex 自己的默认模型，也可以填具体型号。暂不支持图片附件。"}
             </Hint>
           </Field>
         )}
