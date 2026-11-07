@@ -143,7 +143,7 @@ flowchart LR
 
 ### 阶段 6（扩展，单独设计）
 
-- **外部 harness**：Go 内核抽出 `Harness` 接口（builtin 就是现在的 agent 循环）；Codex 由 Go 直接接 `codex app-server`；Claude Code、pi 的官方 SDK 跑在 Electron 的 `utilityProcess` 里，通过 `harness.*` 反向请求接回 Go，事件和权限确认照常走 Mosaic 自己的界面。
+- **外部 harness**（设计与 Codex 的实现见 [harness.md](harness.md)；Claude Code、pi 待做）：Go 内核抽出 `Harness` 接口（builtin 就是现在的 agent 循环）；Codex 由 Go 直接接 `codex app-server`；Claude Code、pi 的官方 SDK 跑在 Electron 的 `utilityProcess` 里，通过 `harness.*` 反向请求接回 Go，事件和权限确认照常走 Mosaic 自己的界面。
 - **内置浏览器工具**：主进程提供受控的 `WebContentsView`，以 MCP 工具的形式暴露给 agent（打开、截图、点击、读 DOM），每次操作照常走权限确认。
 
 ## 6. 风险与对策
