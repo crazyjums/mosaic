@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, normalize } from "node:path";
 
 // 壳能打开的独立窗口（白名单）。渲染进程只能说“要哪一种、带什么参数”，窗口怎么开、地址是什么都由这里决定：
 // 参数逐项校验，再编码进页面地址的查询串（前端据此只渲染对应的视图）。
@@ -30,7 +30,9 @@ export function auxWindowSpec(kind: unknown, params: unknown): AuxSpec {
     const akind = p.kind;
     if (typeof akind !== "string" || !ARTIFACT_KINDS.includes(akind)) throw new Error("参数不合法：kind");
     const q = new URLSearchParams({ window: "artifact", path, workspace, kind: akind });
-    return { key: `artifact:${path}`, title: `Mosaic — ${basename(path.replace(/\\/g, "/"))}`, width: 1000, height: 760, query: `?${q.toString()}` };
+    // 同一个文件只开一个窗口：按规范化后的路径（去掉 ./ 和 ..；Windows 上不区分大小写）判断，/w/a.md 和 /w/sub/../a.md 是同一个。
+    const canon = process.platform === "win32" ? normalize(path).toLowerCase() : normalize(path);
+    return { key: `artifact:${canon}`, title: `Mosaic — ${basename(path.replace(/\\/g, "/"))}`, width: 1000, height: 760, query: `?${q.toString()}` };
   }
   throw new Error("不支持的窗口类型");
 }

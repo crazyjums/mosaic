@@ -22,6 +22,14 @@ test("产物窗口：参数编码进地址，同一个文件同一个 key", () =
   assert.equal(s.query.includes(" "), false); // 空格和 & 都被编码，不会截断参数
 });
 
+test("等价的路径是同一个窗口", () => {
+  const mk = (path: string) => auxWindowSpec("artifact", { path, workspace: "/w", kind: "markdown" }).key;
+  assert.equal(mk("/w/a.md"), mk("/w/sub/../a.md"));
+  assert.equal(mk("/w/a.md"), mk("/w/./a.md"));
+  assert.equal(mk("/w//a.md"), mk("/w/a.md"));
+  assert.notEqual(mk("/w/a.md"), mk("/w/b.md"));
+});
+
 test("拒绝不在白名单里的类型和不合法的参数", () => {
   for (const kind of ["shell", "", null, undefined, 5, "GIT", "artifact "]) assert.throws(() => auxWindowSpec(kind, {}), /不支持/, String(kind));
   const ok = { path: "/w/a.html", workspace: "/w", kind: "html" };
