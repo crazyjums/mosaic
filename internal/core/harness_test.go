@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -114,7 +115,7 @@ func TestHarnessTurnLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.HarnessState != `{"resume":"thread-1","synced":2}` || len(saved.Messages) != 2 || saved.Messages[1].Text() != "好的" || saved.Usage.InputTokens != 7 {
+	if saved.HarnessState != `{"engines":{"stub":{"resume":"thread-1","synced":2}}}` || len(saved.Messages) != 2 || saved.Messages[1].Text() != "好的" || saved.Usage.InputTokens != 7 {
 		t.Fatalf("保存的会话: %+v", saved)
 	}
 
@@ -304,5 +305,134 @@ func TestHarnessNewSessionHasNoCatchUp(t *testing.T) {
 	}
 	if got := he.seen[0].Text; got != "第一句" {
 		t.Fatalf("全新的会话不该有背景: %q", got)
+	}
+}
+
+// 外部引擎可以在运行期间补充：桌面壳连上之后才知道自己能提供哪些引擎。
+func TestRegisterHarnessAtRuntime(t *testing.T) {
+	first := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		return ext.Result{Reason: event.TurnCompleted, Resume: "a"}
+	}}
+	eng, _, _, _ := newHarnessEngine(t, first, nil)
+	second := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		return ext.Result{Reason: event.TurnCompleted, Resume: "b"}
+	}}
+	eng.RegisterHarness("stub", second) // 替换
+	if _, err := eng.Send(context.Background(), "x"); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.seen) != 0 || len(second.seen) != 1 {
+		t.Fatalf("应由后注册的引擎处理: first=%d second=%d", len(first.seen), len(second.seen))
+	}
+	eng.UnregisterHarness("stub")
+	res, _ := eng.NewSession()
+	_ = res
+	// 注销后这个配置档回到内置循环（桩厂商只会报错，而不是调用引擎）。
+	if _, err := eng.Send(context.Background(), "y"); err == nil {
+		// 内置循环里桩厂商的脚本为空，可能正常结束也可能报错；只要没有再调用已注销的引擎就行。
+	}
+	if len(second.seen) != 1 {
+		t.Fatalf("注销后不应再调用引擎: %d", len(second.seen))
+	}
+}
+
+// 评审指出：恢复凭据和“已同步到第几条”要按引擎分开存，否则 Codex 的线程 ID 会被当成 Claude Code 的会话 ID，
+// 切回来时又因为共用的计数把中间错过的消息当成已同步。
+func TestHarnessStatePerEngine(t *testing.T) {
+	var aSeen, bSeen []ext.Request
+	// 回答用固定的标记，不回显收到的全文（全文里含有补进去的背景）。
+	engA := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		aSeen = append(aSeen, req)
+		return ext.Result{Reason: event.TurnCompleted, Resume: "A-thread", Messages: []provider.Message{{Role: provider.RoleAssistant, Content: []provider.Block{{Type: provider.BlockText, Text: fmt.Sprintf("A回答%d", len(aSeen))}}}}}
+	}}
+	engB := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		bSeen = append(bSeen, req)
+		return ext.Result{Reason: event.TurnCompleted, Resume: "B-session", Messages: []provider.Message{{Role: provider.RoleAssistant, Content: []provider.Block{{Type: provider.BlockText, Text: fmt.Sprintf("B回答%d", len(bSeen))}}}}}
+	}}
+	reg := provider.NewRegistry()
+	for _, typ := range []string{"engA", "engB"} {
+		reg.Register(typ, func(cfg provider.ProfileConfig) (provider.Provider, error) {
+			return fake.NewWithScript(cfg.Name, fake.Script{}, 0), nil
+		})
+	}
+	catalog := provider.NewCatalog(reg, []provider.ProfileConfig{
+		{Name: "a", Type: "engA", Models: []string{"default"}, DefaultModel: "default"},
+		{Name: "b", Type: "engB", Models: []string{"default"}, DefaultModel: "default"},
+	})
+	eng, err := core.NewEngine(core.EngineConfig{
+		Catalog: catalog, Tools: tool.NewRegistry(), Store: store.NewMemory(), Policy: permission.NewModePolicy(permission.ModeDefault),
+		Workspace: t.TempDir(), DefaultProfile: "a", DefaultModel: "default",
+		Harnesses: map[string]ext.Harness{"engA": engA, "engB": engB},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	send := func(profile, text string) {
+		t.Helper()
+		if err := eng.SetModel(profile, "default"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := eng.Send(ctx, text); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	send("a", "一")
+	send("b", "二") // 换到另一个引擎：不能带 A 的线程 ID，要补 A 聊过的内容
+	send("a", "三") // 换回 A：用 A 自己的线程，只补 B 那一轮
+
+	if len(bSeen) != 1 || bSeen[0].Resume != "" {
+		t.Fatalf("B 第一次不该带别的引擎的恢复凭据: %+v", bSeen)
+	}
+	if !strings.Contains(bSeen[0].Text, "A回答1") {
+		t.Errorf("B 应收到 A 聊过的内容作为背景:\n%s", bSeen[0].Text)
+	}
+	if len(aSeen) != 2 || aSeen[1].Resume != "A-thread" {
+		t.Fatalf("换回 A 应恢复 A 自己的线程: %+v", aSeen)
+	}
+	got := aSeen[1].Text
+	if !strings.Contains(got, "B回答1") || !strings.Contains(got, "二") {
+		t.Errorf("换回 A 要补上 B 那一轮:\n%s", got)
+	}
+	if strings.Contains(got, "A回答1") {
+		t.Errorf("A 已经看过自己的第一轮，不该再补:\n%s", got)
+	}
+}
+
+// 旧版本（v1.7.20，只有 Codex）存的状态没有“按引擎分”：读出来当作 Codex 的。
+func TestHarnessStateLegacyFormatIsCodex(t *testing.T) {
+	var seen []ext.Request
+	he := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		seen = append(seen, req)
+		return ext.Result{Reason: event.TurnCompleted, Resume: "t"}
+	}}
+	reg := provider.NewRegistry()
+	reg.Register("codex", func(cfg provider.ProfileConfig) (provider.Provider, error) {
+		return fake.NewWithScript(cfg.Name, fake.Script{}, 0), nil
+	})
+	catalog := provider.NewCatalog(reg, []provider.ProfileConfig{{Name: "cx", Type: "codex", Models: []string{"default"}, DefaultModel: "default"}})
+	mem := store.NewMemory()
+	eng, err := core.NewEngine(core.EngineConfig{
+		Catalog: catalog, Tools: tool.NewRegistry(), Store: mem, Policy: permission.NewModePolicy(permission.ModeDefault),
+		Workspace: t.TempDir(), DefaultProfile: "cx", DefaultModel: "default", Harnesses: map[string]ext.Harness{"codex": he},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := core.NewSession("sess_legacy", "cx", "default")
+	old.HarnessState = `{"resume":"old-thread","synced":2}`
+	old.Messages = []provider.Message{provider.UserText("以前的问题"), {Role: provider.RoleAssistant, Content: []provider.Block{{Type: provider.BlockText, Text: "以前的回答"}}}}
+	if err := mem.SaveSession(context.Background(), old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.LoadSession(context.Background(), "sess_legacy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Send(context.Background(), "继续"); err != nil {
+		t.Fatal(err)
+	}
+	if seen[0].Resume != "old-thread" || seen[0].Text != "继续" {
+		t.Fatalf("旧格式应恢复原来的 Codex 线程且不重复补背景: %+v", seen[0])
 	}
 }

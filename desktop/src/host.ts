@@ -1,3 +1,5 @@
+import type { HarnessManager } from "./harness";
+import type { RunSpec } from "./workers/protocol";
 import { installUpdate, defaultDeps, updatesDir, validateUpdatePath } from "./update.js";
 import { BrowserWindow, dialog, shell, type FileFilter, type OpenDialogOptions } from "electron";
 
@@ -38,9 +40,34 @@ export function openExternal(raw: unknown): void {
 export interface HostDeps {
   window: () => BrowserWindow | undefined;
   quit: () => void;
+  /** 引擎管理器（Claude Code、pi）。没有时 host.harness.* 报错。 */
+  harness?: () => HarnessManager | undefined;
 }
 
-export function createHostHandler({ window, quit }: HostDeps) {
+/** 校验 Go 发来的一轮请求：来自我们自己的后端，但 worker 会拿它启动进程，所以仍然逐项检查。 */
+export function parseRunSpec(raw: unknown): RunSpec {
+  const p = (raw ?? {}) as Record<string, unknown>;
+  const str = (k: string, required = true): string => {
+    const v = p[k];
+    if (typeof v === "string" && (v !== "" || !required)) return v;
+    if (!required && v === undefined) return "";
+    throw new Error(`引擎请求的 ${k} 不合法`);
+  };
+  const options = p.options && typeof p.options === "object" && !Array.isArray(p.options) ? (p.options as Record<string, unknown>) : undefined;
+  return {
+    engine: str("engine"),
+    session_id: str("session_id"),
+    profile: str("profile", false) || undefined,
+    text: str("text", false),
+    workspace: str("workspace"),
+    model: str("model", false) || undefined,
+    permission_mode: str("permission_mode"),
+    options,
+    resume: str("resume", false) || undefined,
+  };
+}
+
+export function createHostHandler({ window, quit, harness }: HostDeps) {
   return async (method: string, params: unknown): Promise<unknown> => {
     const p = (params ?? {}) as Record<string, unknown>;
     const win = window();
@@ -50,6 +77,15 @@ export function createHostHandler({ window, quit }: HostDeps) {
         return null;
       case "host.quit":
         quit();
+        return null;
+      case "host.harness.run": {
+        const mgr = harness?.();
+        if (!mgr) throw new Error("壳没有启用引擎管理");
+        if (typeof p.run_id !== "string" || !p.run_id) throw new Error("缺少 run_id");
+        return mgr.run(p.run_id, parseRunSpec(p.spec));
+      }
+      case "host.harness.cancel":
+        if (typeof p.run_id === "string") harness?.()?.cancel(p.run_id);
         return null;
       case "host.installUpdate": {
         const path = validateUpdatePath(p.path, updatesDir(), process.platform);

@@ -6,13 +6,15 @@ import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Activity, alertText, type Alert } from "./activity";
 import { handlePreview, PREVIEW_SCHEME, PreviewStore } from "./preview";
+import { HarnessManager } from "./harness";
+import { availableEngines, electronSpawner } from "./harness-electron";
 import { createHostHandler, isWebURL, openExternal } from "./host";
 import { resolvePaths } from "./paths";
 import { Sidecar } from "./sidecar";
 import { defaults as defaultSettings, normalize as normalizeSettings, SettingsFile, type ShellSettings } from "./settings";
 import { auxWindowSpec } from "./windows";
 import { createTray, type TrayHandle } from "./tray";
-import { runSmoke } from "./smoke";
+import { runE2E, runSmoke } from "./smoke";
 
 // Mosaic 的 Electron 外壳：窗口、对话框、单实例；业务全在 Go 后端 mosaicd。
 // 渲染进程（现有的 React 前端）只能通过 preload 的 window.mosaic 访问后端，这里按白名单转发。
@@ -53,6 +55,7 @@ let sidecar: Sidecar | undefined;
 let tempHome: string | undefined;
 let quitting = false;
 let tray: TrayHandle | undefined;
+let harnessMgr: HarnessManager | undefined;
 let settings: ShellSettings = defaultSettings();
 let settingsFile: SettingsFile | undefined;
 let registeredShortcut: string | undefined;
@@ -83,7 +86,7 @@ async function startSidecar(): Promise<Sidecar> {
     args,
     cwd,
     env,
-    onHost: createHostHandler({ window: () => win, quit: () => app.quit() }),
+    onHost: createHostHandler({ window: () => win, quit: () => app.quit(), harness: () => harnessMgr }),
   });
   sc.on("event", (data) => {
     const alert = activity.handle(data);
@@ -97,6 +100,14 @@ async function startSidecar(): Promise<Sidecar> {
     if (!SMOKE) restartOnce();
   });
   await sc.start();
+  // 引擎（Claude Code、pi 的 SDK）跑在 utilityProcess 里：把能提供的引擎告诉后端，选中对应配置档时它会通过我们运行。
+  harnessMgr ??= new HarnessManager(electronSpawner(__dirname), {
+    emit: (runId, messageId, type, data) => sidecar!.callInternal("harness.emit", { run_id: runId, message_id: messageId, type, data }).then(() => undefined),
+    // 用 sidecar 的当前实例：后端重启后 sc 会换成新的。
+    ask: (runId, req) => sidecar!.callInternal<"allow" | "allow_session" | "deny">("harness.ask", { run_id: runId, ...req }),
+  });
+  const engines = availableEngines(__dirname);
+  if (engines.length > 0) await sc.callInternal("harness.register", { engines }).catch((e) => console.error("注册引擎失败：", e));
   return sc;
 }
 
@@ -324,6 +335,18 @@ async function main(): Promise<void> {
   }
   if (SMOKE) {
     win.webContents.once("did-finish-load", () => {
+      const e2eScript = process.env.MOSAIC_E2E_SCRIPT;
+      const e2eOut = process.env.MOSAIC_E2E_OUT;
+      if (e2eScript && e2eOut) {
+        runE2E(win!, e2eScript, e2eOut).then(
+          () => app.exit(0),
+          (e: unknown) => {
+            console.error("E2E FAIL", e instanceof Error ? e.message : e);
+            app.exit(1);
+          },
+        );
+        return;
+      }
       runSmoke(win!, cspViolations, DEV_URL ? undefined : paths.frontend)
         .then((summary) => {
           console.log("SMOKE OK", JSON.stringify(summary));
@@ -342,6 +365,7 @@ app.on("will-quit", () => globalShortcut.unregisterAll());
 app.on("before-quit", (e) => {
   if (quitting) return;
   quitting = true;
+  harnessMgr?.killAll();
   if (sidecar?.running) {
     e.preventDefault();
     void sidecar.stop().finally(() => {
