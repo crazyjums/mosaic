@@ -12,7 +12,9 @@ test("git 窗口", () => {
 test("产物窗口：参数编码进地址，同一个文件同一个 key", () => {
   const params = { path: "/work/a b/报告 & 图.html", workspace: "/work/a b", kind: "html" };
   const s = auxWindowSpec("artifact", params);
-  assert.equal(s.key, "artifact:/work/a b/报告 & 图.html");
+  // key 是规范化后的路径，具体写法随平台（Windows 上是小写反斜杠），所以只断言前缀和“等价路径同 key”。
+  assert.ok(s.key.startsWith("artifact:"));
+  assert.equal(s.key, auxWindowSpec("artifact", { ...params, path: "/work/a b/./报告 & 图.html" }).key);
   assert.equal(s.title, "Mosaic — 报告 & 图.html");
   const q = new URLSearchParams(s.query);
   assert.equal(q.get("window"), "artifact");
