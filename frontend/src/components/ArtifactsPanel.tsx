@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { backend } from "../bridge";
-import { isElectron, storePreview } from "../bridge/electron";
+import { isElectron, openShellWindow, storePreview } from "../bridge/electron";
 import { t } from "../i18n";
 import { absPath, collectArtifacts, OPENABLE_EXT, type Artifact, type ArtifactKind } from "../store/artifacts";
 import { useChat } from "../store/chatStore";
@@ -67,7 +67,7 @@ export default function ArtifactsPanel() {
 }
 
 /** 一个产物的预览：顶部是路径和操作按钮，下面是内容。放大时（big）占满弹窗。 */
-export function ArtifactViewer({ artifact, big = false, onZoom }: { artifact: Artifact; big?: boolean; onZoom?: () => void }) {
+export function ArtifactViewer({ artifact, big = false, onZoom, standalone = false, onReload }: { artifact: Artifact; big?: boolean; onZoom?: () => void; standalone?: boolean; onReload?: () => void }) {
   const workspace = useChat((s) => s.workspace);
   const abs = absPath(workspace, artifact.path);
   const [showSource, setShowSource] = useState(false);
@@ -106,6 +106,21 @@ export function ArtifactViewer({ artifact, big = false, onZoom }: { artifact: Ar
         <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={() => void revealFileWithToast(artifact.path)} title={t("在文件管理器中定位文件")}>
           {t("定位")}
         </button>
+        {onReload && (
+          <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={onReload} title={t("重新读取文件")}>
+            {t("刷新")}
+          </button>
+        )}
+        {/* Electron 版：拆到独立窗口，一边看产物一边继续对话。窗口里显示的是打开时的工作区里的文件 */}
+        {!standalone && isElectron() && (
+          <button
+            className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg"
+            onClick={() => void openShellWindow("artifact", { path: abs, workspace, kind: artifact.kind })}
+            title={t("在独立窗口中打开")}
+          >
+            {t("新窗口")}
+          </button>
+        )}
         {onZoom && (
           <button className="rounded-ctl px-1.5 py-0.5 text-muted hover:bg-panel-2 hover:text-fg" onClick={onZoom} title={t("放大预览")} aria-label={t("放大预览")}>
             ⤢
@@ -217,5 +232,20 @@ function HtmlPreview({ html, scripts }: { html: string; scripts: boolean }) {
       sandbox={scripts ? "allow-scripts" : ""}
       {...(viaShell ? { src: shell.url } : { srcDoc: doc })}
     />
+  );
+}
+
+/** 壳打开的独立产物窗口：整个窗口就是这一个产物的预览。读文件走后端，路径是绝对路径，所以只在它所在的工作区仍是当前工作区时能读到。 */
+export function ArtifactStandalone({ path, workspace, kind }: { path: string; workspace: string; kind: string }) {
+  const [rev, setRev] = useState(0);
+  useEffect(() => {
+    useChat.setState({ workspace });
+  }, [workspace]);
+  const artifact: Artifact = { path, kind: kind as ArtifactKind, tool: "", callId: `popout-${rev}`, status: "done" };
+  return (
+    <div className="flex h-full flex-col bg-panel p-3 text-fg">
+      {/* 以 rev 为 key 整个重新挂载：文本和图片（图片的加载只看路径）都会重新读取，读取失败后也能重试 */}
+      <ArtifactViewer key={rev} artifact={artifact} big standalone onReload={() => setRev((n) => n + 1)} />
+    </div>
   );
 }

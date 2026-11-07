@@ -17,7 +17,7 @@ interface MosaicBridge {
   getShellSettings?(): Promise<unknown>;
   setShellSettings?(patch: unknown): Promise<unknown>;
   /** 请壳打开一个独立窗口（目前只有 "git"）。 */
-  openWindow?(kind: string): Promise<void>;
+  openWindow?(kind: string, params?: unknown): Promise<void>;
   /** 存网页预览用的令牌，只有应用页面的 preload 能拿到。 */
   previewToken?: string;
   platform: string;
@@ -79,18 +79,41 @@ export async function storePreview(html: string, scripts: boolean): Promise<stri
 }
 
 /** 壳能打开的独立窗口。 */
-export type ShellWindowKind = "git";
+export type ShellWindowKind = "git" | "artifact";
 
-/** 当前页面是不是壳打开的独立窗口（地址里带 ?window=git）；主窗口返回 null。 */
-export function shellWindowKind(search: string = typeof location === "undefined" ? "" : location.search): ShellWindowKind | null {
-  return new URLSearchParams(search).get("window") === "git" ? "git" : null;
+/** 独立的产物窗口要显示哪个文件：path 是绝对路径，workspace 是它所在的工作区，kind 是产物类型。 */
+export interface ArtifactWindowParams {
+  path: string;
+  workspace: string;
+  kind: string;
 }
 
-/** 在独立窗口里打开；不在 Electron 里（或壳太旧）时返回 false，调用方保留原来的浮层。 */
-export async function openShellWindow(kind: ShellWindowKind): Promise<boolean> {
+/** 当前页面是壳打开的哪种独立窗口（地址里的查询串）。 */
+export type ShellWindow = { kind: "git" } | { kind: "artifact"; path: string; workspace: string; artifactKind: string };
+
+const ARTIFACT_KINDS = ["html", "svg", "mermaid", "dot", "markdown", "image", "text", "other"];
+
+/** 主窗口返回 null；独立窗口的参数形状不对也当作主窗口（宁可显示完整应用，也不渲染一个残缺的视图）。 */
+export function shellWindow(search: string = typeof location === "undefined" ? "" : location.search): ShellWindow | null {
+  const q = new URLSearchParams(search);
+  const w = q.get("window");
+  if (w === "git") return { kind: "git" };
+  if (w === "artifact") {
+    const path = q.get("path");
+    const workspace = q.get("workspace");
+    const artifactKind = q.get("kind");
+    if (path && workspace && artifactKind && ARTIFACT_KINDS.includes(artifactKind)) return { kind: "artifact", path, workspace, artifactKind };
+  }
+  return null;
+}
+
+/** 在独立窗口里打开；不在 Electron 里（或壳太旧）时返回 false，调用方保留原来的做法。 */
+export async function openShellWindow(kind: "git"): Promise<boolean>;
+export async function openShellWindow(kind: "artifact", params: ArtifactWindowParams): Promise<boolean>;
+export async function openShellWindow(kind: ShellWindowKind, params?: ArtifactWindowParams): Promise<boolean> {
   const b = bridge();
   if (!b?.openWindow) return false;
-  await b.openWindow(kind);
+  await b.openWindow(kind, params);
   return true;
 }
 

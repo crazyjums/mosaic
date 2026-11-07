@@ -20,8 +20,8 @@ contextBridge.exposeInMainWorld("mosaic", {
   /** 桌面设置（关窗行为、通知、全局快捷键），由壳保存。 */
   getShellSettings: (): Promise<unknown> => ipcRenderer.invoke("mosaic:shell-settings:get"),
   setShellSettings: (patch: unknown): Promise<unknown> => ipcRenderer.invoke("mosaic:shell-settings:set", patch),
-  /** 请壳打开独立窗口（目前只有 git）。 */
-  openWindow: (kind: string): Promise<void> => ipcRenderer.invoke("mosaic:open-window", kind),
+  /** 请壳打开独立窗口（git 或 artifact；参数由壳校验）。 */
+  openWindow: (kind: string, params?: unknown): Promise<void> => ipcRenderer.invoke("mosaic:open-window", kind, params),
   /** 存网页预览用的令牌（预览 iframe 里没有 preload，拿不到）。 */
   previewToken: ipcRenderer.sendSync("mosaic:preview-token") as string,
   platform: process.platform,

@@ -94,13 +94,17 @@ export function absPath(workspace: string, p: string): string {
   if (isAbs(clean) || !workspace) return clean;
   const win = workspace.includes("\\") && !workspace.includes("/");
   const sep = win ? "\\" : "/";
-  const parts: string[] = [];
+  // 相对路径里的 ".." 要能走出工作区（自动模式下工具允许写工作区外的相对路径）：把工作区本身也拆成段，一起解析。
+  const root = workspace.replace(/[\\/]+$/, "");
+  const wsParts = root.split(/[\\/]+/);
+  const lead = wsParts.shift() ?? ""; // 根："" (POSIX /)、"C:" 或 UNC 的开头，不能被 ".." 弹掉
+  const parts = wsParts.filter(Boolean);
   for (const seg of clean.split(/[\\/]+/)) {
     if (!seg || seg === ".") continue;
     if (seg === "..") parts.pop();
     else parts.push(seg);
   }
-  return workspace.replace(/[\\/]+$/, "") + sep + parts.join(sep);
+  return lead + sep + parts.join(sep);
 }
 
 /** 聊天正文里的行内代码是不是一个文件路径（`report.html`、`out/flow.svg`）：有可打开的扩展名、没有空格和 URL。 */

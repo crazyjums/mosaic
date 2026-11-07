@@ -50,6 +50,12 @@ describe("absPath", () => {
     expect(absPath("/home/u/proj/", "./out/r.html")).toBe("/home/u/proj/out/r.html");
     expect(absPath("C:\\work\\proj", "out/r.html")).toBe("C:\\work\\proj\\out\\r.html");
     expect(absPath("/w", "a/../b.html")).toBe("/w/b.html");
+    // ".." 可以走出工作区（自动模式下工具允许），不能被吞掉
+    expect(absPath("/work/project", "../report.md")).toBe("/work/report.md");
+    expect(absPath("/work/project", "../../x/y.md")).toBe("/x/y.md");
+    expect(absPath("/work/project", "../../../../x.md")).toBe("/x.md"); // 到根为止
+    expect(absPath("C:\\work\\proj", "..\\r.md")).toBe("C:\\work\\r.md");
+    expect(absPath("C:\\work", "..\\..\\r.md")).toBe("C:\\r.md");
   });
   it("已经是绝对路径就原样返回", () => {
     expect(absPath("/w", "/tmp/x.html")).toBe("/tmp/x.html");
