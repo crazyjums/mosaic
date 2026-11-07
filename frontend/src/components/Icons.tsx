@@ -9,6 +9,12 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="6" cy="11.5" r="1.5" />
     </>
   ),
+  desktop: (
+    <>
+      <rect x="2.5" y="3" width="11" height="7.5" rx="1" />
+      <path d="M6 13.5h4M8 10.5v3" />
+    </>
+  ),
   providers: <path d="M4.5 12.5a3 3 0 0 1-.4-5.97 4 4 0 0 1 7.6-.7A3.4 3.4 0 0 1 11.5 12.5Z" />,
   prompt: (
     <>

@@ -5,6 +5,8 @@ import { useSettings } from "../store/settingsStore";
 import { useChat } from "../store/chatStore";
 import { t } from "../i18n";
 import AboutSettings from "./AboutSettings";
+import DesktopSettings from "./DesktopSettings";
+import { isElectron } from "../bridge/electron";
 import PluginSettings from "./PluginSettings";
 import MosaicMark from "./MosaicMark";
 import NavIcon from "./Icons";
@@ -32,6 +34,7 @@ const TABS = [
   ["statusline", "状态栏"],
   ["usage", "用量"],
   ["data", "数据"],
+  ["desktop", "桌面"],
   ["about", "关于"],
 ] as const;
 
@@ -92,7 +95,7 @@ export default function SettingsDialog() {
             <MosaicMark size="xs" />
             <span className="text-sm font-semibold">{t("设置")}</span>
           </div>
-          {TABS.map(([id, label]) => (
+          {TABS.filter(([id]) => id !== "desktop" || isElectron()).map(([id, label]) => (
             <button
               key={id}
               className={`flex shrink-0 items-center gap-2.5 rounded-ctl px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${
@@ -130,6 +133,8 @@ export default function SettingsDialog() {
           <UsageSettings />
         ) : tab === "about" ? (
           <AboutSettings />
+        ) : tab === "desktop" ? (
+          <DesktopSettings />
         ) : tab === "data" ? (
           <DataSettings />
         ) : tab === "statusline" ? (

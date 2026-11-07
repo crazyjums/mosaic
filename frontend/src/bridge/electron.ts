@@ -13,6 +13,11 @@ interface MosaicBridge {
   onEvent(cb: (data: unknown) => void): () => void;
   /** 壳要求界面跳转（点通知、全局快捷键）。旧版壳没有这个函数。 */
   onNavigate?(cb: (target: unknown) => void): () => void;
+  /** 桌面设置（关窗行为、通知、全局快捷键），由壳保存。旧版壳没有。 */
+  getShellSettings?(): Promise<unknown>;
+  setShellSettings?(patch: unknown): Promise<unknown>;
+  /** 请壳打开一个独立窗口（目前只有 "git"）。 */
+  openWindow?(kind: string): Promise<void>;
   /** 存网页预览用的令牌，只有应用页面的 preload 能拿到。 */
   previewToken?: string;
   platform: string;
@@ -71,4 +76,55 @@ export async function storePreview(html: string, scripts: boolean): Promise<stri
   });
   if (!res.ok) throw new Error(await res.text());
   return ((await res.json()) as { url: string }).url;
+}
+
+/** 壳能打开的独立窗口。 */
+export type ShellWindowKind = "git";
+
+/** 当前页面是不是壳打开的独立窗口（地址里带 ?window=git）；主窗口返回 null。 */
+export function shellWindowKind(search: string = typeof location === "undefined" ? "" : location.search): ShellWindowKind | null {
+  return new URLSearchParams(search).get("window") === "git" ? "git" : null;
+}
+
+/** 在独立窗口里打开；不在 Electron 里（或壳太旧）时返回 false，调用方保留原来的浮层。 */
+export async function openShellWindow(kind: ShellWindowKind): Promise<boolean> {
+  const b = bridge();
+  if (!b?.openWindow) return false;
+  await b.openWindow(kind);
+  return true;
+}
+
+/** 壳的设置（desktop/src/settings.ts）。 */
+export interface ShellSettings {
+  closeBehavior: "tray-when-running" | "quit" | "tray";
+  notifications: boolean;
+  quickAsk: { enabled: boolean; shortcut: string };
+}
+
+const CLOSE_BEHAVIORS = ["tray-when-running", "quit", "tray"];
+
+/** 壳发来的设置不可信到什么程度都不用管，但界面只依赖这几个字段，形状不对就当没有。 */
+export function parseShellSettings(raw: unknown): ShellSettings | undefined {
+  const r = raw as Partial<ShellSettings> | null;
+  if (!r || !CLOSE_BEHAVIORS.includes(r.closeBehavior as string) || typeof r.notifications !== "boolean") return undefined;
+  const q = r.quickAsk;
+  if (!q || typeof q.enabled !== "boolean" || typeof q.shortcut !== "string") return undefined;
+  return { closeBehavior: r.closeBehavior!, notifications: r.notifications, quickAsk: { enabled: q.enabled, shortcut: q.shortcut } };
+}
+
+/** 读桌面设置；不在 Electron 里（或壳太旧）时返回 null，设置页据此不显示“桌面”标签。 */
+export async function getShellSettings(): Promise<ShellSettings | null> {
+  const b = bridge();
+  if (!b?.getShellSettings) return null;
+  return parseShellSettings(await b.getShellSettings()) ?? null;
+}
+
+/** 保存桌面设置的一部分。返回生效后的完整设置；快捷键被占用之类的失败原因在 error 里（设置保持原样）。 */
+export async function setShellSettings(patch: Partial<Omit<ShellSettings, "quickAsk">> & { quickAsk?: Partial<ShellSettings["quickAsk"]> }): Promise<{ settings: ShellSettings; error?: string }> {
+  const b = bridge();
+  if (!b?.setShellSettings) throw new Error("当前的桌面壳不支持桌面设置");
+  const r = (await b.setShellSettings(patch)) as { settings?: unknown; error?: unknown };
+  const settings = parseShellSettings(r?.settings);
+  if (!settings) throw new Error("桌面壳返回了无法识别的设置");
+  return { settings, error: typeof r.error === "string" ? r.error : undefined };
 }

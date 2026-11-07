@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { app, BrowserWindow, globalShortcut, ipcMain, net, Notification, protocol, type Tray } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, net, Notification, protocol } from "electron";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize, sep } from "node:path";
@@ -9,7 +9,8 @@ import { handlePreview, PREVIEW_SCHEME, PreviewStore } from "./preview";
 import { createHostHandler, isWebURL, openExternal } from "./host";
 import { resolvePaths } from "./paths";
 import { Sidecar } from "./sidecar";
-import { createTray } from "./tray";
+import { defaults as defaultSettings, normalize as normalizeSettings, SettingsFile, type ShellSettings } from "./settings";
+import { createTray, type TrayHandle } from "./tray";
 import { runSmoke } from "./smoke";
 
 // Mosaic 的 Electron 外壳：窗口、对话框、单实例；业务全在 Go 后端 mosaicd。
@@ -50,10 +51,11 @@ let win: BrowserWindow | undefined;
 let sidecar: Sidecar | undefined;
 let tempHome: string | undefined;
 let quitting = false;
-let tray: Tray | undefined;
+let tray: TrayHandle | undefined;
+let settings: ShellSettings = defaultSettings();
+let settingsFile: SettingsFile | undefined;
+let registeredShortcut: string | undefined;
 const activity = new Activity();
-// 全局快捷键：随时唤起窗口并新建会话、聚焦输入框。可用环境变量改，设成空串关闭。
-const QUICK_ASK = process.env.MOSAIC_QUICK_SHORTCUT ?? "CommandOrControl+Shift+M";
 
 const paths = resolvePaths({ packaged: app.isPackaged, resources: process.resourcesPath, appDir: app.getAppPath(), env: process.env });
 
@@ -85,12 +87,12 @@ async function startSidecar(): Promise<Sidecar> {
   sc.on("event", (data) => {
     const alert = activity.handle(data);
     if (alert) notify(alert);
-    win?.webContents.send("mosaic:event", data);
+    broadcast("mosaic:event", data);
   });
   sc.on("exit", (info: { code: number | null; expected: boolean }) => {
     if (quitting || info.expected) return;
     console.error(`后端意外退出（${info.code}）`);
-    win?.webContents.send("mosaic:event", null); // 让界面知道：不再有事件了（界面收到 null 会忽略）
+    broadcast("mosaic:event", null); // 让界面知道：不再有事件了（界面收到 null 会忽略）
     if (!SMOKE) restartOnce();
   });
   await sc.start();
@@ -107,6 +109,11 @@ function restartOnce(): void {
   }
   restarts.push(now);
   void startSidecar().then((sc) => (sidecar = sc)).catch((e) => console.error("重启后端失败：", e));
+}
+
+/** 事件发给所有窗口（主窗口和独立的 Git 窗口等）；各窗口自己按会话过滤。 */
+function broadcast(channel: string, data: unknown): void {
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, data);
 }
 
 /** 让界面跳转：打开某个会话，或新建会话并聚焦输入框。只有主进程会发，渲染进程不能反过来指挥。 */
@@ -126,9 +133,34 @@ function quickAsk(): void {
   navigate({ kind: "new-session" });
 }
 
+/** 按设置注册/注销全局快捷键；失败（被占用、格式无效）返回原因，已注册的保持注销状态由调用方恢复。 */
+function applyShortcut(s: ShellSettings): string | undefined {
+  if (registeredShortcut) {
+    globalShortcut.unregister(registeredShortcut);
+    registeredShortcut = undefined;
+  }
+  if (!s.quickAsk.enabled) {
+    tray?.setShortcut(undefined);
+    return undefined;
+  }
+  let ok = false;
+  try {
+    ok = globalShortcut.register(s.quickAsk.shortcut, quickAsk);
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    tray?.setShortcut(undefined);
+    return `快捷键 ${s.quickAsk.shortcut} 已被其他程序占用，或者不是有效的组合`;
+  }
+  registeredShortcut = s.quickAsk.shortcut;
+  tray?.setShortcut(registeredShortcut);
+  return undefined;
+}
+
 /** 窗口不在眼前（隐藏、最小化、没有焦点）时才弹系统通知；点通知回到对应会话。 */
 function notify(a: Alert): void {
-  if (SMOKE || !Notification.isSupported()) return;
+  if (SMOKE || !settings.notifications || !Notification.isSupported()) return;
   if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused()) return;
   const n = new Notification({ ...alertText(a), silent: false });
   n.on("click", () => {
@@ -143,7 +175,44 @@ function isTrustedSender(url: string | undefined): boolean {
   return url.startsWith(APP_ORIGIN + "/") || (!!DEV_URL && url.startsWith(DEV_URL));
 }
 
+// 独立窗口：同一个后端、同一套页面，地址里的 ?window=git 让前端只渲染 Git 视图。
+// 白名单里只有 git；每种最多一个，再次打开就是把它带到前面。
+const auxWindows = new Map<string, BrowserWindow>();
+function openAuxWindow(kind: unknown): void {
+  if (kind !== "git") throw new Error("不支持的窗口类型");
+  const existing = auxWindows.get(kind);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+    return;
+  }
+  const w = createWindow({ title: "Mosaic — Git", width: 1280, height: 800, query: `?window=${kind}`, aux: true });
+  auxWindows.set(kind, w);
+  w.on("closed", () => auxWindows.delete(kind));
+}
+
 function registerIpc(): void {
+  ipcMain.handle("mosaic:shell-settings:get", (event) => {
+    if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
+    return settings;
+  });
+  // 补丁里缺的字段沿用当前值，不合法的字段被丢弃；快捷键注册失败时回到原来的设置并把原因告诉界面。
+  ipcMain.handle("mosaic:shell-settings:set", (event, patch: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
+    const next = normalizeSettings(patch, settings);
+    const err = applyShortcut(next);
+    if (err) {
+      applyShortcut(settings);
+      return { settings, error: err };
+    }
+    settings = next;
+    settingsFile?.save(settings);
+    return { settings };
+  });
+  ipcMain.handle("mosaic:open-window", (event, kind: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
+    openAuxWindow(kind);
+  });
   ipcMain.on("mosaic:preview-token", (event) => {
     event.returnValue = isTrustedSender(event.senderFrame?.url) ? previewToken : "";
   });
@@ -176,11 +245,21 @@ function registerAppProtocol(): void {
   protocol.handle(PREVIEW_SCHEME, (req) => handlePreview(req, previews, APP_ORIGIN, previewToken));
 }
 
-function createWindow(): BrowserWindow {
+interface WindowOpts {
+  title?: string;
+  width?: number;
+  height?: number;
+  /** 地址后面的查询串，例如 "?window=git" */
+  query?: string;
+  /** 独立窗口：关闭就是关闭，不藏到托盘 */
+  aux?: boolean;
+}
+
+function createWindow(opts: WindowOpts = {}): BrowserWindow {
   const w = new BrowserWindow({
-    title: "Mosaic",
-    width: 1280,
-    height: 840,
+    title: opts.title ?? "Mosaic",
+    width: opts.width ?? 1280,
+    height: opts.height ?? 840,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#0f1115",
@@ -205,7 +284,10 @@ function createWindow(): BrowserWindow {
   // 关窗时如果还有会话在跑：藏到托盘继续跑，而不是把任务一起杀掉；没有任务在跑就照常退出。
   let told = false;
   w.on("close", (e) => {
-    if (quitting || SMOKE || !tray || activity.count === 0) return;
+    if (opts.aux || quitting || SMOKE || !tray) return;
+    // 设置 → 桌面 → 关闭窗口时：总是退出 / 有任务在跑才藏到托盘（默认）/ 总是藏到托盘
+    const b = settings.closeBehavior;
+    if (b === "quit" || (b === "tray-when-running" && activity.count === 0)) return;
     e.preventDefault();
     w.hide();
     if (!told && Notification.isSupported()) {
@@ -213,7 +295,7 @@ function createWindow(): BrowserWindow {
       new Notification({ title: "Mosaic 仍在后台运行", body: "任务完成后会通知你；点托盘图标可以回到窗口，退出请用托盘菜单。" }).show();
     }
   });
-  void w.loadURL(DEV_URL ?? `${APP_ORIGIN}/`);
+  void w.loadURL((DEV_URL ?? `${APP_ORIGIN}/`) + (opts.query ?? ""));
   return w;
 }
 
@@ -229,9 +311,16 @@ async function main(): Promise<void> {
   registerIpc();
   sidecar = await startSidecar();
   win = createWindow();
+  // 主窗口真正关掉（不是藏到托盘）就退出整个应用，不让独立窗口留着一个没有主窗口的进程。
+  win.on("closed", () => {
+    if (!quitting) app.quit();
+  });
   if (!SMOKE) {
-    tray = createTray(paths.icon, QUICK_ASK || undefined, { show: showWindow, quickAsk, quit: () => app.quit() });
-    if (QUICK_ASK && !globalShortcut.register(QUICK_ASK, quickAsk)) console.error(`全局快捷键 ${QUICK_ASK} 被占用，快速提问只能从托盘菜单进入`);
+    settingsFile = new SettingsFile(join(app.getPath("userData"), "shell-settings.json"));
+    settings = settingsFile.load();
+    tray = createTray(paths.icon, undefined, { show: showWindow, quickAsk, quit: () => app.quit() });
+    const err = applyShortcut(settings);
+    if (err) console.error(err + "，快速提问只能从托盘菜单进入");
   }
   if (SMOKE) {
     win.webContents.once("did-finish-load", () => {
