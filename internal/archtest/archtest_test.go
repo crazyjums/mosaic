@@ -93,3 +93,21 @@ func TestConfigExampleParses(t *testing.T) {
 		}
 	}
 }
+
+// internal/ 下的包都不能依赖 Wails：需要窗口的能力走 app.Host（Wails 的实现在仓库根的 main 包）。
+// 这样同一套绑定层既能给 Wails 用，也能编进 Electron 版的 Go 后端 cmd/mosaicd（见 docs/design/electron-migration.md）。
+func TestInternalDoesNotImportWails(t *testing.T) {
+	filepath.WalkDir(filepath.Join(root, "internal"), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), `"github.com/wailsapp/`) {
+			t.Errorf("%s 导入了 Wails；需要窗口的能力请通过 app.Host", path)
+		}
+		return nil
+	})
+}
