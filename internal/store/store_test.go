@@ -18,6 +18,7 @@ func sampleSession(id string) *core.Session {
 	s := core.NewSession(id, "fake", "demo")
 	s.Title = "测试会话"
 	s.Workspace = "/repos/demo"
+	s.HarnessState = "thread-abc" // 外部引擎的恢复凭据也要存取
 	s.Usage = provider.Usage{InputTokens: 10, OutputTokens: 5}
 	s.Messages = []provider.Message{
 		provider.UserText("你好"),
@@ -47,6 +48,9 @@ func testStore(t *testing.T, st core.SessionStore) {
 	}
 	if !reflect.DeepEqual(got.Messages, s.Messages) {
 		t.Fatalf("消息不一致\n got  %+v\n want %+v", got.Messages, s.Messages)
+	}
+	if got.HarnessState != "thread-abc" {
+		t.Fatalf("恢复凭据丢了: %q", got.HarnessState)
 	}
 	if got.Title != s.Title || got.Usage != s.Usage || got.Provider != "fake" || got.Workspace != "/repos/demo" {
 		t.Fatalf("元数据不一致: %+v", got)

@@ -9,7 +9,7 @@ import (
 
 func TestBuiltinAdaptersRegistered(t *testing.T) {
 	got := provider.DefaultRegistry.Adapters()
-	for _, want := range []string{"anthropic", "chatgpt", "fake", "openai"} {
+	for _, want := range []string{"anthropic", "chatgpt", "codex", "fake", "openai"} {
 		if !slices.Contains(got, want) {
 			t.Errorf("适配器 %q 未注册: %v", want, got)
 		}

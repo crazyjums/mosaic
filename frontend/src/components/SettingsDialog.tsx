@@ -48,7 +48,7 @@ const SOURCE_LABEL: Record<ProviderView["source"], string> = {
   account: "",
 };
 
-const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", group: "模型组" };
+const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", codex: "Codex（本机 CLI）", group: "模型组" };
 
 /** 左侧列表里"添加模型组"的选中值 */
 const NEW_GROUP = "\u0000newgroup";
@@ -275,6 +275,8 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
   const isFake = current?.type === "fake";
   // ChatGPT 账号：没有 Base URL 和 API Key，名称固定；表单只编辑模型列表和思考选项。
   const isChatGPT = form.type === "chatgpt";
+  // Codex：整轮对话交给本机的 Codex CLI（见 docs/design/harness.md），没有 Base URL 和 API Key，登录由 codex login 完成。
+  const isCodex = form.type === "codex";
   const preset = PRESETS.find((p) => p.id === presetId);
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }));
 
@@ -400,11 +402,15 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </Field>
           <Field label="协议">
             <div className="flex gap-1 rounded-lg border border-line p-1">
-              {(["openai", "anthropic"] as const).map((t) => (
+              {(["openai", "anthropic", "codex"] as const).map((t) => (
                 <button
                   key={t}
                   className={`flex-1 rounded-md px-2 py-1 text-sm ${form.type === t ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
-                  onClick={() => patch({ type: t })}
+                  onClick={() =>
+                    t === "codex"
+                      ? patch({ type: t, baseURL: "", apiKey: "", models: form.models.length ? form.models : ["default"], defaultModel: form.defaultModel || "default" })
+                      : patch({ type: t })
+                  }
                 >
                   {TYPE_LABEL[t]}
                 </button>
@@ -413,6 +419,24 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </Field>
         </div>
 
+        {isCodex && (
+          <Field label="Codex 命令">
+            <input
+              className="input font-mono"
+              value={String(form.options.command ?? "")}
+              onChange={(e) => patch({ options: { ...form.options, command: e.target.value || undefined } })}
+              placeholder="codex（留空则在 PATH 里查找）"
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <Hint>
+              对话整轮交给本机的 Codex CLI 完成：先安装（npm install -g @openai/codex）并在终端执行 codex login 登录。Mosaic 不读取也不保存 Codex 的登录凭证；权限确认仍然在 Mosaic 里弹出。模型名填 default 表示用 Codex 自己的默认模型，也可以填具体型号。暂不支持图片附件。
+            </Hint>
+          </Field>
+        )}
+
+        {!isCodex && (
+        <>
         <Field label="Base URL">
           <input
             className="input font-mono"
@@ -446,6 +470,8 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
         </Field>
         </>
         )}
+        </>
+        )}
 
         <Field label="模型列表">
           <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-lg border border-line bg-bg px-2 py-1.5 focus-within:border-accent/60">
@@ -471,12 +497,14 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
               placeholder={form.models.length ? "继续输入，回车添加" : "输入模型名，回车添加"}
             />
           </div>
-          <div className="mt-2 flex items-center gap-2">
-            <button className="btn" onClick={doFetch} disabled={busy !== ""}>
-              {busy === "fetch" ? "获取中…" : "从服务器获取模型列表"}
-            </button>
-            {fetchError && <span className="text-xs text-danger">{fetchError}</span>}
-          </div>
+          {!isCodex && (
+            <div className="mt-2 flex items-center gap-2">
+              <button className="btn" onClick={doFetch} disabled={busy !== ""}>
+                {busy === "fetch" ? "获取中…" : "从服务器获取模型列表"}
+              </button>
+              {fetchError && <span className="text-xs text-danger">{fetchError}</span>}
+            </div>
+          )}
           {candidates.length > 0 && (
             <div className="mt-2 rounded-lg border border-line p-2">
               <div className="mb-1.5 flex items-center justify-between text-xs text-muted">
@@ -506,6 +534,7 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </Field>
         )}
 
+        {!isCodex && (
         <details className="rounded-lg border border-line px-3 py-2">
           <summary className="cursor-pointer text-sm text-muted">高级选项</summary>
           <div className="mt-3 space-y-4">
@@ -603,6 +632,7 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
             )}
           </div>
         </details>
+        )}
 
       </div>
 
@@ -624,9 +654,9 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </button>
         )}
         <div className="flex-1" />
-        <button className="btn" onClick={doTest} disabled={busy !== "" || form.models.length === 0} title="用默认模型发一条极短的消息，会产生极少量费用">
+        {!isCodex && <button className="btn" onClick={doTest} disabled={busy !== "" || form.models.length === 0} title="用默认模型发一条极短的消息，会产生极少量费用">
           {busy === "test" ? "测试中…" : "测试连接"}
-        </button>
+        </button>}
         <button className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50" onClick={doSave} disabled={busy !== ""}>
           {busy === "save" ? "保存中…" : "保存"}
         </button>

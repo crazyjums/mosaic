@@ -23,9 +23,11 @@ type Session struct {
 	// 旧版本保存的会话都是这样。一个会话通常对应一个代码仓库，所以工作区跟着会话走。
 	Workspace string
 	Messages  []provider.Message
-	Usage     provider.Usage
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// HarnessState 是外部引擎（Codex 等）的恢复凭据，由引擎自己定义内容（例如 Codex 的线程 ID）；内置引擎不用。
+	HarnessState string
+	Usage        provider.Usage
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 	// epoch 在整段消息被替换（压缩上下文）时加一。界面按"消息下标"分页加载历史，
 	// 消息被替换后下标不再对应原来的位置，据此让分页请求失败，而不是返回错位的内容。
 	epoch int
@@ -44,16 +46,17 @@ func (s *Session) Snapshot() *Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return &Session{
-		ID:        s.ID,
-		Title:     s.Title,
-		Provider:  s.Provider,
-		Model:     s.Model,
-		Workspace: s.Workspace,
-		Messages:  append([]provider.Message(nil), s.Messages...),
-		Usage:     s.Usage,
-		CreatedAt: s.CreatedAt,
-		UpdatedAt: s.UpdatedAt,
-		epoch:     s.epoch,
+		ID:           s.ID,
+		Title:        s.Title,
+		Provider:     s.Provider,
+		Model:        s.Model,
+		Workspace:    s.Workspace,
+		Messages:     append([]provider.Message(nil), s.Messages...),
+		HarnessState: s.HarnessState,
+		Usage:        s.Usage,
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+		epoch:        s.epoch,
 	}
 }
 
@@ -96,6 +99,18 @@ func (s *Session) addUsage(u provider.Usage) provider.Usage {
 	defer s.mu.Unlock()
 	s.Usage = s.Usage.Add(u)
 	return s.Usage
+}
+
+func (s *Session) harnessState() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.HarnessState
+}
+
+func (s *Session) setHarnessState(v string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.HarnessState = v
 }
 
 func (s *Session) setTitle(t string) {
