@@ -121,6 +121,16 @@ sequenceDiagram
 
 重启时新进程会带环境变量 `MYLLMAPP_UPDATED_FROM=<旧进程 pid>`，启动时先等旧进程退出（最多 10 秒）再初始化，避免两个实例同时打开同一个 SQLite 数据库。
 
+### 界面流程：先下载，再询问，运行中则等
+
+更新分两步，由前端决定什么时候走第二步（`frontend/src/store/updateStore.ts`）：
+
+1. 点「下载更新」后在后台下载并校验（`DownloadUpdate`）。更新窗口可以随时**最小化**（右上角的 —、Esc、点空白处），进度显示在标题栏的更新按钮上；下载不会打断正在做的事。
+2. 下载完成（状态 `ready`）时窗口会重新弹出，问「现在安装还是稍后手动安装」。选**稍后**：窗口关掉，按钮变成「新版本 x.y.z 已下载，点击安装」，之后随时可以装（关于页里也有「立即安装」）。选**立即安装**：
+   - 没有任何会话在运行 → 立即安装（`ApplyUpdate`）并重启；
+   - 还有会话在运行（当前会话或后台会话）→ **排队**，按钮显示「对话结束后自动更新」，最后一个会话结束的那一刻自动安装；排队期间每 3 秒再试一次（后端也会拒绝它看不到的运行中任务），可以随时取消排队。
+3. 已下载的是旧版本、此时检查到更新的版本时，旧安装包作废，需要重新下载。安装失败时安装包保留，状态仍是 `ready` 并带上原因，可以重试。
+
 ### Electron 版（迁移中）
 
 Electron 版的 Go 后端 `mosaicd` 只是安装包里的子程序，不替换自己，而是 `App.UseShellUpdater`：清单里取 `<平台>-electron` 的安装包（如 `windows-amd64-electron`，`mkmanifest sign -asset` 的平台键本来就是任意字符串），下载到 `os.UserCacheDir()/mosaic/updates` 并校验 sha256，再请壳运行（Windows 静默 NSIS、Linux 覆盖 AppImage、macOS 仍是手动）。验签、校验流程和上面完全相同。见 [electron-migration.md](electron-migration.md) 阶段 3。
@@ -133,7 +143,7 @@ Electron 版的 Go 后端 `mosaicd` 只是安装包里的子程序，不替换�
 | --- | --- |
 | `internal/update/` | 版本比较、清单验签、下载校验、替换、重启（不依赖 Wails，可直接 `go test`） |
 | `internal/update/pubkey.txt` | 内置公钥（base64）。**为空时更新功能不可用**，界面上会说明原因 |
-| `internal/app/update.go` | 绑定：`GetVersion`、`CheckUpdate`、`InstallUpdate`（后台下载）、`GetUpdateStatus`（前端轮询进度） |
+| `internal/app/update.go` | 绑定：`GetVersion`、`CheckUpdate`、`DownloadUpdate`（后台下载并校验，完成后状态是 `ready`）、`ApplyUpdate`（安装并重启；agent 运行中会被拒绝）、`GetUpdateStatus`（前端轮询进度）、`InstallUpdate`（下载后立即安装，供命令行等场景） |
 | `cmd/mkmanifest/` | 发布侧工具：`genkey` 生成密钥，`sign` 生成并签名清单，`bump` 决定自动发布的版本号并写更新日志 |
 | `.github/workflows/release.yml` | 打 tag、手动运行或自动发布触发：三平台打包 → 签名清单 → 创建 Release |
 | `.github/workflows/ci.yml` | 三平台测试；master 上测试通过后自动决定版本号、写更新日志并触发发布 |
