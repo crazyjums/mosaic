@@ -86,6 +86,15 @@ export class Sidecar extends EventEmitter {
     return this.peer.call(method, args);
   }
 
+  /**
+   * 主进程自己调后端的专用方法（harness.*）：不走渲染进程的白名单，也不会出现在握手的方法列表里。
+   * 渲染进程拿不到这个函数，所以它们调不到。
+   */
+  callInternal<T = unknown>(method: string, params: unknown): Promise<T> {
+    if (!this.peer) return Promise.reject(new Error("后端没有运行"));
+    return this.peer.call<T>(method, params);
+  }
+
   get running(): boolean {
     return !!this.child && this.child.exitCode === null && !this.child.killed;
   }

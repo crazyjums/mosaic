@@ -50,7 +50,8 @@ export class Peer {
     }
   }
 
-  call<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
+  /** params 通常是位置参数数组（绑定方法）；harness.* 等壳专用方法用具名参数对象。 */
+  call<T = unknown>(method: string, params: unknown = []): Promise<T> {
     if (this.closed) return Promise.reject(new Error("后端连接已断开"));
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {

@@ -202,3 +202,12 @@ export async function runSmoke(win: BrowserWindow, cspViolations: string[] = [],
   }
   return r;
 }
+
+/**
+ * 手动端到端验证的钩子（scripts/harness-e2e.mjs 用）：在页面里执行给定脚本，把返回值写进文件。
+ * 只有设了 MOSAIC_E2E_SCRIPT / MOSAIC_E2E_OUT 环境变量时才会走到这里，正常使用不受影响。
+ */
+export async function runE2E(win: BrowserWindow, script: string, outFile: string): Promise<void> {
+  const out = await win.webContents.executeJavaScript(script, true);
+  writeFileSync(outFile, JSON.stringify(out));
+}
