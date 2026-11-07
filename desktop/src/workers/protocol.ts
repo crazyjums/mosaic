@@ -19,6 +19,8 @@ export interface Outcome {
   reason: "completed" | "cancelled" | "error";
   error?: string;
   resume?: string;
+  /** 找不到恢复凭据指向的会话，什么都没做：Go 端据此把完整的历史补给引擎再重跑（不要在发过事件之后用）。 */
+  resume_lost?: boolean;
   usage: { input_tokens: number; output_tokens: number; cache_read_tokens?: number; cache_write_tokens?: number };
   messages?: unknown[];
 }

@@ -79,8 +79,9 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 	case st.Synced < len(prior):
 		missing = prior[st.Synced:]
 	}
+	baseText := text
 	if ctxText := catchUpContext(missing); ctxText != "" {
-		text = ctxText + text
+		text = ctxText + baseText
 	}
 	sess.appendMessage(userMsg)
 	em.emit("", event.UserMessage{Text: in.Text, Attachments: attachmentInfos(userMsg)})
@@ -100,6 +101,15 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 		},
 	}
 	out := h.Run(ctx, req)
+	if out.ResumeLost && req.Resume != "" {
+		// 引擎的会话没了（比如会话文件被清理）：它什么都没做。丢掉旧凭据，把整段历史当作“没见过”补给它再跑一次，
+		// 不让对话悄悄丢掉上下文。只重试一次：第二次还说丢了就按错误处理。
+		if ctxText := catchUpContext(prior); ctxText != "" {
+			req.Text = ctxText + baseText
+		}
+		req.Resume = ""
+		out = h.Run(ctx, req)
+	}
 
 	// 不管怎么结束，已经发生的内容都进历史：用户已经在界面上看到了。
 	for _, m := range out.Messages {

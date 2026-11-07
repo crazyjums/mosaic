@@ -19,6 +19,11 @@ asarUnpack:
 # 发布由工作流负责（阶段 3 才接自动更新），这里不让 electron-builder 自己去找发布目标。
 publish: null
 extraResources:
+  # pi 的 SDK 用它自带的打包版（见 workers/pi-locate.ts），不放它那两万多个依赖文件。
+  - from: node_modules/@earendil-works/pi-coding-agent/dist/bundle/
+    to: pi/
+  - from: resources/pi-package.json
+    to: pi/package.json
   - from: stage/
     to: .
     filter:

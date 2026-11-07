@@ -7,7 +7,7 @@ import type { FromWorker, ToWorker } from "./workers/protocol";
 // 把 Electron 的 utilityProcess 包成 WorkerHandle。单独一个文件：harness.ts 不 import electron，能在普通 Node 里测试。
 
 /** 每个引擎对应的 worker 入口（相对 dist/src/workers/）。pi 在后面的提交里加。 */
-const ENTRIES: Record<string, string> = { claudecode: "claudecode-main.js" };
+const ENTRIES: Record<string, string> = { claudecode: "claudecode-main.js", pi: "pi-main.js" };
 
 /**
  * 打包后 worker 和 SDK 放在 app.asar.unpacked 里（见 electron-builder.yml 的 asarUnpack）：

@@ -48,7 +48,7 @@ const SOURCE_LABEL: Record<ProviderView["source"], string> = {
   account: "",
 };
 
-const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", codex: "Codex（本机 CLI）", claudecode: "Claude Code（本机 CLI）", group: "模型组" };
+const TYPE_LABEL: Record<string, string> = { openai: "OpenAI 兼容", anthropic: "Anthropic", fake: "演示", chatgpt: "ChatGPT 账号", codex: "Codex（本机 CLI）", claudecode: "Claude Code（本机 CLI）", pi: "pi（本机配置）", group: "模型组" };
 
 /** 左侧列表里"添加模型组"的选中值 */
 const NEW_GROUP = "\u0000newgroup";
@@ -277,8 +277,10 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
   const isChatGPT = form.type === "chatgpt";
   // Codex：整轮对话交给本机的 Codex CLI（见 docs/design/harness.md），没有 Base URL 和 API Key，登录由 codex login 完成。
   // Claude Code 同理，但它的官方 SDK 跑在 Electron 的后台进程里，只在 Electron 版里提供。
-  const isCodex = form.type === "codex" || form.type === "claudecode";
+  const isCodex = form.type === "codex" || form.type === "claudecode" || form.type === "pi";
   const isClaudeCode = form.type === "claudecode";
+  // pi 的 SDK 直接在 Electron 的后台进程里运行，没有外部命令可填；模型和登录是用户自己的 ~/.pi/agent 配置。
+  const isPi = form.type === "pi";
   const preset = PRESETS.find((p) => p.id === presetId);
   const patch = (p: Partial<FormState>) => setForm((f) => ({ ...f, ...p }));
 
@@ -404,12 +406,12 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </Field>
           <Field label="协议">
             <div className="flex gap-1 rounded-lg border border-line p-1">
-              {(["openai", "anthropic", "codex", ...(isElectron() || form.type === "claudecode" ? (["claudecode"] as const) : [])] as const).map((t) => (
+              {(["openai", "anthropic", "codex", ...(isElectron() || form.type === "claudecode" ? (["claudecode"] as const) : []), ...(isElectron() || form.type === "pi" ? (["pi"] as const) : [])] as const).map((t) => (
                 <button
                   key={t}
                   className={`flex-1 rounded-md px-2 py-1 text-sm ${form.type === t ? "bg-accent text-on-accent" : "hover:bg-panel-2"}`}
                   onClick={() =>
-                    t === "codex" || t === "claudecode"
+                    t === "codex" || t === "claudecode" || t === "pi"
                       ? patch({ type: t, baseURL: "", apiKey: "", models: form.models.length ? form.models : ["default"], defaultModel: form.defaultModel || "default" })
                       : patch({ type: t })
                   }
@@ -421,7 +423,15 @@ function ProviderForm({ current, onSaved }: { current: ProviderView | null; onSa
           </Field>
         </div>
 
-        {isCodex && (
+        {isPi && (
+          <Field label="模型">
+            <Hint>
+              对话整轮交给 pi 编程 agent（官方 SDK，运行在 Electron 的后台进程里）完成。模型和登录用你自己的 pi 配置（~/.pi/agent）：先在终端运行 pi，用 /login 登录或在配置里填 API Key。Mosaic 不读取也不保存这些凭证。pi 自己没有逐次确认的机制，写文件、执行命令前由 Mosaic 弹出权限确认。模型名填 default 表示用 pi 的默认模型，也可以写成 提供商/模型ID（例如 anthropic/claude-sonnet-4-5）。暂不支持图片附件。
+            </Hint>
+          </Field>
+        )}
+
+        {isCodex && !isPi && (
           <Field label={isClaudeCode ? "Claude Code 命令" : "Codex 命令"}>
             <input
               className="input font-mono"

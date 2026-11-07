@@ -38,11 +38,13 @@ type Spec struct {
 // Outcome 是一轮的结果。
 type Outcome struct {
 	// Reason：completed / cancelled / error。
-	Reason   string             `json:"reason"`
-	Error    string             `json:"error,omitempty"`
-	Resume   string             `json:"resume,omitempty"`
-	Usage    provider.Usage     `json:"usage"`
-	Messages []provider.Message `json:"messages,omitempty"`
+	Reason string `json:"reason"`
+	Error  string `json:"error,omitempty"`
+	Resume string `json:"resume,omitempty"`
+	// ResumeLost：壳找不到恢复凭据指向的会话，什么都没做（见 harness.Result.ResumeLost）。
+	ResumeLost bool               `json:"resume_lost,omitempty"`
+	Usage      provider.Usage     `json:"usage"`
+	Messages   []provider.Message `json:"messages,omitempty"`
 }
 
 // cancelGrace：取消后给壳整理结果的时间，超过就不再等。
@@ -111,7 +113,7 @@ func (r *remote) Run(ctx context.Context, req harness.Request) harness.Result {
 	}()
 
 	out, err := h.host.RunHarness(runCtx, runID, spec)
-	res := harness.Result{Resume: out.Resume, Usage: out.Usage, Messages: out.Messages}
+	res := harness.Result{Resume: out.Resume, Usage: out.Usage, Messages: out.Messages, ResumeLost: out.ResumeLost}
 	if res.Resume == "" {
 		res.Resume = req.Resume
 	}
