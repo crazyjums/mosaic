@@ -159,20 +159,26 @@ func (c *Codex) session(ctx context.Context, req harness.Request, res harness.Re
 		_ = cl.serve(ctx, stdout)
 	}()
 
-	// 收尾：关 stdin 让 app-server 退出，等不到就杀掉。
-	shutdown := func() {
-		_ = stdin.Close()
-		select {
-		case <-serveDone:
-		case <-time.After(exitGrace):
-			_ = cmd.Process.Kill()
-			<-serveDone
-		}
-		_ = cmd.Wait()
+	// 收尾：关 stdin 让 app-server 退出，等不到就杀掉，并等读循环结束。幂等。
+	// 必须在读取 translator 的最终状态（messages、用量）之前调用：读循环还活着时它仍会改 translator，
+	// 并发读写会弄坏要存进历史的内容。
+	var stopOnce sync.Once
+	stopAll := func() {
+		stopOnce.Do(func() {
+			_ = stdin.Close()
+			select {
+			case <-serveDone:
+			case <-time.After(exitGrace):
+				_ = cmd.Process.Kill()
+				<-serveDone
+			}
+			_ = cmd.Wait()
+		})
 	}
-	defer shutdown()
+	defer stopAll()
 
 	failWith := func(err error) harness.Result {
+		stopAll()
 		if tail := stderr.String(); tail != "" {
 			err = fmt.Errorf("%w\n%s", err, lastLines(tail, 6))
 		}
@@ -248,12 +254,14 @@ func (c *Codex) session(ctx context.Context, req harness.Request, res harness.Re
 		case <-turnDone:
 		case <-time.After(interruptGrace):
 		}
+		stopAll() // 宽限期过了 Codex 还在发通知也要先停掉读循环，再整理历史
 		res.Reason = event.TurnCancelled
 		res.Messages = tr.finish("cancelled")
 		res.Usage = tr.usage
 		return res
 	}
 
+	stopAll() // 这一轮已经结束；先停读循环再读 translator 的最终状态
 	switch tr.status {
 	case "interrupted":
 		res.Reason = event.TurnCancelled

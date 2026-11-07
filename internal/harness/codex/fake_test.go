@@ -111,6 +111,12 @@ func (f *fake) runTurn(scenario, thread string, params map[string]any) {
 	case "crash":
 		fmt.Fprintln(os.Stderr, "boom: something broke")
 		os.Exit(3)
+	case "exit-during-approval":
+		// 发出审批请求后不等回答就退出：模拟 Codex 在用户还没点之前崩了。
+		f.send(map[string]any{"id": "req-9", "method": "item/commandExecution/requestApproval", "params": map[string]any{
+			"threadId": thread, "turnId": "u1", "itemId": "c9", "startedAtMs": 1, "command": "rm -rf x",
+		}})
+		os.Exit(0)
 	case "interrupt":
 		f.item(true, map[string]any{"type": "agentMessage", "id": "m1", "text": ""})
 		f.notify("item/agentMessage/delta", map[string]any{"threadId": thread, "turnId": "u1", "itemId": "m1", "delta": "思考中"})

@@ -284,6 +284,40 @@ func TestFailureAndCrash(t *testing.T) {
 	}
 }
 
+// Codex 在用户回答审批之前退出了：等待中的审批要被取消，这一轮立刻以“进程退出”结束，
+// 而不是一直悬着直到用户去点一个已经过期的弹窗。
+func TestProcessExitCancelsPendingApproval(t *testing.T) {
+	cancelled := make(chan struct{})
+	t.Setenv(fakeEnv, "exit-during-approval")
+	exe, _ := os.Executable()
+	r := &rec{}
+	done := make(chan harness.Result, 1)
+	go func() {
+		done <- New().Run(context.Background(), harness.Request{
+			Text: "x", Workspace: t.TempDir(), PermissionMode: permission.ModeDefault, Options: map[string]any{"command": exe},
+			Emit: r.emit,
+			Ask: func(ctx context.Context, p permission.Request) (permission.Decision, error) {
+				<-ctx.Done() // 用户一直没回答
+				close(cancelled)
+				return permission.DecisionDeny, ctx.Err()
+			},
+		})
+	}()
+	select {
+	case res := <-done:
+		if res.Reason != event.TurnError || res.Err == nil || !strings.Contains(res.Err.Error(), "意外退出") {
+			t.Fatalf("应以进程退出结束: %+v", res)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Codex 退出后这一轮仍然悬着")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("等待中的审批应被取消")
+	}
+}
+
 func TestNotLoggedIn(t *testing.T) {
 	r, res := run(t, "unauth", nil, nil)
 	if res.Reason != event.TurnError || res.Err == nil || !strings.Contains(res.Err.Error(), "codex login") {

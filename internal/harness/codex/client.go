@@ -114,8 +114,12 @@ func (c *client) call(ctx context.Context, method string, params any, result any
 
 // serve 读到 EOF 为止。返回前让所有等待中的 call 返回 errClosed，并等进行中的请求处理完。
 func (c *client) serve(ctx context.Context, r io.Reader) error {
+	// 处理函数用派生的 ctx：连接断开时先取消它们，否则正在等用户回答审批的处理函数会一直阻塞，
+	// 下面的 wg.Wait 就永远等不到，这一轮悬着（Codex 都退出了，用户却还得回答一个过期的弹窗）。
+	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	defer func() {
+		cancel()
 		c.pmu.Lock()
 		c.closed = true
 		for id, ch := range c.pending {
