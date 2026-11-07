@@ -1,6 +1,7 @@
-// 选择桥接实现：在 Wails 窗口里用真实后端，否则用浏览器演示后端。
+// 选择桥接实现：在 Wails / Electron 窗口里用真实后端，否则用浏览器演示后端。
 
 import { createDemoBackend } from "./demo";
+import { createElectronBackend, isElectron } from "./electron";
 import type { Backend } from "./types";
 import { createWailsBackend, isWails } from "./wails";
 
@@ -13,6 +14,6 @@ export type {
 let instance: Backend | null = null;
 
 export function backend(): Backend {
-  if (!instance) instance = isWails() ? createWailsBackend() : createDemoBackend();
+  if (!instance) instance = isElectron() ? createElectronBackend() : isWails() ? createWailsBackend() : createDemoBackend();
   return instance;
 }

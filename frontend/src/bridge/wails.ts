@@ -17,7 +17,7 @@ import type {
 /** Go 端 internal/app.EventName */
 const EVENT_NAME = "agent:event";
 
-interface GoApp {
+export interface GoApp {
   ProtocolVersion(): Promise<number>;
   GetStatus(): Promise<Status>;
   GetProfiles(): Promise<ProfileInfo[] | null>;
@@ -144,10 +144,17 @@ const toEvents = (raw: unknown[] | null): AgentEvent[] => (raw ?? []).filter(isK
 
 export function createWailsBackend(): Backend {
   const w = window as unknown as WailsWindow;
-  const app = w.go!.app!.App!;
-  const runtime = w.runtime!;
+  return createBackendFrom(w.go!.app!.App!, w.runtime!, "wails");
+}
+
+/** 传输层只需要两样东西：按方法名调用后端（GoApp）和订阅事件（runtime.EventsOn）。Wails 和 Electron 各自提供，映射表共用。 */
+export interface EventRuntime {
+  EventsOn(name: string, cb: (...data: unknown[]) => void): () => void;
+}
+
+export function createBackendFrom(app: GoApp, runtime: EventRuntime, kind: "wails" | "electron"): Backend {
   return {
-    kind: "wails",
+    kind,
     protocolVersion: () => app.ProtocolVersion(),
     getStatus: () => app.GetStatus(),
     getProfiles: async () => (await app.GetProfiles()) ?? [],

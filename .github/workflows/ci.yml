@@ -41,6 +41,39 @@ jobs:
           npx tsc --noEmit -p .
           npx vitest run
 
+  # Electron 外壳（迁移中，见 docs/design/electron-migration.md）：类型检查和单元测试（含用真实的 mosaicd 验证协议）三个平台都跑；
+  # 冒烟测试（在真实的 Electron 窗口里加载前端、通过 IPC 跑完一轮演示对话）在 Linux 上用 xvfb 跑。
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - name: Desktop install, typecheck and tests
+        working-directory: desktop
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit -p .
+          npm test
+      - name: Smoke test in a real Electron window (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          (cd frontend && npm ci --no-audit --no-fund && npx vite build)
+          go build -o "$RUNNER_TEMP/mosaicd" ./cmd/mosaicd
+          cd desktop && MOSAIC_MOSAICD="$RUNNER_TEMP/mosaicd" node scripts/smoke.mjs
+
   # 合并到 master、全平台测试通过后自动发布：版本号加 0.0.1（CHANGELOG 最上面手写了更大且没打 tag 的版本就用它），
   # 把 [Unreleased] 写成这个版本的小节并提交回 master，再独立触发 release.yml（固定构建这个提交）。
   # 不想发布的合并：在 PR 标题里写 [skip release]（GitHub 的合并提交信息会带上 PR 标题）。

@@ -28,7 +28,7 @@ export default function MessageList() {
   const loadingEarlier = useChat((s) => s.loadingEarlier);
   const prependTick = useChat((s) => s.prependTick);
   const loadEarlier = useChat((s) => s.loadEarlier);
-  const noProvider = useChat((s) => s.backendKind === "wails" && !s.provider);
+  const noProvider = useChat((s) => s.backendKind !== "demo" && !s.provider);
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   // 接入更早的历史前的内容高度：接入后用它补偿滚动位置，避免用户正在看的内容被顶走。

@@ -323,7 +323,7 @@ export interface ContextBreakdown {
 
 export interface Backend {
   /** 用于在界面上标明当前是"桌面端"还是"浏览器演示" */
-  readonly kind: "wails" | "demo";
+  readonly kind: "wails" | "electron" | "demo";
   protocolVersion(): Promise<number>;
   getStatus(): Promise<Status>;
   getProfiles(): Promise<ProfileInfo[]>;
