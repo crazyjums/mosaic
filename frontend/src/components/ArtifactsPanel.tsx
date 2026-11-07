@@ -244,7 +244,8 @@ export function ArtifactStandalone({ path, workspace, kind }: { path: string; wo
   const artifact: Artifact = { path, kind: kind as ArtifactKind, tool: "", callId: `popout-${rev}`, status: "done" };
   return (
     <div className="flex h-full flex-col bg-panel p-3 text-fg">
-      <ArtifactViewer artifact={artifact} big standalone onReload={() => setRev((n) => n + 1)} />
+      {/* 以 rev 为 key 整个重新挂载：文本和图片（图片的加载只看路径）都会重新读取，读取失败后也能重试 */}
+      <ArtifactViewer key={rev} artifact={artifact} big standalone onReload={() => setRev((n) => n + 1)} />
     </div>
   );
 }
