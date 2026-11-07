@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -47,6 +48,11 @@ func main() {
 	a := app.New(built.Engine, built.Settings, nil)
 	a.SetPlugins(built.Plugins)
 	a.SetChangelog(changelog)
+	// 对话框、打开链接、推事件这些需要窗口的能力交给 Wails（wails_host.go）；绑定层本身不依赖 Wails。
+	startup := func(ctx context.Context) {
+		a.SetHost(wailsHost{ctx: ctx})
+		a.Startup(ctx)
+	}
 	err = wails.Run(&options.App{
 		Title:            "Mosaic",
 		Width:            1280,
@@ -55,7 +61,7 @@ func main() {
 		MinHeight:        600,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		BackgroundColour: &options.RGBA{R: 15, G: 17, B: 21, A: 1},
-		OnStartup:        a.Startup,
+		OnStartup:        startup,
 		OnShutdown:       a.Shutdown,
 		Bind:             []interface{}{a},
 	})

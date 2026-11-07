@@ -4,8 +4,6 @@ import (
 	"errors"
 	"os"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/crazyjums/myllmapp/internal/plugin"
 	"github.com/crazyjums/myllmapp/internal/skill"
 )
@@ -119,24 +117,32 @@ func (a *App) ClearPluginSecret(id, key string) (plugin.Info, error) {
 
 // GetPluginDiagnostics 只读取可用的 Skill/Command 与 MCP 真实注册状态，不执行插件代码。
 func (a *App) GetPluginDiagnostics(id string) (plugin.PluginDiagnostics, error) {
-    if a.plugins == nil { return plugin.PluginDiagnostics{}, errNoPlugins }
-    return a.plugins.Diagnostics(id)
+	if a.plugins == nil {
+		return plugin.PluginDiagnostics{}, errNoPlugins
+	}
+	return a.plugins.Diagnostics(id)
 }
 
 // ListPluginDiagnostics 返回已安装插件的真实运行状态，用于列表页区分“已启用”和“已就绪”。
 func (a *App) ListPluginDiagnostics() []plugin.PluginDiagnostics {
-    if a.plugins == nil { return []plugin.PluginDiagnostics{} }
-    result := []plugin.PluginDiagnostics{}
-    for _, item := range a.plugins.List() {
-        if d, err := a.plugins.Diagnostics(item.ID); err == nil { result = append(result, d) }
-    }
-    return result
+	if a.plugins == nil {
+		return []plugin.PluginDiagnostics{}
+	}
+	result := []plugin.PluginDiagnostics{}
+	for _, item := range a.plugins.List() {
+		if d, err := a.plugins.Diagnostics(item.ID); err == nil {
+			result = append(result, d)
+		}
+	}
+	return result
 }
 
 // ReconnectPlugin 仅重新连接指定插件的 MCP 服务，不影响用户单独配置的 MCP。
 func (a *App) ReconnectPlugin(id string) (plugin.PluginDiagnostics, error) {
-    if a.plugins == nil { return plugin.PluginDiagnostics{}, errNoPlugins }
-    return a.plugins.ReconnectPlugin(id)
+	if a.plugins == nil {
+		return plugin.PluginDiagnostics{}, errNoPlugins
+	}
+	return a.plugins.ReconnectPlugin(id)
 }
 
 // GetPluginStatus 运行插件声明的状态检查。
@@ -166,9 +172,7 @@ func (a *App) StartPluginLogin(id string) (plugin.LoginState, error) {
 	if err != nil {
 		return plugin.LoginState{}, err
 	}
-	if a.ctx != nil && st.URL != "" {
-		runtime.BrowserOpenURL(a.ctx, st.URL)
-	}
+	a.openURL(st.URL)
 	return st, nil
 }
 
@@ -214,9 +218,13 @@ func (a *App) ExpandCommand(name, args string) (ExpandedCommand, error) {
 // ChooseFile 弹出系统的选择文件对话框（安装插件时选 .zip）。取消时返回空串。
 func (a *App) ChooseFile(title, patternName, pattern string) (string, error) {
 	start, _ := os.UserHomeDir()
-	return runtime.OpenFileDialog(a.context(), runtime.OpenDialogOptions{
+	h := a.currentHost()
+	if h == nil {
+		return "", ErrNoHost
+	}
+	return h.OpenFile(a.context(), OpenFileOptions{
 		Title:            title,
 		DefaultDirectory: start,
-		Filters:          []runtime.FileFilter{{DisplayName: patternName, Pattern: pattern}},
+		Filters:          []FileFilter{{DisplayName: patternName, Pattern: pattern}},
 	})
 }

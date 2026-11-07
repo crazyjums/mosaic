@@ -6,8 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"sync"
 
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/event"
@@ -29,7 +28,7 @@ import (
 // 所以前端按事件信封里单调递增的 seq 重新排序（frontend/src/bridge/reorder.ts）。
 const EventName = "agent:event"
 
-// EmitFunc 把一个事件发给前端。生产环境是 runtime.EventsEmit，测试时替换成记录函数。
+// EmitFunc 把一个事件发给前端。测试时传入记录函数；生产环境传 nil，事件交给桌面壳（Host.Emit）。
 type EmitFunc func(ctx context.Context, name string, data ...any)
 
 // App 是绑定到前端的对象。
@@ -38,6 +37,11 @@ type App struct {
 	settings *settings.Manager
 	plugins  *plugin.Host
 	emit     EmitFunc
+
+	hostMu sync.Mutex
+	host   Host
+	// selfUpdate 为 false 时不能由本进程替换自己（Electron 版的更新由壳负责），见 DisableSelfUpdate。
+	noSelfUpdate bool
 
 	ctx         context.Context
 	unsubscribe func()
@@ -48,15 +52,21 @@ type App struct {
 	us        updateState
 }
 
-// New 创建绑定对象。emit 为 nil 时使用 Wails 的 runtime.EventsEmit。
+// New 创建绑定对象。emit 为 nil 时事件交给桌面壳（SetHost 注入的 Host.Emit）。
 func New(engine *core.Engine, s *settings.Manager, emit EmitFunc) *App {
+	a := &App{engine: engine, settings: s}
 	if emit == nil {
-		emit = runtime.EventsEmit
+		emit = func(_ context.Context, name string, data ...any) {
+			if h := a.currentHost(); h != nil && len(data) > 0 {
+				h.Emit(name, data[0])
+			}
+		}
 	}
-	return &App{engine: engine, settings: s, emit: emit}
+	a.emit = emit
+	return a
 }
 
-// Startup 由 Wails 在窗口创建后调用（options.App.OnStartup）。
+// Startup 在窗口创建后调用（Wails 的 OnStartup；Electron 版由 cmd/mosaicd 在开始服务前调用）。
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	a.unsubscribe = a.engine.Bus().Subscribe(func(ev event.Event) {
@@ -64,7 +74,7 @@ func (a *App) Startup(ctx context.Context) {
 	})
 }
 
-// Shutdown 由 Wails 在退出前调用：取消所有会话的运行轮次，停止转发事件。
+// Shutdown 在退出前调用：取消所有会话的运行轮次，停止转发事件。
 func (a *App) Shutdown(context.Context) {
 	a.engine.CancelAllSessions()
 	if a.unsubscribe != nil {
@@ -237,7 +247,11 @@ func (a *App) SetSessionWorkspace(dir string) (core.Status, error) {
 
 // ChooseDirectory 弹出系统的"选择文件夹"对话框；用户取消时返回空字符串。
 func (a *App) ChooseDirectory(start string) (string, error) {
-	return runtime.OpenDirectoryDialog(a.context(), runtime.OpenDialogOptions{
+	h := a.currentHost()
+	if h == nil {
+		return "", ErrNoHost
+	}
+	return h.OpenDirectory(a.context(), OpenDirectoryOptions{
 		Title:                "选择工作区",
 		DefaultDirectory:     start,
 		CanCreateDirectories: true,
@@ -264,9 +278,7 @@ func (a *App) LoginChatGPT(newAccount bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if a.ctx != nil {
-		runtime.BrowserOpenURL(a.ctx, u)
-	}
+	a.openURL(u)
 	return u, nil
 }
 
@@ -285,17 +297,13 @@ func (a *App) OpenExternalURL(raw string) error {
 	if !isWebURL(raw) {
 		return fmt.Errorf("只能打开 http / https 链接")
 	}
-	if a.ctx != nil {
-		runtime.BrowserOpenURL(a.ctx, raw)
-	}
+	a.openURL(raw)
 	return nil
 }
 
 // OpenChatGPTUsage 在浏览器中打开 ChatGPT 的用量页面。地址是固定的，前端不能借此打开任意网址。
 func (a *App) OpenChatGPTUsage() {
-	if a.ctx != nil {
-		runtime.BrowserOpenURL(a.ctx, settings.ChatGPTUsageURL)
-	}
+	a.openURL(settings.ChatGPTUsageURL)
 }
 
 // GetContextBreakdown 返回当前会话上下文的组成（按字符估算的 token 数），供右侧的上下文面板显示。

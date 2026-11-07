@@ -11,7 +11,8 @@ flowchart TB
     subgraph Entry["入口层"]
         MAIN["main.go<br/>(Wails 桌面端)"]
         CLI["cmd/cli<br/>(终端)"]
-        APP["internal/app<br/>(Wails 绑定)"]
+        APP["internal/app<br/>(绑定层，Host 接口)"]
+        D["cmd/mosaicd<br/>(Electron 版后端，stdio JSON-RPC)"]
         FE["frontend/<br/>(React + Zustand)"]
     end
 
@@ -104,7 +105,7 @@ flowchart TB
 | | `siwc`、`provider/chatgpt` | 用 ChatGPT 账号登录（Sign in with ChatGPT）与对应的 Responses API 适配器，使用套餐额度 |
 | | `plugin` | 插件接口；已实现状态栏脚本（`CommandStatusLine`），技能 / 斜杠命令 / 钩子仍是预留 |
 | 装配 | `config`、`settings`、`bootstrap` | 读配置文件；管理界面上配置的厂商（持久化、合并、热更新）；把具体实现组装成 `Engine` |
-| 入口 | `cmd/cli`、`internal/app` + `main.go`、`frontend` | 两种界面 |
+| 入口 | `cmd/cli`、`internal/app` + `main.go`（Wails）/ `cmd/mosaicd`（Electron，迁移中）、`frontend` | 两种界面 |
 
 ## 3. 两个关键接口
 
@@ -198,7 +199,7 @@ sequenceDiagram
 
 | 决策 | 选择 | 考虑过的方案 / 不选的原因 |
 | --- | --- | --- |
-| 桌面框架 | Wails v2.17 | v3 仍是 beta，API 变动风险大；内核与 Wails 解耦，迁移只影响 `internal/app` 和 `main.go` |
+| 桌面框架 | Wails v2.17，迁移到 Electron 中（[计划](design/electron-migration.md)） | `internal/app` 已不依赖 Wails（需要窗口的能力走 `app.Host`），Go 后端可以作为 Electron 的子进程 `cmd/mosaicd` 运行 |
 | 界面与内核的接口 | 命令 + 单通道事件流 | 直接让前端轮询状态：实时性差；每种事件一个通道：Wails 不保证跨通道顺序 |
 | 厂商输出 | 厂商只产生 Delta，内核统一组装消息 | 让厂商返回完整消息：每个厂商重复写组装逻辑，且历史和界面可能不一致 |
 | 中立消息模型 | 内容块（Anthropic 风格） | OpenAI 风格（tool 角色）：表达不了思考签名、多块交错 |

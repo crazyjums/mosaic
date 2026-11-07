@@ -222,6 +222,7 @@ go vet ./... && go test ./...
 ├── build/                      Wails 平台资源（图标、Windows manifest）；build/bin/ 是产物，不提交
 ├── catalog/                    随应用发布的插件目录：registry.json（插件列表）和 bundled/（内置示例插件，也是插件作者的参考）
 ├── cmd/cli/                    终端入口：同一个内核，彩色渲染或 JSONL 输出事件
+├── cmd/mosaicd/                Electron 版的 Go 后端（迁移中）：在 stdio 上用 JSON-RPC 服务绑定层的全部方法
 ├── internal/
 │   ├── event/                  统一事件协议（带版本号）与进程内事件总线 —— 整个项目的核心契约
 │   ├── provider/               厂商中立的消息模型、Provider 接口、适配器注册表
@@ -311,7 +312,7 @@ go vet ./... && go test ./...
 | 8 | `internal/provider/anthropic/anthropic.go` `Stream` | HTTP 请求 → `sse.Reader` → 翻译成 `Delta` 回调 |
 | 9 | `internal/core/accumulator.go` `add` + `agent.go` `translateDelta` | Delta 累加成消息；同时翻译成 `thinking_delta` / `text_delta` / `tool_call` |
 | 10 | `internal/event/bus.go` `Bus.Publish` | 补全信封，同步通知订阅者 |
-| 11 | `internal/app/app.go` `Startup` 中的订阅 | `runtime.EventsEmit("agent:event", ev)` |
+| 11 | `internal/app/app.go` `Startup` 中的订阅 | `Host.Emit("agent:event", ev)`（Wails 版是 `runtime.EventsEmit`，Electron 版是 stdio 上的 `event` 通知） |
 | 12 | `frontend/src/bridge/wails.ts` `onEvent` → `chatStore.ts` | `set(s => applyEvent(s, ev))` |
 | 13 | `frontend/src/store/reducer.ts` `applyEvent` | 更新时间线、工具字典 → React 重渲染 `ThinkingCard` / `Markdown` / `ToolCallCard` |
 | 14 | `internal/core/tools.go` `runTools` → `runTool` | 查找工具 → `Policy.Evaluate` 返回 Ask |
