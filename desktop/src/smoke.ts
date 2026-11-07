@@ -1,6 +1,6 @@
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { app, type BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 
 // 冒烟测试：在真实的渲染进程里验证整条链路——页面加载、React 渲染出来、window.mosaic 可用、
 // 通过 IPC 调后端跑完一轮演示对话（含权限确认）。用 `npm run smoke` 运行（Linux 上用 xvfb-run）。
@@ -126,9 +126,32 @@ export async function runSmoke(win: BrowserWindow, cspViolations: string[] = [],
   if (!policy.evalBlocked) throw new Error("CSP 没有生效：eval 没有被拦住");
   if (!policy.previewScripts) throw new Error("允许脚本的网页预览里脚本没有运行");
   if (policy.previewNoScripts) throw new Error("不允许脚本的网页预览里脚本竟然运行了");
+  // 多窗口：能打开独立的 Git 窗口（同一个后端、只渲染 Git 视图）；不在白名单里的窗口类型被拒绝。
+  const badKind = (await win.webContents.executeJavaScript('window.mosaic.openWindow("shell").then(() => "opened", (e) => String(e.message || e))', true)) as string;
+  if (badKind === "opened") throw new Error("不在白名单里的窗口类型不应该能打开");
+  await win.webContents.executeJavaScript('window.mosaic.openWindow("git")', true);
+  const aux = BrowserWindow.getAllWindows().find((w) => w !== win);
+  if (!aux) throw new Error("没有打开独立的 Git 窗口");
+  const auxState = (await (async () => {
+    for (let i = 0; i < 100; i++) {
+      const st = (await aux.webContents.executeJavaScript(
+        '({ url: location.href, rendered: !!document.getElementById("root")?.children.length, text: document.body.innerText.slice(0, 200) })',
+        true,
+      )) as { url: string; rendered: boolean; text: string };
+      if (st.rendered && st.text.trim()) return st;
+      await new Promise((res) => setTimeout(res, 100));
+    }
+    throw new Error("独立的 Git 窗口没有渲染出来");
+  })()) as { url: string; text: string };
+  if (!auxState.url.includes("window=git")) throw new Error(`独立窗口地址不对：${auxState.url}`);
+  if (/发送|新对话/.test(auxState.text)) throw new Error("独立 Git 窗口里不应该有聊天界面");
+  const reopenCount = BrowserWindow.getAllWindows().length;
+  await win.webContents.executeJavaScript('window.mosaic.openWindow("git")', true);
+  if (BrowserWindow.getAllWindows().length !== reopenCount) throw new Error("同一种独立窗口应该只开一个");
+  aux.close();
   // 内存：所有进程（主进程、渲染进程、GPU、后端 mosaicd 不在内）的工作集之和，单位 MB。
   const rss = app.getAppMetrics().reduce((n, m) => n + m.memory.workingSetSize, 0) / 1024;
-  Object.assign(r, { libs, policy, loadMs, memoryMB: Math.round(rss) });
+  Object.assign(r, { libs, policy, aux: auxState.text.slice(0, 40), loadMs, memoryMB: Math.round(rss) });
   // 调试用：MOSAIC_SCREENSHOT=路径 时把当前窗口存成 PNG（肉眼确认真实窗口里渲染正常）。
   if (process.env.MOSAIC_SCREENSHOT) {
     await new Promise((res) => setTimeout(res, 500));

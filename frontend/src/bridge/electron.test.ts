@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElectronBackend, isElectron, onShellNavigate, parseShellTarget } from "./electron";
+import { createElectronBackend, isElectron, onShellNavigate, openShellWindow, parseShellTarget, shellWindowKind } from "./electron";
 
 // window.mosaic 是 Electron preload 注入的；这里用假的验证“按方法名、按位置传参”的约定，以及事件订阅。
 function install(call: (m: string, a: unknown[]) => Promise<unknown>) {
@@ -83,5 +83,24 @@ describe("壳的跳转请求", () => {
 
     (globalThis as unknown as { window: unknown }).window = {};
     expect(() => onShellNavigate(() => undefined)()).not.toThrow();
+  });
+});
+
+describe("独立窗口", () => {
+  it("只认 ?window=git", () => {
+    expect(shellWindowKind("?window=git")).toBe("git");
+    expect(shellWindowKind("?a=1&window=git")).toBe("git");
+    for (const bad of ["", "?window=shell", "?window=", "?window=GIT", "?x=window=git"]) expect(shellWindowKind(bad)).toBeNull();
+  });
+
+  it("通过 bridge 打开；没有 bridge（Wails / 旧壳）时返回 false 让调用方保留浮层", async () => {
+    const openWindow = vi.fn(async () => undefined);
+    (globalThis as unknown as { window: unknown }).window = { mosaic: { call: vi.fn(), onEvent: vi.fn(), openWindow, platform: "linux" } };
+    expect(await openShellWindow("git")).toBe(true);
+    expect(openWindow).toHaveBeenCalledWith("git");
+    (globalThis as unknown as { window: unknown }).window = { mosaic: { call: vi.fn(), onEvent: vi.fn(), platform: "linux" } };
+    expect(await openShellWindow("git")).toBe(false);
+    (globalThis as unknown as { window: unknown }).window = {};
+    expect(await openShellWindow("git")).toBe(false);
   });
 });

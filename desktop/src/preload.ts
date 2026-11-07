@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("mosaic", {
     ipcRenderer.on("mosaic:navigate", listener);
     return () => ipcRenderer.removeListener("mosaic:navigate", listener);
   },
+  /** 请壳打开独立窗口（目前只有 git）。 */
+  openWindow: (kind: string): Promise<void> => ipcRenderer.invoke("mosaic:open-window", kind),
   /** 存网页预览用的令牌（预览 iframe 里没有 preload，拿不到）。 */
   previewToken: ipcRenderer.sendSync("mosaic:preview-token") as string,
   platform: process.platform,

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { GitBranch, GitChangedFile, GitCommit, GitFileChange, GitRef } from "../bridge";
+import { isElectron, openShellWindow } from "../bridge/electron";
 import { t } from "../i18n";
 import { layoutGraph } from "../store/gitGraph";
 import { useGit } from "../store/gitStore";
@@ -8,6 +9,20 @@ import { copyText } from "./Markdown";
 
 // Git 窗口（只读）：左侧分支/标签，中间是带分支图的提交历史（或工作区变更），右侧是提交详情与 diff。
 // 数据来自后端 internal/gitview；这里不提供任何会修改仓库的操作。
+
+/** 壳打开的独立 Git 窗口：整个窗口就是 Git 视图，关闭按钮关的是窗口本身。 */
+export function GitStandalone() {
+  const refresh = useGit((s) => s.refresh);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  return (
+    <div className="flex h-full flex-col bg-panel text-fg">
+      <Header standalone />
+      <Body />
+    </div>
+  );
+}
 
 export default function GitWindow() {
   const open = useGit((s) => s.open);
@@ -31,7 +46,7 @@ export default function GitWindow() {
   );
 }
 
-function Header() {
+function Header({ standalone = false }: { standalone?: boolean }) {
   const { overview, tab, setTab, refresh, loading, hide } = useGit();
   const st = overview?.status;
   const changes = st?.files.length ?? 0;
@@ -62,7 +77,19 @@ function Header() {
       <button className="btn" onClick={() => void refresh()} disabled={loading}>
         {loading ? t("刷新中…") : t("刷新")}
       </button>
-      <button className="rounded px-1.5 text-muted hover:text-fg" onClick={hide} aria-label={t("关闭")}>
+      {/* Electron 版：可以把 Git 视图拆到独立窗口里，一边看历史一边继续对话 */}
+      {!standalone && isElectron() && (
+        <button
+          className="btn"
+          onClick={() => {
+            void openShellWindow("git").then((ok) => ok && hide());
+          }}
+          title={t("在独立窗口中打开")}
+        >
+          {t("新窗口")}
+        </button>
+      )}
+      <button className="rounded px-1.5 text-muted hover:text-fg" onClick={standalone ? () => window.close() : hide} aria-label={t("关闭")}>
         ✕
       </button>
     </div>

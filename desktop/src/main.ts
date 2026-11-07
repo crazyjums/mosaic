@@ -85,12 +85,12 @@ async function startSidecar(): Promise<Sidecar> {
   sc.on("event", (data) => {
     const alert = activity.handle(data);
     if (alert) notify(alert);
-    win?.webContents.send("mosaic:event", data);
+    broadcast("mosaic:event", data);
   });
   sc.on("exit", (info: { code: number | null; expected: boolean }) => {
     if (quitting || info.expected) return;
     console.error(`后端意外退出（${info.code}）`);
-    win?.webContents.send("mosaic:event", null); // 让界面知道：不再有事件了（界面收到 null 会忽略）
+    broadcast("mosaic:event", null); // 让界面知道：不再有事件了（界面收到 null 会忽略）
     if (!SMOKE) restartOnce();
   });
   await sc.start();
@@ -107,6 +107,11 @@ function restartOnce(): void {
   }
   restarts.push(now);
   void startSidecar().then((sc) => (sidecar = sc)).catch((e) => console.error("重启后端失败：", e));
+}
+
+/** 事件发给所有窗口（主窗口和独立的 Git 窗口等）；各窗口自己按会话过滤。 */
+function broadcast(channel: string, data: unknown): void {
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(channel, data);
 }
 
 /** 让界面跳转：打开某个会话，或新建会话并聚焦输入框。只有主进程会发，渲染进程不能反过来指挥。 */
@@ -143,7 +148,27 @@ function isTrustedSender(url: string | undefined): boolean {
   return url.startsWith(APP_ORIGIN + "/") || (!!DEV_URL && url.startsWith(DEV_URL));
 }
 
+// 独立窗口：同一个后端、同一套页面，地址里的 ?window=git 让前端只渲染 Git 视图。
+// 白名单里只有 git；每种最多一个，再次打开就是把它带到前面。
+const auxWindows = new Map<string, BrowserWindow>();
+function openAuxWindow(kind: unknown): void {
+  if (kind !== "git") throw new Error("不支持的窗口类型");
+  const existing = auxWindows.get(kind);
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+    return;
+  }
+  const w = createWindow({ title: "Mosaic — Git", width: 1280, height: 800, query: `?window=${kind}`, aux: true });
+  auxWindows.set(kind, w);
+  w.on("closed", () => auxWindows.delete(kind));
+}
+
 function registerIpc(): void {
+  ipcMain.handle("mosaic:open-window", (event, kind: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
+    openAuxWindow(kind);
+  });
   ipcMain.on("mosaic:preview-token", (event) => {
     event.returnValue = isTrustedSender(event.senderFrame?.url) ? previewToken : "";
   });
@@ -176,11 +201,21 @@ function registerAppProtocol(): void {
   protocol.handle(PREVIEW_SCHEME, (req) => handlePreview(req, previews, APP_ORIGIN, previewToken));
 }
 
-function createWindow(): BrowserWindow {
+interface WindowOpts {
+  title?: string;
+  width?: number;
+  height?: number;
+  /** 地址后面的查询串，例如 "?window=git" */
+  query?: string;
+  /** 独立窗口：关闭就是关闭，不藏到托盘 */
+  aux?: boolean;
+}
+
+function createWindow(opts: WindowOpts = {}): BrowserWindow {
   const w = new BrowserWindow({
-    title: "Mosaic",
-    width: 1280,
-    height: 840,
+    title: opts.title ?? "Mosaic",
+    width: opts.width ?? 1280,
+    height: opts.height ?? 840,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#0f1115",
@@ -205,7 +240,7 @@ function createWindow(): BrowserWindow {
   // 关窗时如果还有会话在跑：藏到托盘继续跑，而不是把任务一起杀掉；没有任务在跑就照常退出。
   let told = false;
   w.on("close", (e) => {
-    if (quitting || SMOKE || !tray || activity.count === 0) return;
+    if (opts.aux || quitting || SMOKE || !tray || activity.count === 0) return;
     e.preventDefault();
     w.hide();
     if (!told && Notification.isSupported()) {
@@ -213,7 +248,7 @@ function createWindow(): BrowserWindow {
       new Notification({ title: "Mosaic 仍在后台运行", body: "任务完成后会通知你；点托盘图标可以回到窗口，退出请用托盘菜单。" }).show();
     }
   });
-  void w.loadURL(DEV_URL ?? `${APP_ORIGIN}/`);
+  void w.loadURL((DEV_URL ?? `${APP_ORIGIN}/`) + (opts.query ?? ""));
   return w;
 }
 
@@ -229,6 +264,10 @@ async function main(): Promise<void> {
   registerIpc();
   sidecar = await startSidecar();
   win = createWindow();
+  // 主窗口真正关掉（不是藏到托盘）就退出整个应用，不让独立窗口留着一个没有主窗口的进程。
+  win.on("closed", () => {
+    if (!quitting) app.quit();
+  });
   if (!SMOKE) {
     tray = createTray(paths.icon, QUICK_ASK || undefined, { show: showWindow, quickAsk, quit: () => app.quit() });
     if (QUICK_ASK && !globalShortcut.register(QUICK_ASK, quickAsk)) console.error(`全局快捷键 ${QUICK_ASK} 被占用，快速提问只能从托盘菜单进入`);

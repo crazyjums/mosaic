@@ -13,6 +13,8 @@ interface MosaicBridge {
   onEvent(cb: (data: unknown) => void): () => void;
   /** 壳要求界面跳转（点通知、全局快捷键）。旧版壳没有这个函数。 */
   onNavigate?(cb: (target: unknown) => void): () => void;
+  /** 请壳打开一个独立窗口（目前只有 "git"）。 */
+  openWindow?(kind: string): Promise<void>;
   /** 存网页预览用的令牌，只有应用页面的 preload 能拿到。 */
   previewToken?: string;
   platform: string;
@@ -71,4 +73,20 @@ export async function storePreview(html: string, scripts: boolean): Promise<stri
   });
   if (!res.ok) throw new Error(await res.text());
   return ((await res.json()) as { url: string }).url;
+}
+
+/** 壳能打开的独立窗口。 */
+export type ShellWindowKind = "git";
+
+/** 当前页面是不是壳打开的独立窗口（地址里带 ?window=git）；主窗口返回 null。 */
+export function shellWindowKind(search: string = typeof location === "undefined" ? "" : location.search): ShellWindowKind | null {
+  return new URLSearchParams(search).get("window") === "git" ? "git" : null;
+}
+
+/** 在独立窗口里打开；不在 Electron 里（或壳太旧）时返回 false，调用方保留原来的浮层。 */
+export async function openShellWindow(kind: ShellWindowKind): Promise<boolean> {
+  const b = bridge();
+  if (!b?.openWindow) return false;
+  await b.openWindow(kind);
+  return true;
 }

@@ -357,6 +357,8 @@ export const EN: Record<string, string> = {
   "分离的 HEAD": "Detached HEAD",
   "历史": "History",
   "只读：窗口里的操作不会修改你的仓库": "Read-only: nothing in this window changes your repository",
+  "在独立窗口中打开": "Open in a separate window",
+  "新窗口": "New window",
   "刷新中…": "Refreshing…",
   "刷新": "Refresh",
   "Git 窗口查看的是当前会话工作区所在的 git 仓库。": "The Git window shows the git repository of the current session's workspace.",
