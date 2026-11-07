@@ -10,6 +10,8 @@ import (
 	pluginCatalog "github.com/crazyjums/myllmapp/catalog"
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/core"
+	"github.com/crazyjums/myllmapp/internal/harness"
+	"github.com/crazyjums/myllmapp/internal/harness/codex"
 	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/plugin"
@@ -179,6 +181,8 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 			return skill.Prompt(ws, home, pluginSkills()...)
 		},
 		TitleMode: eff.TitleMode,
+		// 外部 agent 引擎：厂商配置档的 type 在这里有对应项时，整轮交给引擎（Codex 等）。
+		Harnesses: map[string]harness.Harness{codex.Type: codex.New()},
 	})
 	if err != nil {
 		closeFn()
