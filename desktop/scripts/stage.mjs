@@ -34,6 +34,7 @@ if (!existsSync(join(repo, "frontend", "node_modules"))) run("npm", ["ci", "--no
 run("npm", ["run", "build"], { cwd: join(repo, "frontend") });
 cpSync(join(repo, "frontend", "dist"), join(stage, "frontend"), { recursive: true });
 cpSync(join(repo, "CHANGELOG.md"), join(stage, "CHANGELOG.md"));
+cpSync(join(repo, "build", "appicon.png"), join(stage, "icon.png")); // 托盘图标
 
 // 后端：-trimpath 去掉构建机路径；版本号和 Wails 版共用同一个变量，更新检查逻辑不用改。
 const exe = process.platform === "win32" ? "mosaicd.exe" : "mosaicd";

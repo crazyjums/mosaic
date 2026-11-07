@@ -14,6 +14,7 @@ import UpdateDialog from "./components/UpdateDialog";
 import Sidebar from "./components/Sidebar";
 import EditableTitle from "./components/EditableTitle";
 import StatusBar from "./components/StatusBar";
+import { onShellNavigate } from "./bridge/electron";
 import { t } from "./i18n";
 import { useChat } from "./store/chatStore";
 import { useUpdate } from "./store/updateStore";
@@ -37,6 +38,20 @@ export default function App() {
     void loadPrefs().then(() => useUpdate.getState().init());
     void init();
   }, [init, loadPrefs]);
+
+  // 桌面壳的跳转：点系统通知回到对应会话；全局快捷键新建会话并聚焦输入框。
+  useEffect(
+    () =>
+      onShellNavigate((target) => {
+        const chat = useChat.getState();
+        if (target.kind === "session") {
+          void chat.loadSession(target.id);
+          return;
+        }
+        void chat.newSession().then(() => setTimeout(() => document.querySelector<HTMLTextAreaElement>("textarea")?.focus(), 50));
+      }),
+    [],
+  );
 
   return (
     <div key={lang} className="flex h-full flex-col bg-bg text-fg">

@@ -11,6 +11,8 @@ interface MosaicBridge {
   call(method: string, args: unknown[]): Promise<unknown>;
   /** 订阅后端事件，返回取消订阅函数。 */
   onEvent(cb: (data: unknown) => void): () => void;
+  /** 壳要求界面跳转（点通知、全局快捷键）。旧版壳没有这个函数。 */
+  onNavigate?(cb: (target: unknown) => void): () => void;
   platform: string;
 }
 
@@ -31,4 +33,25 @@ export function createElectronBackend(): Backend {
   });
   const runtime: EventRuntime = { EventsOn: (_name, cb) => b.onEvent((data) => cb(data)) };
   return createBackendFrom(app, runtime, "electron");
+}
+
+/** 壳发来的跳转请求：打开某个会话，或新建会话并聚焦输入框。 */
+export type ShellTarget = { kind: "session"; id: string } | { kind: "new-session" };
+
+/** 只认这两种形状，其余一律忽略。 */
+export function parseShellTarget(raw: unknown): ShellTarget | undefined {
+  const t = raw as { kind?: unknown; id?: unknown } | null;
+  if (t?.kind === "new-session") return { kind: "new-session" };
+  if (t?.kind === "session" && typeof t.id === "string" && t.id) return { kind: "session", id: t.id };
+  return undefined;
+}
+
+/** 订阅壳的跳转请求；不在 Electron 里（或壳太旧）时什么也不做。返回取消订阅函数。 */
+export function onShellNavigate(handler: (t: ShellTarget) => void): () => void {
+  const b = bridge();
+  if (!b?.onNavigate) return () => undefined;
+  return b.onNavigate((raw) => {
+    const t = parseShellTarget(raw);
+    if (t) handler(t);
+  });
 }
