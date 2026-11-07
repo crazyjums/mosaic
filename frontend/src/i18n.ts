@@ -358,6 +358,7 @@ export const EN: Record<string, string> = {
   "历史": "History",
   "只读：窗口里的操作不会修改你的仓库": "Read-only: nothing in this window changes your repository",
   "在独立窗口中打开": "Open in a separate window",
+  "重新读取文件": "Reload the file",
   "桌面": "Desktop",
   "最小化": "Minimize",
   "最小化：更新在后台继续，进度显示在右上角": "Minimize: the update continues in the background; progress shows at the top right",
