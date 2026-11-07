@@ -11,6 +11,8 @@ files:
   - package.json
   # Claude Agent SDK 的平台包里是 300MB 以上的原生 claude 可执行文件：不打包，用用户自己装的 claude 命令（见 workers/claudecode.ts）。
   - "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  # pi-tui 自带的剪贴板原生模块（终端界面用，worker 里不用）：它按架构各一份，mac 通用包合并时会报错，而且不需要。
+  - "!node_modules/@earendil-works/pi-tui/native/**"
 asar: true
 # 引擎 worker 跑在 utilityProcess 里，要像普通进程一样 import SDK，所以连同 SDK 一起放在 asar 外面（harness-electron.ts 的 workerPath）。
 asarUnpack:

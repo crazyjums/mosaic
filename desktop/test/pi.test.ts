@@ -196,7 +196,7 @@ test("worker：参数交给 SDK，resume 用会话文件路径，用量与历史
   assert.ok(posted.some((m) => m.type === "emit" && m.event_type === "tool_call"));
 });
 
-test("worker：恢复——会话文件存在就打开，不存在就当新会话", async () => {
+test("worker：恢复——会话文件存在就打开，不存在就报 resume_lost", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pi-resume-"));
   const file = join(dir, "s.jsonl");
   writeFileSync(file, "{}\n");
@@ -204,10 +204,15 @@ test("worker：恢复——会话文件存在就打开，不存在就当新会�
   await runPi(spec({ resume: file }), fakeIO().io, load(a.sdk));
   assert.deepEqual(a.opened, [file]);
   assert.equal(a.calls[0].sessionManager.kind, "open");
+  // 文件没了：不能悄悄开空会话，什么都不做并报告 resume_lost，由 Go 端补完整历史重跑。
   const b = fakeSdk();
-  const out = await runPi(spec({ resume: join(dir, "没有了.jsonl") }), fakeIO().io, load(b.sdk));
-  assert.equal(b.calls[0].sessionManager.kind, "create");
-  assert.equal(out.reason, "completed");
+  const { io, posted } = fakeIO();
+  const out = await runPi(spec({ resume: join(dir, "没有了.jsonl") }), io, load(b.sdk));
+  assert.equal(b.calls.length, 0);
+  assert.equal(out.reason, "error");
+  assert.equal(out.resume_lost, true);
+  assert.equal(out.resume, undefined);
+  assert.equal(posted.filter((m) => m.type === "emit").length, 0);
 });
 
 test("worker：模型写法、找不到的模型、没有可用模型", async () => {

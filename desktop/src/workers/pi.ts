@@ -125,8 +125,9 @@ export async function runPi(spec: RunSpec, io: WorkerIO, loadSdk: PiSdkLoader): 
     });
     await loader.reload();
 
-    // resume 是上一轮 pi 会话文件的路径；文件没了（被清理）就当新会话开始，不让对话卡死。
-    const sessionManager = spec.resume && existsSync(spec.resume) ? sdk.SessionManager.open(spec.resume) : sdk.SessionManager.create(spec.workspace);
+        // 恢复凭据指向的会话文件没了：不能悄悄开一个空会话（上下文会丢）。什么都没做就告诉 Go，让它把完整历史补过来重跑。
+    if (spec.resume && !existsSync(spec.resume)) return { ...fail(`pi 的会话文件不见了：${spec.resume}`), resume_lost: true, resume: undefined };
+    const sessionManager = spec.resume ? sdk.SessionManager.open(spec.resume) : sdk.SessionManager.create(spec.workspace);
     const created = await sdk.createAgentSession({
       cwd: spec.workspace,
       agentDir,
