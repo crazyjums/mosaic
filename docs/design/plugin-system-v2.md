@@ -1,5 +1,7 @@
 # Mosaic Plugin System V2：从“安装成功”到“真正可用”
 
+> **后续**：v1.7.9 已落地其中的可用性诊断。2026-11-07 在真正跑通一遍流程后，针对复现到的问题写了 [plugin-system-v3.md](plugin-system-v3.md)（真实世界的插件装不上、MCP 环境过窄），以 v3 为准。
+
 状态：设计提案（**尚未实施**）。现有基础见 [plugin-system.md](plugin-system.md) 和 [插件开发指南](../plugin-development.md)。本方案以 2026-11-01 的 master 代码为基准，尽量沿用已有 Go/Wails + React、plugin.Host、mcp.Manager、skill 包和工具权限系统，不重新发明 Agent 内核。
 
 ## 1. 背景与可确认的现状
