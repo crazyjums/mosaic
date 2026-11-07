@@ -414,8 +414,12 @@ func TestApplyRefusedWhileRunning(t *testing.T) {
 
 	// 停止这一轮之后就可以安装。
 	a.CancelSession(st.SessionID)
+	deadline = time.Now().Add(10 * time.Second) // 取消有自己的时限，不被前面的等待耗掉
 	for a.GetStatus().Running && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
+	}
+	if a.GetStatus().Running {
+		t.Fatal("取消后会话没有停下来")
 	}
 	if err := a.ApplyUpdate(); err != nil {
 		t.Fatalf("空闲后应能安装: %v", err)
