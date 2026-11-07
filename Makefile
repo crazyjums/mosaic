@@ -1,6 +1,6 @@
 # 常用命令汇总。除 dev / build 外，所有目标都不需要 Wails CLI 和桌面系统依赖。
 
-.PHONY: desktop-install desktop-test desktop-start desktop-smoke test vet check cli demo demo-events frontend-install frontend-check frontend-dev dev build package package-windows package-all
+.PHONY: desktop-install desktop-test desktop-start desktop-smoke desktop-pack test vet check cli demo demo-events frontend-install frontend-check frontend-dev dev build package package-windows package-all
 
 ## Go：测试与静态检查
 test:
@@ -51,6 +51,10 @@ desktop-start:
 desktop-smoke:
 	cd frontend && npm run build
 	cd desktop && npm run smoke
+
+## 打出当前平台的 Electron 目录包（desktop/release/，不生成安装程序），用来在本机检查打包结果
+desktop-pack:
+	cd desktop && npm run pack
 
 ## 桌面端（需要本机安装 Wails CLI 与系统依赖，见 docs/usage.md）
 dev:
