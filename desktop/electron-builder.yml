@@ -15,7 +15,8 @@ asar: true
 # 引擎 worker 跑在 utilityProcess 里，要像普通进程一样 import SDK，所以连同 SDK 一起放在 asar 外面（harness-electron.ts 的 workerPath）。
 asarUnpack:
   - dist/src/workers/**
-  - node_modules/@anthropic-ai/claude-agent-sdk/**
+  # pi 的依赖不少（pi-ai、pi-tui…），逐个列太脆：生产依赖整体放在 asar 外面。
+  - node_modules/**
 # 发布由工作流负责（阶段 3 才接自动更新），这里不让 electron-builder 自己去找发布目标。
 publish: null
 extraResources:
