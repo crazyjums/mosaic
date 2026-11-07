@@ -1,0 +1,43 @@
+# 打包配置。先运行 `node scripts/stage.mjs` 把后端、前端和更新日志放进 stage/，这里再把它们作为 extraResources 装进安装包。
+# 后端不能放进 asar：它是要被执行的独立程序。
+appId: io.github.crazyjums.mosaic
+productName: Mosaic
+copyright: crazyjums
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/src/**
+  - package.json
+asar: true
+# 发布由工作流负责（阶段 3 才接自动更新），这里不让 electron-builder 自己去找发布目标。
+publish: null
+extraResources:
+  - from: stage/
+    to: .
+    filter:
+      - "mosaicd*"
+      - frontend/**
+      - CHANGELOG.md
+# 测试版和正式版的安装包文件名里带上平台和架构，方便在 Release 页面区分。
+artifactName: Mosaic-${version}-${os}-${arch}.${ext}
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Development
+mac:
+  target:
+    - target: dmg
+    - target: zip
+  category: public.app-category.developer-tools
+  # 暂无开发者证书：不签名，不让 electron-builder 去钥匙串里找身份。
+  identity: null

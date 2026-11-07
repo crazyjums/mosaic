@@ -1,0 +1,114 @@
+# Electron 版打包（迁移阶段 2，见 docs/design/electron-migration.md）。
+#
+# 和 Wails 版的 release.yml 并行存在、互不影响：
+#   - 手动运行：Actions → desktop-release → Run workflow，填版本号（例如 1.8.0-beta.1）。
+#   - 三个平台各打一个安装包，上传为工作流产物（unsigned）；勾选 publish 时再创建名为 electron-v<版本> 的预发布。
+#   - 预发布的 tag 故意不以 "v" 开头：release.yml 监听 v* 的 tag，用 electron-v* 避免误触发 Wails 的发布流程，
+#     预发布也不会成为"最新版本"，所以现有用户的更新检查看不到它。
+# 阶段 3 起这里会接上签名清单和自动更新；现在只验证"能打出可用的安装包"。
+
+name: desktop-release
+run-name: desktop-release ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（不带 v），例如 1.8.0-beta.1"
+        required: true
+        type: string
+      publish:
+        description: "同时创建 GitHub 预发布并上传安装包"
+        required: false
+        default: false
+        type: boolean
+  # 改了打包配置的 PR 也跑一遍（只构建不发布），避免打包悄悄坏掉。
+  pull_request:
+    paths:
+      - "desktop/electron-builder.yml"
+      - "desktop/scripts/stage.mjs"
+      - "desktop/package.json"
+      - ".github/workflows/desktop-release.yml"
+
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ inputs.version || '0.0.0-pr' }}
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            builder: --win
+            stage: ""
+          - os: ubuntu-latest
+            builder: --linux
+            stage: ""
+          - os: macos-latest
+            builder: --mac --universal
+            stage: --universal
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+      - name: 安装依赖
+        shell: bash
+        run: |
+          (cd frontend && npm ci --no-audit --no-fund)
+          (cd desktop && npm ci --no-audit --no-fund)
+      - name: 构建壳、后端和前端
+        shell: bash
+        working-directory: desktop
+        run: |
+          npm run build
+          node scripts/stage.mjs --version "$VERSION" ${{ matrix.stage }}
+      - name: 打包
+        shell: bash
+        working-directory: desktop
+        run: npx electron-builder ${{ matrix.builder }} -c.extraMetadata.version="$VERSION"
+      - name: 列出产物
+        shell: bash
+        working-directory: desktop
+        run: ls -lh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mosaic-desktop-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.dmg
+            desktop/release/*.zip
+
+  publish:
+    if: inputs.publish
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: 创建预发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="electron-v${VERSION}"
+          gh release create "$tag" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Mosaic (Electron) ${VERSION}" \
+            --notes "Electron 版测试安装包（未签名，仅供试用）。正式版仍从最新的 v* Release 下载。"

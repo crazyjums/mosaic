@@ -1,6 +1,6 @@
 # 用 Electron 重构桌面端：计划
 
-状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 起待做。本文是迁移的依据，与代码不一致时以代码为准。
+状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置和工作流已写（实测数据与 CSP 待补），阶段 3 起待做。本文是迁移的依据，与代码不一致时以代码为准。
 
 ## 1. 为什么要做
 
@@ -98,6 +98,8 @@ flowchart LR
 
 - `electron-builder`：Windows NSIS 安装包、macOS `.dmg` / `.zip`（universal：两个架构的 `mosaicd` 用 `lipo` 合并）、Linux AppImage。`mosaicd` 放在 `resources/` 下，不进 asar。
 - `release.yml` 增加 Electron 产物，**与 Wails 产物并行发布**；Electron 版先以 `-beta` 预发布 tag 发给愿意尝鲜的用户（正式版用户收不到预发布）。
+- **已实现（本阶段第一步）**：`desktop/electron-builder.yml` + `desktop/scripts/stage.mjs`（构建前端和 `mosaicd`，macOS `--universal` 用 `lipo` 合并）+ 独立工作流 `.github/workflows/desktop-release.yml`。没有改 `release.yml`：Electron 版用 `electron-v<版本>` 的预发布 tag（不匹配 `v*`，不会触发 Wails 的发布流程，也不会成为"最新版本"），手动运行并勾选 publish 才创建；改打包配置的 PR 会自动跑一遍三平台打包（不发布）。安装包暂不签名。
+- **已验证**：Linux 上 `electron-builder --dir` 产出的目录包，用 xvfb 跑冒烟通过（后端从 `resources/mosaicd` 启动，前端从 `resources/frontend`）。Windows / macOS 的产物由 CI 验证。
 - **验证**：下载三个平台的产物能启动、能对话；实测安装包大小、冷启动时间、空闲和长会话的内存，和 Wails 版对比写进本文。
 
 ### 阶段 3：自动更新与从 Wails 迁移
