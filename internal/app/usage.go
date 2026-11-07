@@ -5,8 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/settings"
 )
@@ -24,10 +22,14 @@ func (a *App) SaveUsageCSV(req settings.UsageRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path, err := runtime.SaveFileDialog(a.context(), runtime.SaveDialogOptions{
+	h := a.currentHost()
+	if h == nil {
+		return "", ErrNoHost
+	}
+	path, err := h.SaveFile(a.context(), SaveFileOptions{
 		Title:           "导出用量记录",
 		DefaultFilename: fmt.Sprintf("mosaic-usage-%s.csv", time.Now().Format("2006-01-02")),
-		Filters:         []runtime.FileFilter{{DisplayName: "CSV (*.csv)", Pattern: "*.csv"}},
+		Filters:         []FileFilter{{DisplayName: "CSV (*.csv)", Pattern: "*.csv"}},
 	})
 	if err != nil || path == "" {
 		return "", err

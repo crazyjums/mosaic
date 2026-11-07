@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 	"sync"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"time"
 
 	"github.com/crazyjums/myllmapp/internal/provider"
 	"github.com/crazyjums/myllmapp/internal/update"
@@ -37,7 +35,7 @@ type updateState struct {
 	mu     sync.Mutex
 	last   *update.Info
 	status UpdateStatus
-	// quit 在安装完成、新进程启动后调用；生产环境是退出 Wails，测试里替换。
+	// quit 在安装完成、新进程启动后调用；生产环境是 Host.Quit，测试里替换。
 	quit func(ctx context.Context)
 }
 
@@ -116,6 +114,8 @@ func (a *App) InstallUpdate() error {
 		return errors.New("请先检查更新")
 	case info.Manual:
 		return errors.New("这个平台需要手动下载安装")
+	case a.noSelfUpdate:
+		return errors.New("这个版本的更新由应用外壳负责，请在“检查更新”里安装")
 	case a.engine.Status().Running:
 		return errors.New("agent 正在运行，请等这一轮结束或先停止，再更新")
 	}
@@ -151,7 +151,11 @@ func (a *App) runInstall(info *update.Info) {
 	// 新进程已经启动，它会等本进程退出后再初始化（update.WaitForPrevious）。
 	quit := a.us.quit
 	if quit == nil {
-		quit = runtime.Quit
+		quit = func(context.Context) {
+			if h := a.currentHost(); h != nil {
+				h.Quit()
+			}
+		}
 	}
 	quit(a.context())
 }
@@ -163,3 +167,7 @@ func (a *App) SetChangelog(md string) { a.changelog = md }
 // GetVersionHistory 返回程序自带的全部历史版本更新日志，最新的在前。
 // [Unreleased] 不算：它还没发布，用户装不到。
 func (a *App) GetVersionHistory() []update.Release { return update.ParseChangelog(a.changelog) }
+
+// DisableSelfUpdate 让 InstallUpdate 拒绝替换本进程的可执行文件：Electron 版里 Go 后端只是安装包里的一个子程序，
+// 由它自己覆盖自己会和壳的更新打架（见 docs/design/electron-migration.md 阶段 3）。检查更新照常可用。
+func (a *App) DisableSelfUpdate() { a.noSelfUpdate = true }
