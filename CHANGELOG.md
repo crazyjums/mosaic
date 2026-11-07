@@ -12,6 +12,8 @@
 
 ## [Unreleased]
 
+## [1.7.21] - 2026-11-07
+
 ### 新增
 
 - 可以把 **Claude Code** 当作对话引擎使用（仅 Electron 版）：设置 → 模型厂商 → 添加，协议选「Claude Code（本机 CLI）」。对话由官方 Claude Agent SDK 驱动，使用你本机安装并登录的 Claude Code（Mosaic 不读取也不保存它的凭证）；它要写文件、执行命令时，在 Mosaic 里弹出权限确认，会话可以继续、恢复。暂不支持图片附件。
