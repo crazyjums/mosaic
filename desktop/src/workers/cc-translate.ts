@@ -67,6 +67,8 @@ export class ClaudeTranslator {
   /** API 消息 ID → Mosaic 消息 ID：同一条助手消息的所有事件共用一个 ID。 */
   private msgIds = new Map<string, string>();
   private openMsg = ""; // 当前打开的（还没发 message_end 的）Mosaic 消息 ID
+  /** 当前流式消息已显示的文字 / 思考：被打断时 SDK 还没来得及给出完整的块，但用户已经看到了，必须进历史。 */
+  private streaming?: { apiId: string; text: string; thinking: string };
   private streamed = new Set<string>(); // 已经通过流式事件发过内容的 API 消息 ID
   private toolNames = new Map<string, string>();
   private emittedCalls = new Set<string>();
@@ -114,6 +116,7 @@ export class ClaudeTranslator {
         const id = this.newMsgId();
         this.msgIds.set(apiId, id);
         this.streamed.add(apiId);
+        this.streaming = { apiId, text: "", thinking: "" };
         this.openMsg = id;
         this.step++;
         this.sink.emit(id, "message_start", { provider: this.engine, model: e.message?.model || this.model, step: this.step });
@@ -122,8 +125,13 @@ export class ClaudeTranslator {
       case "content_block_delta": {
         if (!this.openMsg) return;
         const d = e.delta;
-        if (d?.type === "text_delta" && d.text) this.sink.emit(this.openMsg, "text_delta", { text: d.text });
-        else if (d?.type === "thinking_delta" && d.thinking) this.sink.emit(this.openMsg, "thinking_delta", { text: d.thinking });
+        if (d?.type === "text_delta" && d.text) {
+          if (this.streaming) this.streaming.text += d.text;
+          this.sink.emit(this.openMsg, "text_delta", { text: d.text });
+        } else if (d?.type === "thinking_delta" && d.thinking) {
+          if (this.streaming) this.streaming.thinking += d.thinking;
+          this.sink.emit(this.openMsg, "thinking_delta", { text: d.thinking });
+        }
         return;
       }
       case "message_delta":
@@ -208,6 +216,7 @@ export class ClaudeTranslator {
 
   private flushAssistant(): void {
     if (!this.pending) return;
+    if (this.streaming?.apiId === this.pending.apiId) this.streaming = undefined; // 已经落进历史，不用再补
     const blocks = this.pending.blocks.filter((b) => !(b.type === "text" && b.text === ""));
     this.pending = undefined;
     if (blocks.length === 0) return;
@@ -252,8 +261,27 @@ export class ClaudeTranslator {
     this.result = { ok, error: ok ? "" : (m.errors?.join("；") || m.result || `Claude Code 报告失败（${m.subtype ?? "unknown"}）`) };
   }
 
+  /**
+   * 被打断（取消、出错）时，流式输出里有些内容 SDK 还没给出完整的块：文字或思考已经显示给用户了，
+   * 却不在 history 里，重新加载会话就消失了。把这部分补进去（已有完整块的不重复）。
+   */
+  private reconcileStreamed(): void {
+    const st = this.streaming;
+    this.streaming = undefined;
+    if (!st || (!st.text && !st.thinking)) return;
+    const have = this.pending?.apiId === st.apiId ? this.pending.blocks : [];
+    const blocks: Block[] = [];
+    if (st.thinking && !have.some((b) => b.type === "thinking")) blocks.push({ type: "thinking", text: st.thinking });
+    if (st.text && !have.some((b) => b.type === "text")) blocks.push({ type: "text", text: st.text });
+    if (blocks.length === 0) return;
+    // 块的顺序是思考在先、文字在后；已有的完整块（比如已完成的思考）放在前面。
+    const merged = [...have.filter((b) => b.type !== "tool_use"), ...blocks, ...have.filter((b) => b.type === "tool_use")];
+    this.pending = { apiId: st.apiId, blocks: merged.sort((a, b) => rank(a) - rank(b)) };
+  }
+
   /** 收尾：关掉还开着的消息，补齐没有结果的工具调用，返回本轮的结果。 */
   finish(reason: Outcome["reason"], error = ""): Outcome {
+    this.reconcileStreamed();
     this.closeOpen(reason === "cancelled" ? "cancelled" : reason === "error" ? "error" : "end_turn");
     this.flushAssistant();
     // 每个 tool_use 都要有 tool_result，否则这段历史没法再发给任何模型。
@@ -277,6 +305,10 @@ export class ClaudeTranslator {
       messages: this.history,
     };
   }
+}
+
+function rank(b: Block): number {
+  return b.type === "thinking" ? 0 : b.type === "text" ? 1 : 2;
 }
 
 /** tool_result 的 content 可能是字符串，也可能是内容块数组（文本、图片）。 */

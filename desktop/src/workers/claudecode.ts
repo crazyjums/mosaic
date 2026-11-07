@@ -41,7 +41,7 @@ export function sdkPermission(mode: string): { permissionMode: string; allowDang
   switch (mode) {
     case "readonly":
       return { permissionMode: "plan" }; // 规划模式：可以读、不能改、不能执行
-    case "acceptEdits":
+    case "accept_edits": // Mosaic 的取值（permission.ModeAcceptEdits）；SDK 那边叫 acceptEdits
       return { permissionMode: "acceptEdits" };
     case "auto":
       return { permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true }; // 与 Mosaic 自动模式“放行一切”一致

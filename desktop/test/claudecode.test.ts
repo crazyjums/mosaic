@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { test } from "node:test";
 
 import type { SdkMessage } from "../src/workers/cc-translate";
@@ -170,7 +170,8 @@ test("取消：中止 SDK，等待中的确认按拒绝处理，返回已有的�
 test("权限模式映射", () => {
   assert.deepEqual(sdkPermission("readonly"), { permissionMode: "plan" });
   assert.deepEqual(sdkPermission("default"), { permissionMode: "default" });
-  assert.deepEqual(sdkPermission("acceptEdits"), { permissionMode: "acceptEdits" });
+  assert.deepEqual(sdkPermission("accept_edits"), { permissionMode: "acceptEdits" }, "输入是 Mosaic 序列化出来的 accept_edits");
+  assert.deepEqual(sdkPermission("acceptEdits"), { permissionMode: "default" }, "SDK 的写法不是 Mosaic 的取值，按最严的默认处理");
   assert.deepEqual(sdkPermission("auto"), { permissionMode: "bypassPermissions", allowDangerouslySkipPermissions: true });
   assert.deepEqual(sdkPermission("whatever"), { permissionMode: "default" }, "不认识的模式按最严的默认处理");
 });
@@ -182,7 +183,7 @@ test("在 PATH 里找 claude", () => {
   const f = join(dir, "claude");
   writeFileSync(f, "#!/bin/sh\n");
   chmodSync(f, 0o755);
-  assert.equal(findClaude({ PATH: `${other}:${dir}`.replace(":", process.platform === "win32" ? ";" : ":") }, "linux"), f);
+  assert.equal(findClaude({ PATH: [other, dir].join(delimiter) }, "linux"), f);
   // Windows 上优先 .exe
   writeFileSync(join(dir, "claude.cmd"), "");
   writeFileSync(join(dir, "claude.exe"), "");

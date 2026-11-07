@@ -167,3 +167,42 @@ test("风险级别", () => {
     assert.equal(riskOf(t), r, t);
   }
 });
+
+test("被打断时，已经显示但还没有完整块的文字也进历史（重新加载不会丢）", () => {
+  const { tr } = make();
+  tr.handle(se({ type: "message_start", message: { id: "a" } }));
+  tr.handle(se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "我先看看" } }));
+  tr.handle(se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "目录" } }));
+  const out = tr.finish("cancelled");
+  assert.deepEqual(out.messages, [{ role: "assistant", content: [{ type: "text", text: "我先看看目录" }] }]);
+});
+
+test("被打断：思考已经完整、文字还在流——两者都保留，顺序是思考在先", () => {
+  const { tr } = make();
+  tr.handle(se({ type: "message_start", message: { id: "a" } }));
+  tr.handle(se({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "想" } }));
+  tr.handle({ type: "assistant", message: { id: "a", content: [{ type: "thinking", thinking: "想", signature: "s" }] }, parent_tool_use_id: null });
+  tr.handle(se({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "答" } }));
+  const out = tr.finish("cancelled");
+  assert.deepEqual(out.messages, [{ role: "assistant", content: [{ type: "thinking", text: "想", signature: "s" }, { type: "text", text: "答" }] }]);
+});
+
+test("完整的块已经到了就不重复补", () => {
+  const { tr } = make();
+  for (const m of textTurn()) tr.handle(m);
+  const out = tr.finish("completed");
+  assert.deepEqual(out.messages, [{ role: "assistant", content: [{ type: "text", text: "好。" }] }]);
+});
+
+test("已经落进历史的消息，之后被打断也不会重复补", () => {
+  const { tr } = make();
+  tr.handle(se({ type: "message_start", message: { id: "a" } }));
+  tr.handle(se({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "我来读" } }));
+  tr.handle({ type: "assistant", message: { id: "a", content: [{ type: "text", text: "我来读" }, { type: "tool_use", id: "t1", name: "Read", input: {} }] }, parent_tool_use_id: null });
+  tr.handle(se({ type: "message_stop" }));
+  tr.handle({ type: "user", message: { content: [{ tool_use_id: "t1", type: "tool_result", content: "内容" }] }, parent_tool_use_id: null });
+  const out = tr.finish("cancelled"); // 工具结果之后、下一条消息开始之前被打断
+  const msgs = out.messages as { role: string; content: { type: string }[] }[];
+  assert.deepEqual(msgs.map((m) => m.role), ["assistant", "user"]);
+  assert.equal(msgs[0].content.filter((b) => b.type === "text").length, 1, "文字只出现一次");
+});
