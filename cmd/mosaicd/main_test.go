@@ -289,6 +289,19 @@ loop:
 			t.Fatalf("超时，事件：%v", types)
 		}
 	}
+	// 通知在对端是各开 goroutine 处理的，到达顺序不保证（前端靠 seq 重排）：turn_end 之后把尾部事件收完再断言。
+	for drained := false; !drained; {
+		select {
+		case ev := <-events:
+			typ, _ := ev["type"].(string)
+			types = append(types, typ)
+			if data, _ := ev["data"].(map[string]any); typ == "tool_result" && data["output"] != "决定=allow_session" {
+				t.Errorf("引擎应收到用户的回答: %v", data)
+			}
+		case <-time.After(300 * time.Millisecond):
+			drained = true
+		}
+	}
 	if !granted {
 		t.Fatal("审批应经过 Mosaic 的权限弹窗")
 	}
