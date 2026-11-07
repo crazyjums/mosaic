@@ -7,13 +7,14 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc --noEmit -p .",
-    "test": "npm run build && node --test dist/test/rpc.test.js dist/test/host.test.js dist/test/sidecar.test.js dist/test/update.test.js dist/test/activity.test.js dist/test/preview.test.js dist/test/settings.test.js dist/test/windows.test.js dist/test/cc-translate.test.js dist/test/claudecode.test.js dist/test/pi.test.js dist/test/harness.test.js",
+    "test": "npm run build && node --test dist/test/rpc.test.js dist/test/host.test.js dist/test/sidecar.test.js dist/test/update.test.js dist/test/activity.test.js dist/test/preview.test.js dist/test/settings.test.js dist/test/windows.test.js dist/test/cc-translate.test.js dist/test/claudecode.test.js dist/test/pi.test.js dist/test/pi-locate.test.js dist/test/harness.test.js",
     "start": "npm run build && electron .",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "stage": "node scripts/stage.mjs",
     "pack": "npm run build && node scripts/stage.mjs && electron-builder --dir"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/node": "24.10.1",
     "electron": "45.2.3",
     "electron-builder": "26.18.0",
@@ -25,7 +26,6 @@
     "url": "https://github.com/crazyjums/mosaic.git"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.319",
-    "@earendil-works/pi-coding-agent": "1.5.0"
+    "@anthropic-ai/claude-agent-sdk": "0.3.319"
   }
 }

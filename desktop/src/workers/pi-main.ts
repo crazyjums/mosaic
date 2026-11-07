@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { findPiEntry } from "./pi-locate";
 import { servePi } from "./pi";
 import type { FromWorker, ToWorker, WorkerIO } from "./protocol";
 
@@ -16,4 +18,12 @@ const io: WorkerIO = parentPort
       onMessage: (cb) => process.on("message", (m) => cb(m as ToWorker)),
     };
 
-servePi(io, () => import("@earendil-works/pi-coding-agent") as never, (code) => process.exit(code));
+servePi(
+  io,
+  async () => {
+    const entry = findPiEntry(__dirname, (process as unknown as { resourcesPath?: string }).resourcesPath);
+    if (!entry) throw new Error("找不到 pi SDK（resources/pi/index.js）");
+    return (await import(pathToFileURL(entry).href)) as never;
+  },
+  (code) => process.exit(code),
+);
