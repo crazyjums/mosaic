@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElectronBackend, isElectron, onShellNavigate, openShellWindow, parseShellTarget, shellWindowKind } from "./electron";
+import { createElectronBackend, isElectron, onShellNavigate, getShellSettings, openShellWindow, parseShellSettings, parseShellTarget, setShellSettings, shellWindowKind } from "./electron";
 
 // window.mosaic 是 Electron preload 注入的；这里用假的验证“按方法名、按位置传参”的约定，以及事件订阅。
 function install(call: (m: string, a: unknown[]) => Promise<unknown>) {
@@ -102,5 +102,34 @@ describe("独立窗口", () => {
     expect(await openShellWindow("git")).toBe(false);
     (globalThis as unknown as { window: unknown }).window = {};
     expect(await openShellWindow("git")).toBe(false);
+  });
+});
+
+describe("桌面设置", () => {
+  const good = { closeBehavior: "quit", notifications: false, quickAsk: { enabled: true, shortcut: "Alt+Space" } };
+
+  it("只认完整合法的形状", () => {
+    expect(parseShellSettings(good)).toEqual(good);
+    for (const bad of [null, {}, { ...good, closeBehavior: "x" }, { ...good, notifications: 1 }, { ...good, quickAsk: null }, { ...good, quickAsk: { enabled: "y", shortcut: "a" } }]) {
+      expect(parseShellSettings(bad)).toBeUndefined();
+    }
+  });
+
+  it("读取：旧壳没有这个能力时返回 null", async () => {
+    (globalThis as unknown as { window: unknown }).window = { mosaic: { call: vi.fn(), onEvent: vi.fn(), getShellSettings: async () => good, platform: "linux" } };
+    expect(await getShellSettings()).toEqual(good);
+    (globalThis as unknown as { window: unknown }).window = { mosaic: { call: vi.fn(), onEvent: vi.fn(), platform: "linux" } };
+    expect(await getShellSettings()).toBeNull();
+  });
+
+  it("保存：带回失败原因；返回形状不对就报错", async () => {
+    const set = vi.fn(async () => ({ settings: good, error: "快捷键被占用" }));
+    (globalThis as unknown as { window: unknown }).window = { mosaic: { call: vi.fn(), onEvent: vi.fn(), setShellSettings: set, platform: "linux" } };
+    expect(await setShellSettings({ quickAsk: { shortcut: "Alt+Space" } })).toEqual({ settings: good, error: "快捷键被占用" });
+    expect(set).toHaveBeenCalledWith({ quickAsk: { shortcut: "Alt+Space" } });
+    set.mockResolvedValueOnce({ settings: { nope: 1 } } as never);
+    await expect(setShellSettings({})).rejects.toThrow();
+    (globalThis as unknown as { window: unknown }).window = {};
+    await expect(setShellSettings({})).rejects.toThrow();
   });
 });

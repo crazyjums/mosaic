@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { app, BrowserWindow, globalShortcut, ipcMain, net, Notification, protocol, type Tray } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, net, Notification, protocol } from "electron";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize, sep } from "node:path";
@@ -9,7 +9,8 @@ import { handlePreview, PREVIEW_SCHEME, PreviewStore } from "./preview";
 import { createHostHandler, isWebURL, openExternal } from "./host";
 import { resolvePaths } from "./paths";
 import { Sidecar } from "./sidecar";
-import { createTray } from "./tray";
+import { defaults as defaultSettings, normalize as normalizeSettings, SettingsFile, type ShellSettings } from "./settings";
+import { createTray, type TrayHandle } from "./tray";
 import { runSmoke } from "./smoke";
 
 // Mosaic 的 Electron 外壳：窗口、对话框、单实例；业务全在 Go 后端 mosaicd。
@@ -50,10 +51,11 @@ let win: BrowserWindow | undefined;
 let sidecar: Sidecar | undefined;
 let tempHome: string | undefined;
 let quitting = false;
-let tray: Tray | undefined;
+let tray: TrayHandle | undefined;
+let settings: ShellSettings = defaultSettings();
+let settingsFile: SettingsFile | undefined;
+let registeredShortcut: string | undefined;
 const activity = new Activity();
-// 全局快捷键：随时唤起窗口并新建会话、聚焦输入框。可用环境变量改，设成空串关闭。
-const QUICK_ASK = process.env.MOSAIC_QUICK_SHORTCUT ?? "CommandOrControl+Shift+M";
 
 const paths = resolvePaths({ packaged: app.isPackaged, resources: process.resourcesPath, appDir: app.getAppPath(), env: process.env });
 
@@ -131,9 +133,34 @@ function quickAsk(): void {
   navigate({ kind: "new-session" });
 }
 
+/** 按设置注册/注销全局快捷键；失败（被占用、格式无效）返回原因，已注册的保持注销状态由调用方恢复。 */
+function applyShortcut(s: ShellSettings): string | undefined {
+  if (registeredShortcut) {
+    globalShortcut.unregister(registeredShortcut);
+    registeredShortcut = undefined;
+  }
+  if (!s.quickAsk.enabled) {
+    tray?.setShortcut(undefined);
+    return undefined;
+  }
+  let ok = false;
+  try {
+    ok = globalShortcut.register(s.quickAsk.shortcut, quickAsk);
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    tray?.setShortcut(undefined);
+    return `快捷键 ${s.quickAsk.shortcut} 已被其他程序占用，或者不是有效的组合`;
+  }
+  registeredShortcut = s.quickAsk.shortcut;
+  tray?.setShortcut(registeredShortcut);
+  return undefined;
+}
+
 /** 窗口不在眼前（隐藏、最小化、没有焦点）时才弹系统通知；点通知回到对应会话。 */
 function notify(a: Alert): void {
-  if (SMOKE || !Notification.isSupported()) return;
+  if (SMOKE || !settings.notifications || !Notification.isSupported()) return;
   if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused()) return;
   const n = new Notification({ ...alertText(a), silent: false });
   n.on("click", () => {
@@ -165,6 +192,23 @@ function openAuxWindow(kind: unknown): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle("mosaic:shell-settings:get", (event) => {
+    if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
+    return settings;
+  });
+  // 补丁里缺的字段沿用当前值，不合法的字段被丢弃；快捷键注册失败时回到原来的设置并把原因告诉界面。
+  ipcMain.handle("mosaic:shell-settings:set", (event, patch: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
+    const next = normalizeSettings(patch, settings);
+    const err = applyShortcut(next);
+    if (err) {
+      applyShortcut(settings);
+      return { settings, error: err };
+    }
+    settings = next;
+    settingsFile?.save(settings);
+    return { settings };
+  });
   ipcMain.handle("mosaic:open-window", (event, kind: unknown) => {
     if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
     openAuxWindow(kind);
@@ -240,7 +284,10 @@ function createWindow(opts: WindowOpts = {}): BrowserWindow {
   // 关窗时如果还有会话在跑：藏到托盘继续跑，而不是把任务一起杀掉；没有任务在跑就照常退出。
   let told = false;
   w.on("close", (e) => {
-    if (opts.aux || quitting || SMOKE || !tray || activity.count === 0) return;
+    if (opts.aux || quitting || SMOKE || !tray) return;
+    // 设置 → 桌面 → 关闭窗口时：总是退出 / 有任务在跑才藏到托盘（默认）/ 总是藏到托盘
+    const b = settings.closeBehavior;
+    if (b === "quit" || (b === "tray-when-running" && activity.count === 0)) return;
     e.preventDefault();
     w.hide();
     if (!told && Notification.isSupported()) {
@@ -269,8 +316,11 @@ async function main(): Promise<void> {
     if (!quitting) app.quit();
   });
   if (!SMOKE) {
-    tray = createTray(paths.icon, QUICK_ASK || undefined, { show: showWindow, quickAsk, quit: () => app.quit() });
-    if (QUICK_ASK && !globalShortcut.register(QUICK_ASK, quickAsk)) console.error(`全局快捷键 ${QUICK_ASK} 被占用，快速提问只能从托盘菜单进入`);
+    settingsFile = new SettingsFile(join(app.getPath("userData"), "shell-settings.json"));
+    settings = settingsFile.load();
+    tray = createTray(paths.icon, undefined, { show: showWindow, quickAsk, quit: () => app.quit() });
+    const err = applyShortcut(settings);
+    if (err) console.error(err + "，快速提问只能从托盘菜单进入");
   }
   if (SMOKE) {
     win.webContents.once("did-finish-load", () => {

@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld("mosaic", {
     ipcRenderer.on("mosaic:navigate", listener);
     return () => ipcRenderer.removeListener("mosaic:navigate", listener);
   },
+  /** 桌面设置（关窗行为、通知、全局快捷键），由壳保存。 */
+  getShellSettings: (): Promise<unknown> => ipcRenderer.invoke("mosaic:shell-settings:get"),
+  setShellSettings: (patch: unknown): Promise<unknown> => ipcRenderer.invoke("mosaic:shell-settings:set", patch),
   /** 请壳打开独立窗口（目前只有 git）。 */
   openWindow: (kind: string): Promise<void> => ipcRenderer.invoke("mosaic:open-window", kind),
   /** 存网页预览用的令牌（预览 iframe 里没有 preload，拿不到）。 */

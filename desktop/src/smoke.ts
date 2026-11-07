@@ -149,6 +149,21 @@ export async function runSmoke(win: BrowserWindow, cspViolations: string[] = [],
   await win.webContents.executeJavaScript('window.mosaic.openWindow("git")', true);
   if (BrowserWindow.getAllWindows().length !== reopenCount) throw new Error("同一种独立窗口应该只开一个");
   aux.close();
+  // 桌面设置：能读、能改；写法对但注册不了的快捷键被拒绝并原样保留旧设置。
+  const cfg = (await win.webContents.executeJavaScript(
+    `(async () => {
+      const a = await window.mosaic.getShellSettings();
+      const b = await window.mosaic.setShellSettings({ notifications: false, closeBehavior: "quit" });
+      const bad = await window.mosaic.setShellSettings({ quickAsk: { shortcut: "Ctrl+Alt+Nonexistentkey" } });
+      const junk = await window.mosaic.setShellSettings({ closeBehavior: "explode" });
+      return { a, b, bad, junk };
+    })()`,
+    true,
+  )) as { a: { closeBehavior: string; notifications: boolean }; b: { settings: { closeBehavior: string; notifications: boolean } }; bad: { settings: { quickAsk: { shortcut: string } }; error?: string }; junk: { settings: { closeBehavior: string } } };
+  if (cfg.a.closeBehavior !== "tray-when-running" || !cfg.a.notifications) throw new Error(`默认的桌面设置不对：${JSON.stringify(cfg.a)}`);
+  if (cfg.b.settings.closeBehavior !== "quit" || cfg.b.settings.notifications) throw new Error("桌面设置没有改成功");
+  if (!cfg.bad.error || cfg.bad.settings.quickAsk.shortcut !== "CommandOrControl+Shift+M") throw new Error(`无效快捷键应该被拒绝并保持原样：${JSON.stringify(cfg.bad)}`);
+  if (cfg.junk.settings.closeBehavior !== "quit") throw new Error("不合法的取值应该被丢弃，沿用当前值");
   // 内存：所有进程（主进程、渲染进程、GPU、后端 mosaicd 不在内）的工作集之和，单位 MB。
   const rss = app.getAppMetrics().reduce((n, m) => n + m.memory.workingSetSize, 0) / 1024;
   Object.assign(r, { libs, policy, aux: auxState.text.slice(0, 40), loadMs, memoryMB: Math.round(rss) });
