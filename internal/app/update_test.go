@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"sync/atomic"
 	"time"
@@ -333,5 +334,95 @@ func TestDownloadThenApply(t *testing.T) {
 	}
 	if st := a.GetUpdateStatus(); st.State != "restarting" || st.Version != "2.1.0" {
 		t.Fatalf("状态: %+v", st)
+	}
+}
+
+// agent 在运行时，安装要被拒绝（重启会打断它）；下载不受影响；跑完后可以安装。
+func TestApplyRefusedWhileRunning(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.EnableDemo() // 演示厂商的剧本里有需要确认的工具调用：不回应权限请求，这一轮就一直处于运行中
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+
+	pubB64, priv, _ := update.GenerateKey()
+	pub, _ := update.ParsePublicKey(pubB64)
+	asset := []byte("#!/bin/sh\nexit 0\n")
+	sum := sha256.Sum256(asset)
+	m := update.Manifest{Version: "2.0.0", Notes: "新功能", Platforms: map[string]update.Asset{}}
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	m.Platforms["linux-amd64"] = update.Asset{URL: srv.URL + "/app", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(asset))}
+	mux.HandleFunc("/m.json", func(w http.ResponseWriter, _ *http.Request) { b, _ := json.Marshal(m); w.Write(b) })
+	mux.HandleFunc("/m.json.sig", func(w http.ResponseWriter, _ *http.Request) {
+		b, _ := json.Marshal(m)
+		sig, _ := update.Sign(priv, b)
+		w.Write(sig)
+	})
+	mux.HandleFunc("/app", func(w http.ResponseWriter, _ *http.Request) { w.Write(asset) })
+
+	exe := filepath.Join(t.TempDir(), "app")
+	_ = os.WriteFile(exe, []byte("old"), 0o755)
+	a := New(built.Engine, built.Settings, func(context.Context, string, ...any) {})
+	a.upd = &update.Updater{ManifestURL: srv.URL + "/m.json", PubKey: pub, Current: "1.0.0", GOOS: "linux", GOARCH: "amd64", ExePath: exe}
+	quit := make(chan struct{})
+	a.us.quit = func(context.Context) { close(quit) }
+
+	st, err := a.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SendToSession(st.SessionID, "帮我做个演示", nil); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !a.GetStatus().Running && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !a.GetStatus().Running {
+		t.Fatal("测试前提：这一轮应该在运行中")
+	}
+
+	if _, err := a.CheckUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	// 下载不受影响。
+	if err := a.DownloadUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	for a.GetUpdateStatus().State != "ready" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a.GetUpdateStatus().State != "ready" {
+		t.Fatalf("运行中也应该能下载: %+v", a.GetUpdateStatus())
+	}
+	// 安装被拒绝，而且状态和文件都保持原样（安装包还在，可以稍后再装）。
+	err = a.ApplyUpdate()
+	if err == nil || !strings.Contains(err.Error(), "正在运行") {
+		t.Fatalf("运行中安装应被拒绝: %v", err)
+	}
+	if st := a.GetUpdateStatus(); st.State != "ready" {
+		t.Fatalf("被拒绝后应仍是 ready: %+v", st)
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old" {
+		t.Fatal("被拒绝时不应替换程序")
+	}
+
+	// 停止这一轮之后就可以安装。
+	a.CancelSession(st.SessionID)
+	for a.GetStatus().Running && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := a.ApplyUpdate(); err != nil {
+		t.Fatalf("空闲后应能安装: %v", err)
+	}
+	select {
+	case <-quit:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("安装没有完成: %+v", a.GetUpdateStatus())
 	}
 }
