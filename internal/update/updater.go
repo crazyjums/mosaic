@@ -56,6 +56,12 @@ type Updater struct {
 	// GOOS / GOARCH / ExePath 默认取运行环境，测试里替换。
 	GOOS, GOARCH string
 	ExePath      string
+	// PlatformSuffix 接在清单平台键后面（例如 "-electron"）：Electron 版的安装包和 Wails 版的单文件程序是两种资产，
+	// 同一份签名清单里分开存放，两种客户端各取各的。
+	PlatformSuffix string
+	// DownloadDir 非空时安装包下载到这里，而不是程序所在目录：Electron 版装在 Program Files 之类的位置，
+	// 程序目录通常不可写，而且装的是安装程序，不是替换自己。
+	DownloadDir string
 }
 
 // New 用内置公钥创建 Updater。公钥为空时 Check 返回 ErrNotConfigured。
@@ -173,7 +179,7 @@ func (u *Updater) Check(ctx context.Context) (*Info, error) {
 		info.Manual = true
 		return info, nil
 	}
-	a, ok := m.Platforms[u.GOOS+"-"+u.GOARCH]
+	a, ok := m.Platforms[u.GOOS+"-"+u.GOARCH+u.PlatformSuffix]
 	if !ok {
 		// 这个平台没有安装包：仍然告诉用户有新版本，但只能手动下载。
 		info.Manual = true
@@ -210,12 +216,26 @@ func (u *Updater) Download(ctx context.Context, info *Info, progress func(done, 
 	if info == nil || !info.Available || info.Manual {
 		return "", errors.New("没有可以自动安装的更新")
 	}
-	exe, err := u.exePath()
-	if err != nil {
-		return "", err
+	var dir string
+	if u.DownloadDir != "" {
+		dir = u.DownloadDir
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return "", err
+		}
+		clearOldDownloads(dir)
+	} else {
+		exe, err := u.exePath()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Dir(exe)
 	}
-	dir := filepath.Dir(exe)
-	f, err := os.CreateTemp(dir, ".myllmapp-update-*")
+	// 保留原文件的扩展名：Windows 上安装程序必须以 .exe 结尾才能运行。
+	ext := ""
+	if p, perr := url.Parse(info.asset.URL); perr == nil {
+		ext = filepath.Ext(p.Path)
+	}
+	f, err := os.CreateTemp(dir, ".myllmapp-update-*"+ext)
 	if err != nil {
 		return "", fmt.Errorf("无法在程序目录 %s 写入更新文件（可能没有权限，请手动下载安装）: %w", dir, err)
 	}
@@ -312,5 +332,18 @@ func (u *Updater) Apply(newPath string) error {
 func CleanupOld() {
 	if p, err := os.Executable(); err == nil {
 		_ = os.Remove(p + OldSuffix)
+	}
+}
+
+// clearOldDownloads 清掉下载目录里以前没装成功留下的安装包，免得越积越多。
+func clearOldDownloads(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), ".myllmapp-update-") {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
 	}
 }

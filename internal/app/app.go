@@ -40,8 +40,9 @@ type App struct {
 
 	hostMu sync.Mutex
 	host   Host
-	// selfUpdate 为 false 时不能由本进程替换自己（Electron 版的更新由壳负责），见 DisableSelfUpdate。
-	noSelfUpdate bool
+	// shellUpdateDir 非空表示更新由桌面壳安装（Electron 版）：后端只检查、下载并校验，再请壳运行安装程序，
+	// 见 UseShellUpdater。
+	shellUpdateDir string
 
 	ctx         context.Context
 	unsubscribe func()

@@ -77,6 +77,7 @@ func newFixture(t *testing.T, version string) *fixture {
 		w.Write(sig)
 	})
 	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) { w.Write(f.asset) })
+	mux.HandleFunc("/pkg.AppImage", func(w http.ResponseWriter, r *http.Request) { w.Write(f.asset) })
 	return f
 }
 
@@ -214,5 +215,48 @@ func TestParsePublicKey(t *testing.T) {
 	}
 	if _, err := ParsePublicKey("not base64!!"); err == nil {
 		t.Fatal("坏公钥应报错")
+	}
+}
+
+// Electron 版：清单里取 "<平台>-electron" 的安装包，下载到指定目录（保留扩展名），不碰当前可执行文件。
+func TestElectronChannel(t *testing.T) {
+	f := newFixture(t, "1.3.0")
+	sum := sha256.Sum256(f.asset)
+	f.manifest.Platforms["linux-amd64-electron"] = Asset{URL: f.srv.URL + "/pkg.AppImage", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(f.asset))}
+	delete(f.manifest.Platforms, "linux-amd64") // 只有 Electron 资产：Wails 客户端会退化成手动，Electron 客户端能自动
+
+	wails := f.updater(t, "1.2.0", "linux")
+	if info, err := wails.Check(context.Background()); err != nil || !info.Manual {
+		t.Fatalf("没有 Wails 资产时应为手动: %+v %v", info, err)
+	}
+
+	u := f.updater(t, "1.2.0", "linux")
+	u.PlatformSuffix = "-electron"
+	u.DownloadDir = filepath.Join(t.TempDir(), "updates")
+	if err := os.MkdirAll(u.DownloadDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(u.DownloadDir, ".myllmapp-update-stale.AppImage")
+	_ = os.WriteFile(stale, []byte("x"), 0o600)
+
+	info, err := u.Check(context.Background())
+	if err != nil || !info.Available || info.Manual {
+		t.Fatalf("check: %+v %v", info, err)
+	}
+	path, err := u.Download(context.Background(), info, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(path) != u.DownloadDir || filepath.Ext(path) != ".AppImage" {
+		t.Fatalf("应下载到指定目录并保留扩展名: %s", path)
+	}
+	if b, _ := os.ReadFile(path); string(b) != string(f.asset) {
+		t.Fatal("内容不对")
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatal("旧的残留安装包应被清掉")
+	}
+	if b, _ := os.ReadFile(u.ExePath); string(b) != "old version" {
+		t.Fatal("Electron 渠道不应替换当前可执行文件")
 	}
 }

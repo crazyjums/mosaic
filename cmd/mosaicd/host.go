@@ -29,6 +29,11 @@ func (h *host) SaveFile(ctx context.Context, o app.SaveFileOptions) (string, err
 	return h.ask(ctx, "host.saveFile", o)
 }
 
+// InstallUpdate 请 Electron 主进程运行刚下载并校验过的安装包，随后它会退出并重启应用（app.UpdateInstaller）。
+func (h *host) InstallUpdate(ctx context.Context, path string) error {
+	return h.peer.Call(ctx, "host.installUpdate", map[string]string{"path": path}, nil)
+}
+
 func (h *host) Quit() { _ = h.peer.Notify("host.quit", struct{}{}) }
 
 func (h *host) ask(ctx context.Context, method string, params any) (string, error) {

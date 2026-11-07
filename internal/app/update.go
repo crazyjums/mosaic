@@ -114,8 +114,8 @@ func (a *App) InstallUpdate() error {
 		return errors.New("请先检查更新")
 	case info.Manual:
 		return errors.New("这个平台需要手动下载安装")
-	case a.noSelfUpdate:
-		return errors.New("这个版本的更新由应用外壳负责，请在“检查更新”里安装")
+	case a.shellUpdateDir != "" && !a.hostCanInstall():
+		return errors.New("桌面壳不支持安装更新，请手动下载安装")
 	case a.engine.Status().Running:
 		return errors.New("agent 正在运行，请等这一轮结束或先停止，再更新")
 	}
@@ -139,6 +139,20 @@ func (a *App) runInstall(info *update.Info) {
 		return
 	}
 	a.setUpdateStatus(UpdateStatus{State: "installing", Done: info.Size, Total: info.Size})
+	if a.shellUpdateDir != "" {
+		// 安装包已经按签名清单里的 sha256 校验过；运行安装程序、退出并重启由壳完成。
+		inst, _ := a.currentHost().(UpdateInstaller)
+		if inst == nil {
+			fail(errors.New("桌面壳不支持安装更新，请手动下载安装"))
+			return
+		}
+		if err := inst.InstallUpdate(a.context(), path); err != nil {
+			fail(err)
+			return
+		}
+		a.setUpdateStatus(UpdateStatus{State: "restarting", Done: info.Size, Total: info.Size})
+		return
+	}
 	if err := u.Apply(path); err != nil {
 		fail(err)
 		return
@@ -168,6 +182,23 @@ func (a *App) SetChangelog(md string) { a.changelog = md }
 // [Unreleased] 不算：它还没发布，用户装不到。
 func (a *App) GetVersionHistory() []update.Release { return update.ParseChangelog(a.changelog) }
 
-// DisableSelfUpdate 让 InstallUpdate 拒绝替换本进程的可执行文件：Electron 版里 Go 后端只是安装包里的一个子程序，
-// 由它自己覆盖自己会和壳的更新打架（见 docs/design/electron-migration.md 阶段 3）。检查更新照常可用。
-func (a *App) DisableSelfUpdate() { a.noSelfUpdate = true }
+// UpdateInstaller 是桌面壳可选的能力：运行已校验的安装包、退出并重启（Electron 版实现；Wails 版是自己替换自己）。
+type UpdateInstaller interface {
+	// InstallUpdate 的 path 是后端刚下载并校验过的安装包。成功返回后壳会很快退出本应用。
+	InstallUpdate(ctx context.Context, path string) error
+}
+
+func (a *App) hostCanInstall() bool {
+	_, ok := a.currentHost().(UpdateInstaller)
+	return ok
+}
+
+// UseShellUpdater 让更新改由桌面壳安装（Electron 版）：Go 后端只是安装包里的一个子程序，不能覆盖自己；
+// 它检查签名清单里 "<平台>-electron" 的安装包，下载到 dir 并校验 sha256，再交给壳（Host 的 UpdateInstaller）运行。
+// 信任模型不变：只信任内置公钥签过的清单。必须在 Startup 之前调用。
+func (a *App) UseShellUpdater(dir string) {
+	a.shellUpdateDir = dir
+	u := a.updater()
+	u.PlatformSuffix = "-electron"
+	u.DownloadDir = dir
+}
