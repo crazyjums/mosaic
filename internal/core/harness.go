@@ -70,7 +70,8 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 	em.emit("", event.TurnStart{TurnID: res.TurnID, Provider: pcfg.Name, Model: model})
 	// 这一轮之前会话里已有的消息，哪些引擎没见过：新会话切到引擎、或在别的引擎聊过又切回来。
 	prior := sess.messages()
-	st := parseHarnessState(sess.harnessState())
+	all := parseHarnessState(sess.harnessState())
+	st := all.Engines[pcfg.Type]
 	var missing []provider.Message
 	switch {
 	case st.Resume == "":
@@ -107,7 +108,7 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 	sess.addUsage(out.Usage)
 	if out.Resume != "" {
 		// 引擎没能建出线程（比如没登录）时保留原来的状态，下一轮仍然按“没见过”补背景。
-		sess.setHarnessState(harnessState{Resume: out.Resume, Synced: len(sess.messages())}.String())
+		sess.setHarnessState(all.with(pcfg.Type, engineState{Resume: out.Resume, Synced: len(sess.messages())}).String())
 	}
 	res.Usage = out.Usage
 	res.Steps = 1
@@ -147,25 +148,51 @@ func (e *Engine) askHarness(ctx context.Context, em emitter, r permission.Reques
 	return decision, err
 }
 
-// harnessState 是存在 Session.HarnessState 里的内容：引擎自己的恢复凭据，加上内核记的“引擎已经看到会话的前几条消息”。
-// 后者用来发现“这个会话在别的引擎里（或被切走又切回来）聊过几轮，引擎没见过”，并把缺的部分补给它。
+// harnessState 是存在 Session.HarnessState 里的内容：**每个引擎各一份**——引擎自己的恢复凭据，
+// 加上内核记的“这个引擎已经看到会话的前几条消息”。
+//
+// 按引擎分开存，是因为同一个会话可以在不同引擎之间切换（Codex → Claude Code → 回到 Codex）：
+// 各自的恢复凭据只对各自有意义（Codex 的线程 ID 不能当成 Claude Code 的会话 ID），
+// “看到了几条”也各记各的，这样切回去时只补它错过的那一段。
 type harnessState struct {
+	Engines map[string]engineState `json:"engines,omitempty"`
+}
+
+type engineState struct {
 	Resume string `json:"resume,omitempty"`
-	// Synced 是上次引擎那一轮结束时会话里的消息条数。
+	// Synced 是这个引擎上次那一轮结束时会话里的消息条数。
 	Synced int `json:"synced"`
 }
 
 func parseHarnessState(raw string) harnessState {
-	var st harnessState
-	if raw != "" && json.Unmarshal([]byte(raw), &st) != nil {
+	var st struct {
+		harnessState
+		// 旧格式（v1.7.20）：不分引擎、直接是 resume / synced。那时只有 Codex 一个引擎。
+		Resume string `json:"resume"`
+		Synced int    `json:"synced"`
+	}
+	if raw == "" || json.Unmarshal([]byte(raw), &st) != nil {
 		return harnessState{}
 	}
-	return st
+	if st.Engines == nil && (st.Resume != "" || st.Synced > 0) {
+		return harnessState{Engines: map[string]engineState{"codex": {Resume: st.Resume, Synced: st.Synced}}}
+	}
+	return st.harnessState
 }
 
 func (st harnessState) String() string {
 	b, _ := json.Marshal(st)
 	return string(b)
+}
+
+// with 返回把某个引擎的状态换成 es 之后的副本，不改动其他引擎的。
+func (st harnessState) with(engine string, es engineState) harnessState {
+	out := harnessState{Engines: map[string]engineState{}}
+	for k, v := range st.Engines {
+		out.Engines[k] = v
+	}
+	out.Engines[engine] = es
+	return out
 }
 
 // 补给引擎的上下文上限：只保留最近的部分，免得把引擎的上下文窗口占满。
