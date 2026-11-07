@@ -306,3 +306,31 @@ func TestHarnessNewSessionHasNoCatchUp(t *testing.T) {
 		t.Fatalf("全新的会话不该有背景: %q", got)
 	}
 }
+
+// 外部引擎可以在运行期间补充：桌面壳连上之后才知道自己能提供哪些引擎。
+func TestRegisterHarnessAtRuntime(t *testing.T) {
+	first := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		return ext.Result{Reason: event.TurnCompleted, Resume: "a"}
+	}}
+	eng, _, _, _ := newHarnessEngine(t, first, nil)
+	second := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		return ext.Result{Reason: event.TurnCompleted, Resume: "b"}
+	}}
+	eng.RegisterHarness("stub", second) // 替换
+	if _, err := eng.Send(context.Background(), "x"); err != nil {
+		t.Fatal(err)
+	}
+	if len(first.seen) != 0 || len(second.seen) != 1 {
+		t.Fatalf("应由后注册的引擎处理: first=%d second=%d", len(first.seen), len(second.seen))
+	}
+	eng.UnregisterHarness("stub")
+	res, _ := eng.NewSession()
+	_ = res
+	// 注销后这个配置档回到内置循环（桩厂商只会报错，而不是调用引擎）。
+	if _, err := eng.Send(context.Background(), "y"); err == nil {
+		// 内置循环里桩厂商的脚本为空，可能正常结束也可能报错；只要没有再调用已注销的引擎就行。
+	}
+	if len(second.seen) != 1 {
+		t.Fatalf("注销后不应再调用引擎: %d", len(second.seen))
+	}
+}

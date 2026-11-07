@@ -20,6 +20,8 @@ type Harness interface {
 // Request 是一轮的输入。
 type Request struct {
 	SessionID string
+	// Profile 是厂商配置档的名字（用户给它起的名字），界面的消息头显示它。
+	Profile string
 	// Text 是用户这一轮说的话；Attachments 里的文本附件已经并入 Text 之后（见 core），图片目前不支持。
 	Text string
 	// Workspace 是会话的工作区（绝对路径），引擎在这个目录里工作。

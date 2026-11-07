@@ -74,6 +74,11 @@ type Engine struct {
 	broker *permission.Broker
 	grants *grantBook
 
+	// harnesses 是外部引擎（见 EngineConfig.Harnesses），运行期间还可以由装配层补充（RegisterHarness）：
+	// 有些引擎要等桌面壳连上、报告自己的能力之后才可用。
+	hmu       sync.RWMutex
+	harnesses map[string]harness.Harness
+
 	mu      sync.Mutex
 	session *Session
 	// hist 记录界面已经加载了当前会话历史的哪一段，见 LoadSessionTail。
@@ -164,7 +169,10 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 	if cfg.Subagents == nil {
 		cfg.Subagents = NewSubagentRegistry()
 	}
-	e := &Engine{cfg: cfg, bus: event.NewBus(), broker: permission.NewBroker(), grants: newGrantBook(), runs: map[string]*run{}}
+	e := &Engine{cfg: cfg, bus: event.NewBus(), broker: permission.NewBroker(), grants: newGrantBook(), runs: map[string]*run{}, harnesses: map[string]harness.Harness{}}
+	for typ, h := range cfg.Harnesses {
+		e.harnesses[typ] = h
+	}
 
 	profile, model, err := e.resolveModel(cfg.DefaultProfile, cfg.DefaultModel)
 	if errors.Is(err, ErrNoProvider) {
@@ -525,7 +533,7 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 	// 这样切换模型后不需要任何"刷新"逻辑。
 	// 配置档是外部引擎（Codex 等）时，整轮交给引擎，内核只做前后的事。
 	var res TurnResult
-	if h := e.cfg.Harnesses[pcfg.Type]; h != nil {
+	if h := e.harnessFor(pcfg.Type); h != nil {
 		res = e.runHarness(ctx, sess, h, pcfg, snap.Model, rt, in, endWatcher{Publisher: e.bus, r: r})
 	} else {
 		agent := NewAgent(AgentConfig{
@@ -938,3 +946,26 @@ func (e *Engine) GroupStatuses() []provider.GroupStatus {
 
 // Subagents 返回子 agent 定义注册表（预留扩展点）。
 func (e *Engine) Subagents() *SubagentRegistry { return e.cfg.Subagents }
+
+// RegisterHarness 注册（或替换）一个外部引擎。键是厂商配置档的 type。已经在运行的轮不受影响，下一轮起生效。
+func (e *Engine) RegisterHarness(typ string, h harness.Harness) {
+	e.hmu.Lock()
+	defer e.hmu.Unlock()
+	if e.harnesses == nil {
+		e.harnesses = map[string]harness.Harness{}
+	}
+	e.harnesses[typ] = h
+}
+
+// UnregisterHarness 移除一个外部引擎（桌面壳断开时）。
+func (e *Engine) UnregisterHarness(typ string) {
+	e.hmu.Lock()
+	defer e.hmu.Unlock()
+	delete(e.harnesses, typ)
+}
+
+func (e *Engine) harnessFor(typ string) harness.Harness {
+	e.hmu.RLock()
+	defer e.hmu.RUnlock()
+	return e.harnesses[typ]
+}

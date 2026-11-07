@@ -86,6 +86,7 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 
 	req := harness.Request{
 		SessionID:      sess.ID,
+		Profile:        pcfg.Name,
 		Text:           text,
 		Workspace:      rt.Workspace,
 		Model:          model,

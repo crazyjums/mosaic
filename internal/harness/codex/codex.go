@@ -141,7 +141,11 @@ func (c *Codex) Run(ctx context.Context, req harness.Request) harness.Result {
 }
 
 func (c *Codex) session(ctx context.Context, req harness.Request, res harness.Result, cmd *exec.Cmd, stdin io.WriteCloser, stdout io.Reader, stderr *tailBuffer) harness.Result {
-	tr := newTranslator(req.Model, Type, req.Emit)
+	name := req.Profile
+	if name == "" {
+		name = Type
+	}
+	tr := newTranslator(req.Model, name, req.Emit)
 	cl := newClient(stdin)
 	turnDone := make(chan struct{})
 	var doneOnce sync.Once
