@@ -37,6 +37,8 @@ func main() {
 		sign(os.Args[2:])
 	case "check-key":
 		checkKey(os.Args[2:])
+	case "bump":
+		bump(os.Args[2:])
 	default:
 		fail("未知命令 " + os.Args[1])
 	}
@@ -113,6 +115,41 @@ func check(err error) {
 func fail(msg string) {
 	fmt.Fprintln(os.Stderr, "错误:", msg)
 	os.Exit(1)
+}
+
+// bump 决定这次自动发布的版本号，并让 CHANGELOG.md 里有这个版本的小节；在标准输出打印 tag（例如 v1.7.10）。
+// 规则见 internal/update/bump.go：默认最新正式版 tag + 0.0.1；[Unreleased] 的内容归到新版本；
+// [Unreleased] 为空时用 -log-file 里合并进来的 PR 标题生成。
+func bump(args []string) {
+	fs := flag.NewFlagSet("bump", flag.ExitOnError)
+	changelog := fs.String("changelog", "CHANGELOG.md", "CHANGELOG.md 路径（会被改写）")
+	tagsFile := fs.String("tags-file", "", "已有的 tag 列表（每行一个，git tag -l 的输出）")
+	logFile := fs.String("log-file", "", "上一个版本以来的提交：git log --first-parent --format=%s%x1f%b%x1e")
+	date := fs.String("date", time.Now().UTC().Format("2006-01-02"), "新版本的日期")
+	check(fs.Parse(args))
+
+	md, err := os.ReadFile(*changelog)
+	check(err)
+	var tags []string
+	if *tagsFile != "" {
+		b, err := os.ReadFile(*tagsFile)
+		check(err)
+		tags = strings.Split(string(b), "\n")
+	}
+	version, err := update.NextVersion(tags, update.TopVersion(string(md)))
+	check(err)
+	var subjects []string
+	if *logFile != "" {
+		b, err := os.ReadFile(*logFile)
+		check(err)
+		subjects = update.SubjectsFromLog(string(b))
+	}
+	out, changed, err := update.ApplyRelease(string(md), version, *date, update.FromCommits(subjects, version, *date))
+	check(err)
+	if changed {
+		check(os.WriteFile(*changelog, []byte(out), 0o644))
+	}
+	fmt.Println("v" + version)
 }
 
 // checkKey 发布前自检：私钥存在，internal/update/pubkey.txt 非空，并且两者是同一对密钥。
