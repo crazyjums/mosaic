@@ -1,6 +1,6 @@
 # 用 Electron 重构桌面端：计划
 
-状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置和工作流已写（实测数据与 CSP 待补），阶段 3 的更新机制已实现（Electron 渠道的发布与老用户迁移提示待阶段 5 前后接上），阶段 4 已实现托盘、后台运行、通知和全局快捷键（多窗口还没做），阶段 5 待做。本文是迁移的依据，与代码不一致时以代码为准。
+状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 的打包配置和工作流已写（实测数据与 CSP 待补），阶段 3 的更新机制已实现（Electron 渠道的发布与老用户迁移提示待阶段 5 前后接上），阶段 4 已实现托盘、后台运行、通知和全局快捷键（多窗口还没做），阶段 5 进行中：Electron 安装包已并行发布，默认入口仍是 Wails。本文是迁移的依据，与代码不一致时以代码为准。
 
 ## 1. 为什么要做
 
@@ -127,7 +127,8 @@ flowchart LR
 
 ### 阶段 5：切换
 
-- Electron 成为默认发布；Wails 入口（`main.go`、`wails.json`、`bridge/wails.ts`）在一个过渡版本后删除；文档、截图更新。
+- **已实现（并行发布）**：`release.yml` 的 `build-electron` 与 Wails 的 `build` 并行，三平台各出一个 Electron 安装包，随同一个 Release 发布；Windows / Linux 的安装包进签名清单的 `windows-amd64-electron` / `linux-amd64-electron`，所以 Electron 客户端能自动更新，Wails 客户端看不到它们。`build-electron` 是 `continue-on-error`：它失败不会挡住 Wails 版发布。Wails 仍是默认入口，没有删除任何东西。
+- **还没做（等真机试用反馈）**：Electron 成为默认发布；Wails 入口（`main.go`、`wails.json`、`bridge/wails.ts`）在一个过渡版本后删除；文档、截图更新。
 - **验证**：连续两个正式版没有 Electron 相关的阻塞问题后再删 Wails。
 
 ### 阶段 6（扩展，单独设计）
