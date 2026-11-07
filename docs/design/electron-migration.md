@@ -1,6 +1,6 @@
 # 用 Electron 重构桌面端：计划
 
-状态：计划已定；**阶段 0（解耦，壳无关）已实现**，阶段 1 起待做。本文是迁移的依据，与代码不一致时以代码为准。
+状态：计划已定；**阶段 0（解耦）和阶段 1（最小壳）已实现**，阶段 2 起待做。本文是迁移的依据，与代码不一致时以代码为准。
 
 ## 1. 为什么要做
 
@@ -85,12 +85,14 @@ flowchart LR
 - `cmd/mosaicd`：读配置 → 组装内核 → 在 stdio 上服务 `App` 的全部方法。`InstallUpdate` 在这里被禁用（自更新改由壳负责，见阶段 3）。
 - **验证**：现有测试全部通过；`cmd/mosaicd` 的测试用演示厂商通过 stdio 跑完整的一轮（新建会话 → 发消息 → 收事件 → 回答权限确认 → `turn_end`），并覆盖反向请求；`scripts/mosaicd-smoke.mjs` 用 Node 从外部跑同样的流程（这就是 Electron 主进程将来要做的事）；`internal/archtest` 禁止 `internal/` 再导入 Wails。Wails 版照常构建和发布。
 
-### 阶段 1：Electron 最小壳
+### 阶段 1：Electron 最小壳（已完成）
 
-- 新目录 `desktop/`：`main.ts`（窗口、拉起 `mosaicd`、转发、`host.*` 的实现、`app.requestSingleInstanceLock()`）、`preload.ts`、`package.json`（Electron 锁定版本）。
-- 前端新增 `bridge/electron.ts`：实现 `Backend`，方法表复用 `wails.ts` 的映射；`bridge/index.ts` 按 `window.mosaic` / `window.go` / 演示模式三选一。
-- 开发流程：`vite` 开发服务器 + `electron .`；`mosaicd` 用 `go run ./cmd/mosaicd`。
-- **验证**：三个平台本地跑通一次对话、一次权限确认、选择工作区、打开链接；CI 里在 Linux 上用 `xvfb` 跑冒烟（`--smoke`：用演示厂商跑一轮后退出码 0）。Wails 版不受影响。
+- `desktop/`：`src/main.ts`（窗口、单实例锁、白名单转发、导航限制）、`src/preload.ts`（`window.mosaic`）、`src/sidecar.ts`（拉起 `mosaicd`、握手、白名单、事件、退出）、`src/host.ts`（对话框、打开链接）、`src/rpc.ts`（协议）、`src/smoke.ts`（冒烟）。
+- 前端新增 `bridge/electron.ts`，与 Wails 版共用方法映射表（`wails.ts` 的 `createBackendFrom`）；`bridge/index.ts` 在 Electron / Wails / 演示模式里选一个。前端其余代码没改。
+- 前端用自定义协议 `mosaic://app/` 提供（不是 `file://`）：构建产物里的资源用绝对路径，而且 ES 模块脚本在 `file://` 下会被当成跨域；自定义协议下有正常的来源。
+- 安全：`contextIsolation`、`sandbox`、无 Node；IPC 只接受来自我们自己页面的调用；方法名只放行后端握手时报告的列表；页面里的链接交给系统浏览器（只放行 http / https），窗口不能被导航走。**还没有 CSP**：要等阶段 2 在打包后的页面上逐项验证 mermaid / viz（wasm）/ katex 后再加，避免一刀切把渲染弄坏。
+- 开发：`make desktop-install`；`make desktop-start`（先构建前端，后端用 `go run` 或 `MOSAIC_MOSAICD`）；`MOSAIC_DEV_URL=http://localhost:5173` 时连 vite 开发服务器。
+- **验证（已完成）**：`desktop` 的单元测试 10 个（协议分片和 U+2028、id 配对、断线、链接白名单、对话框过滤器，以及用真实 `mosaicd` 验证握手、白名单、一轮对话、反向请求、退出和崩溃）；**冒烟测试在真实的 Electron 45（Chromium 156）窗口里**加载前端、渲染出界面、通过 IPC 跑完一轮演示对话（2 次权限确认），并确认生命周期方法被拒绝。CI 的 `desktop` 任务在三个平台跑单元测试，在 Linux 上用 xvfb 跑冒烟。Windows / macOS 上的真实窗口还需要人工验证（对话框、托盘等）。
 
 ### 阶段 2：打包与 CI（并行发布）
 
