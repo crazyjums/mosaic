@@ -10,6 +10,7 @@ import { createHostHandler, isWebURL, openExternal } from "./host";
 import { resolvePaths } from "./paths";
 import { Sidecar } from "./sidecar";
 import { defaults as defaultSettings, normalize as normalizeSettings, SettingsFile, type ShellSettings } from "./settings";
+import { auxWindowSpec } from "./windows";
 import { createTray, type TrayHandle } from "./tray";
 import { runSmoke } from "./smoke";
 
@@ -175,20 +176,19 @@ function isTrustedSender(url: string | undefined): boolean {
   return url.startsWith(APP_ORIGIN + "/") || (!!DEV_URL && url.startsWith(DEV_URL));
 }
 
-// 独立窗口：同一个后端、同一套页面，地址里的 ?window=git 让前端只渲染 Git 视图。
-// 白名单里只有 git；每种最多一个，再次打开就是把它带到前面。
+// 独立窗口：同一个后端、同一套页面，地址里的查询串让前端只渲染对应的视图。类型和参数的校验在 windows.ts。
 const auxWindows = new Map<string, BrowserWindow>();
-function openAuxWindow(kind: unknown): void {
-  if (kind !== "git") throw new Error("不支持的窗口类型");
-  const existing = auxWindows.get(kind);
+function openAuxWindow(kind: unknown, params: unknown): void {
+  const spec = auxWindowSpec(kind, params);
+  const existing = auxWindows.get(spec.key);
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore();
     existing.focus();
     return;
   }
-  const w = createWindow({ title: "Mosaic — Git", width: 1280, height: 800, query: `?window=${kind}`, aux: true });
-  auxWindows.set(kind, w);
-  w.on("closed", () => auxWindows.delete(kind));
+  const w = createWindow({ title: spec.title, width: spec.width, height: spec.height, query: spec.query, aux: true });
+  auxWindows.set(spec.key, w);
+  w.on("closed", () => auxWindows.delete(spec.key));
 }
 
 function registerIpc(): void {
@@ -209,9 +209,9 @@ function registerIpc(): void {
     settingsFile?.save(settings);
     return { settings };
   });
-  ipcMain.handle("mosaic:open-window", (event, kind: unknown) => {
+  ipcMain.handle("mosaic:open-window", (event, kind: unknown, params: unknown) => {
     if (!isTrustedSender(event.senderFrame?.url)) throw new Error("拒绝来自不受信任页面的调用");
-    openAuxWindow(kind);
+    openAuxWindow(kind, params);
   });
   ipcMain.on("mosaic:preview-token", (event) => {
     event.returnValue = isTrustedSender(event.senderFrame?.url) ? previewToken : "";
