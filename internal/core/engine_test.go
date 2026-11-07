@@ -557,7 +557,8 @@ func TestModelGeneratedTitle(t *testing.T) {
 	}
 	h.engine.Send(context.Background(), "讲讲 goroutine")
 	// 本轮结束时已经保存（标题先是截取的第一句），标题在后台生成。
-	if list, _ := h.engine.ListSessions(context.Background()); len(list) != 1 || list[0].Title != "讲讲 goroutine" {
+	// 后台生成可能在这里的检查之前就完成（macOS 上很快），所以两种标题都算对，否则测试会随机失败。
+	if list, _ := h.engine.ListSessions(context.Background()); len(list) != 1 || (list[0].Title != "讲讲 goroutine" && list[0].Title != "Go 并发入门") {
 		t.Fatalf("应先保存会话: %+v", list)
 	}
 	deadline := time.Now().Add(5 * time.Second)
