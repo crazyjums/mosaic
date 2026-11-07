@@ -27,7 +27,7 @@ type Harness interface {
 
 **内核负责的前后工作**：发 `turn_start` / `user_message`；把引擎的事件原样发布；`Ask` 接到 `permission.Broker`（发 `permission_request` / `permission_resolved`，用户的回答经原来的 `RespondPermission` 送达）；把引擎返回的消息存进历史、累加用量、保存恢复凭据（`sessions.harness_state` 列，迁移 4）；最后发 `turn_end`。
 
-**引擎没见过的对话会补给它**：会话的 `harness_state` 里除了引擎的恢复凭据，内核还记着“引擎上次看到会话的前 N 条消息”。新会话第一次交给引擎、或会话在别的引擎里聊过几轮再切回来时，这一轮的输入前会加一段背景（只含文字、工具调用名和截断的工具结果，不含别家的思考块；超过 2 万字只保留最近的）。会话被压缩过、消息数少于记录的 N 时无法判断缺了什么，不补。
+**引擎没见过的对话会补给它**：会话的 `harness_state` **按引擎分开存**——每个引擎各记自己的恢复凭据，以及内核记的“这个引擎上次看到会话的前 N 条消息”（Codex 的线程 ID 不能当成 Claude Code 的会话 ID；Codex → Claude Code → 回到 Codex 时，各自恢复自己的线程，只补各自错过的那一段）。v1.7.20 存的旧格式（不分引擎）按 Codex 读取。新会话第一次交给引擎、或会话在别的引擎里聊过几轮再切回来时，这一轮的输入前会加一段背景（只含文字、工具调用名和截断的工具结果，不含别家的思考块；超过 2 万字只保留最近的）。会话被压缩过、消息数少于记录的 N 时无法判断缺了什么，不补。
 
 **历史的结构**与内置循环一致（助手消息 + 工具结果的 user 消息，每个 tool_use 都有 tool_result），所以会话重放、导出、以及切换到内置引擎继续聊都能用。
 
@@ -106,8 +106,8 @@ Go（用户点停止）──host.harness.cancel──▶ 壳 ──cancel──
 - **不打包原生 `claude`**：SDK 的平台包里是 300MB 以上的原生可执行文件，不进安装包；用用户自己装的 `claude` 命令（PATH 里找，或配置档的「Claude Code 命令」）。SDK 本体和 worker 放在 `app.asar.unpacked`，因为 utilityProcess 要像普通进程一样 import 它们。
 - **登录与计费是用户自己的**：用用户的 Claude Code 登录或环境里的 `ANTHROPIC_API_KEY`；Mosaic 不读不存。请按 Anthropic 的使用条款使用（第三方应用通常应使用 API Key 方式认证）。
 - **事件映射**（依据对真实 SDK 0.3.319 + claude 2.1.319 的探测）：`stream_event` 的文字 / 思考增量 → `text_delta` / `thinking_delta`；`assistant` 里完整的 `tool_use` → `tool_call`；`user` 里的 `tool_result` → `tool_result`；`result` → 用量、会话 ID、成败。子 agent 里的过程（`parent_tool_use_id` 非空）不显示。
-- **权限映射**：只读 → SDK 的 `plan`（可读不可改不可执行）；默认 → `default`；自动接受编辑 → `acceptEdits`；自动 → `bypassPermissions`（与 Mosaic 自动模式“放行一切”一致）。SDK 的 `canUseTool` 变成 Mosaic 的权限确认；「本会话允许」把 SDK 建议的权限更新交回去，同类操作不再询问。Claude Code 自己的设置（`CLAUDE.md`、MCP、技能、它自己的权限规则）照常生效。
-- **恢复**：用 SDK 的会话 ID 作为恢复凭据（`options.resume`）。
+- **权限映射**：只读 → SDK 的 `plan`（可读不可改不可执行）；默认 → `default`；自动接受编辑（Mosaic 的取值是 `accept_edits`）→ SDK 的 `acceptEdits`；自动 → `bypassPermissions`（与 Mosaic 自动模式“放行一切”一致）。SDK 的 `canUseTool` 变成 Mosaic 的权限确认；「本会话允许」把 SDK 建议的权限更新交回去，同类操作不再询问。Claude Code 自己的设置（`CLAUDE.md`、MCP、技能、它自己的权限规则）照常生效。
+- **恢复**：用 SDK 的会话 ID 作为恢复凭据（`options.resume`）。被打断（取消、出错）时，已经显示给用户但 SDK 还没给出完整块的文字 / 思考也会进历史，重新加载不会丢。
 - **验证**：翻译器用真实探测的消息形状写了测试；worker 用假 SDK 覆盖审批、取消、错误；`HarnessManager` 用假 worker 覆盖顺序、审批、取消、崩溃；Go 端用假壳走完整的 stdio 流程。**真机端到端**（`desktop/scripts/harness-e2e.mjs`，会真的调用一次模型，不在 CI 里跑）：打包后的 Electron 应用 → Go → utilityProcess 里的 SDK → 真实 `claude`，写文件、权限确认走 Mosaic 弹窗、第二轮能记得上一轮做过什么（恢复有效）。
 - **没验证**：Windows / macOS 上 SDK 启动 `claude`（Windows 的 `claude.cmd` 脚本可能需要经过 shell，优先找 `.exe`）；取消的真实时序（取消只有单元测试覆盖）。
 
