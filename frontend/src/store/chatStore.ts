@@ -24,7 +24,7 @@ interface Store extends ChatState, Q.QueueState {
   stash: Record<string, Stashed>;
   /** 非当前会话的运行情况（运行中 / 待确认 / 有新结果），会话列表据此显示标记 */
   activity: Record<string, SessionActivity>;
-  backendKind: "wails" | "demo";
+  backendKind: "wails" | "electron" | "demo";
   profiles: ProfileInfo[];
   sessions: SessionSummary[];
   title: string;
