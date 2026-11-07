@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc --noEmit -p .",
-    "test": "npm run build && node --test dist/test/rpc.test.js dist/test/host.test.js dist/test/sidecar.test.js dist/test/update.test.js dist/test/activity.test.js",
+    "test": "npm run build && node --test dist/test/rpc.test.js dist/test/host.test.js dist/test/sidecar.test.js dist/test/update.test.js dist/test/activity.test.js dist/test/preview.test.js",
     "start": "npm run build && electron .",
     "smoke": "npm run build && node scripts/smoke.mjs",
     "stage": "node scripts/stage.mjs",
