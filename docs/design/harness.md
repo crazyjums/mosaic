@@ -118,7 +118,7 @@ Go（用户点停止）──host.harness.cancel──▶ 壳 ──cancel──
 - **模型和登录是用户自己的 pi 配置**（`~/.pi/agent` 下的 `settings.json`、`auth.json`、`models.json`）：Mosaic 不读不存。模型名填 `default` 用 pi 的默认模型，或写成 `提供商/模型ID`（`ModelRuntime.getModel`）；没有任何可用模型时提示去终端 `pi` 里 `/login`。
 - **权限**：pi 自己没有逐次确认的机制（它的安全文档明说“不会在每次调用前询问”）。这里注册一个内联扩展，在 `tool_call` 钩子里把调用变成 Mosaic 的权限确认，拒绝则返回 `{block: true}`（模型会收到“用户拒绝了这次操作”的工具结果）。规则：默认模式 → 写类和执行类都问；自动接受编辑 → 只问执行类；自动 → 都不问；只读 → 只开 `read/grep/find/ls` 四个工具，不留写/执行工具。「本会话允许」按工具名记在这一轮的 worker 里。
 - **事件映射**（依据对真实 SDK 1.5.0 的探测：假的 OpenAI 兼容服务器 + 真 pi）：`message_start`（助手）→ `message_start`；`message_update` 里的 `text_delta` / `thinking_delta` → 对应增量，`toolcall_end` → `tool_call`；`tool_execution_end` → `tool_result`（含被拦截时的错误结果）；`message_end`（助手）→ `message_end` 和用量；`system` / `user` 消息不转发。pi 不抛模型错误（鉴权失败、额度用完），错误在最后一条助手消息的 `errorMessage` 里，worker 据此报错。
-- **恢复**：pi 的会话是 JSONL 文件，路径作为恢复凭据（`SessionManager.open`）；文件被清理就当新会话开始。会话文件在 pi 自己的目录里，也可以用 pi 命令行接着聊。
-- **打包**：pi 依赖较多，`node_modules` 整体放在 `app.asar.unpacked`（约 60MB）。
+- **恢复**：pi 的会话是 JSONL 文件，路径作为恢复凭据（`SessionManager.open`）；文件被清理了：worker 什么都不做并报告 `resume_lost`，内核（`driveHarness`）丢掉旧凭据，把完整历史当作“没见过”补给引擎再重跑一次（只重试一次），不会悄悄丢上下文。会话文件在 pi 自己的目录里，也可以用 pi 命令行接着聊。
+- **打包**：pi 依赖较多，`node_modules` 整体放在 `app.asar.unpacked`（约 60MB）；pi-tui 自带的剪贴板原生模块（终端界面用，按架构各一份）排除掉——它会让 mac 通用包合并失败，worker 里也用不到。
 - **验证**：翻译器和 worker 用真实探测的事件形状写了测试；真 SDK + 假模型服务器验证过：拒绝时文件没写、允许时写入、下一轮能记得上一轮（恢复有效）。
 - **没验证**：用真实模型账号跑一轮（环境里没有 pi 的凭证）；Windows / macOS；取消的真实时序；图片附件和子 agent 不支持。
