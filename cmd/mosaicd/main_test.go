@@ -155,3 +155,157 @@ loop:
 		t.Fatal("stdin 关闭后应退出")
 	}
 }
+
+// 模拟 Electron 主进程提供“远程引擎”（Claude Code、pi 的 SDK 跑在 utilityProcess 里）：
+// 壳注册引擎 → 前端选中引擎的配置档发消息 → Go 发 host.harness.run → 壳通过 harness.emit / harness.ask 回送过程，
+// 审批走 Mosaic 自己的权限弹窗 → 壳返回结果。
+func TestRemoteHarnessOverStdio(t *testing.T) {
+	cfg := config.Default()
+	cfg.EnableDemo()
+	cfg.DataDir = t.TempDir()
+	cfg.Providers = append(cfg.Providers, config.ProviderConfig{Name: "cc", Type: "claudecode", Models: []string{"default"}, DefaultModel: "default"})
+	for _, k := range []string{"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"} {
+		t.Setenv(k, "")
+	}
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true, Secrets: secret.NewMemory()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+
+	toServer, clientOut := io.Pipe()
+	toClient, serverOut := io.Pipe()
+	go func() { _ = serve(context.Background(), built, "", toServer, serverOut) }()
+
+	events := make(chan map[string]any, 256)
+	var client *rpc.Peer
+	var runSpec map[string]any
+	client = rpc.NewPeer(clientOut, func(ctx context.Context, method string, params json.RawMessage) (any, error) {
+		switch method {
+		case "event":
+			var n struct {
+				Data map[string]any `json:"data"`
+			}
+			_ = json.Unmarshal(params, &n)
+			events <- n.Data
+			return nil, nil
+		case "host.harness.run":
+			var p struct {
+				RunID string         `json:"run_id"`
+				Spec  map[string]any `json:"spec"`
+			}
+			_ = json.Unmarshal(params, &p)
+			runSpec = p.Spec
+			emit := func(msg, typ string, data any) {
+				if err := client.Call(ctx, "harness.emit", map[string]any{"run_id": p.RunID, "message_id": msg, "type": typ, "data": data}, nil); err != nil {
+					t.Errorf("harness.emit %s: %v", typ, err)
+				}
+			}
+			emit("m1", "message_start", map[string]any{"provider": "cc", "model": "default", "step": 1})
+			emit("m1", "text_delta", map[string]any{"text": "好的，我来写文件"})
+			emit("m1", "tool_call", map[string]any{"call_id": "t1", "name": "Write", "input": map[string]any{"file_path": "a.txt"}, "risk": "write"})
+			var decision string
+			if err := client.Call(ctx, "harness.ask", map[string]any{"run_id": p.RunID, "call_id": "t1", "tool": "Write", "risk": "write", "summary": "写入 a.txt"}, &decision); err != nil {
+				t.Errorf("harness.ask: %v", err)
+			}
+			emit("", "tool_result", map[string]any{"call_id": "t1", "name": "Write", "output": "决定=" + decision})
+			emit("m1", "message_end", map[string]any{"stop_reason": "tool_use"})
+			// 轮结束后迟到的回调要被拒绝。
+			return map[string]any{"reason": "completed", "resume": "cc-session-1", "usage": map[string]any{"input_tokens": 9, "output_tokens": 4}, "messages": []any{
+				map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "好的，我来写文件"}}},
+			}}, nil
+		}
+		return nil, &rpc.Error{Code: rpc.CodeMethodNotFound, Message: method}
+	})
+	go func() { _ = client.Serve(context.Background(), toClient) }()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var hello struct {
+		Methods []string `json:"methods"`
+	}
+	if err := client.Call(ctx, "rpc.hello", nil, &hello); err != nil {
+		t.Fatal(err)
+	}
+	// 渲染进程的白名单里不能有 harness.*：只有壳的主进程能驱动引擎。
+	for _, m := range hello.Methods {
+		if len(m) > 8 && m[:8] == "harness." {
+			t.Fatalf("harness.* 不应暴露给渲染进程: %s", m)
+		}
+	}
+
+	// 壳注册之前，选中这个配置档会得到“只在 Electron 版里可用”的提示；注册时不认识的引擎名被忽略。
+	var reg struct {
+		Registered []string `json:"registered"`
+	}
+	if err := client.Call(ctx, "harness.register", map[string]any{"engines": []string{"claudecode", "evil", "pi"}}, &reg); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(reg.Registered, []string{"claudecode", "pi"}) {
+		t.Fatalf("注册结果: %v", reg.Registered)
+	}
+
+	var st struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := client.Call(ctx, "NewSession", nil, &st); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call(ctx, "SetModel", []any{"cc", "default"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Call(ctx, "SendToSession", []any{st.SessionID, "写个文件", []any{}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var types []string
+	var granted bool
+loop:
+	for {
+		select {
+		case ev := <-events:
+			typ, _ := ev["type"].(string)
+			types = append(types, typ)
+			data, _ := ev["data"].(map[string]any)
+			switch typ {
+			case "permission_request":
+				if data["tool"] != "Write" || data["call_id"] != "t1" {
+					t.Errorf("权限请求: %v", data)
+				}
+				granted = true
+				if err := client.Call(ctx, "RespondPermission", []any{data["request_id"], "allow_session"}, nil); err != nil {
+					t.Fatal(err)
+				}
+			case "tool_result":
+				if data["output"] != "决定=allow_session" {
+					t.Errorf("引擎应收到用户的回答: %v", data)
+				}
+			case "turn_end":
+				if data["reason"] != "completed" {
+					t.Fatalf("这一轮应正常结束: %v", data)
+				}
+				break loop
+			}
+		case <-ctx.Done():
+			t.Fatalf("超时，事件：%v", types)
+		}
+	}
+	if !granted {
+		t.Fatal("审批应经过 Mosaic 的权限弹窗")
+	}
+	for _, want := range []string{"turn_start", "user_message", "message_start", "text_delta", "tool_call", "permission_request", "permission_resolved", "tool_result", "message_end", "turn_end"} {
+		if !slices.Contains(types, want) {
+			t.Errorf("缺少事件 %s: %v", want, types)
+		}
+	}
+	if runSpec["engine"] != "claudecode" || runSpec["text"] != "写个文件" || runSpec["session_id"] != st.SessionID {
+		t.Fatalf("交给壳的请求: %v", runSpec)
+	}
+
+	// 壳不能伪造由内核掌握的事件，也不能给不存在的轮发东西。
+	if err := client.Call(ctx, "harness.emit", map[string]any{"run_id": "nope", "type": "turn_end", "data": map[string]any{}}, nil); err == nil {
+		t.Fatal("伪造事件应被拒绝")
+	}
+	if err := client.Call(ctx, "harness.bogus", nil, nil); err == nil {
+		t.Fatal("未知的 harness 方法应报错")
+	}
+}

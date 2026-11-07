@@ -13,6 +13,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/bootstrap"
 	"github.com/crazyjums/myllmapp/internal/config"
 	"github.com/crazyjums/myllmapp/internal/event"
+	"github.com/crazyjums/myllmapp/internal/harness/remote"
 	"github.com/crazyjums/myllmapp/internal/rpc"
 	"github.com/crazyjums/myllmapp/internal/update"
 )
@@ -85,12 +86,18 @@ func serve(ctx context.Context, built *bootstrap.Built, changelog string, in io.
 		"version":        update.Version,
 		"methods":        methods.Names(),
 	}
+	// 远程引擎的 Hub 要用到 peer，peer 的处理函数又要用到 Hub：先声明，peer 建好后再赋值。
+	var hub *remote.Hub
 	peer := rpc.NewPeer(out, func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		if method == "rpc.hello" {
 			return hello, nil
 		}
+		if isHarnessMethod(method) {
+			return harnessCall(ctx, built.Engine, hub, method, params)
+		}
 		return methods.Call(ctx, method, params)
 	})
+	hub = remote.NewHub(&harnessHost{peer: peer})
 	a.SetHost(&host{peer: peer})
 	a.Startup(ctx)
 	defer a.Shutdown(ctx)
