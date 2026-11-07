@@ -225,3 +225,113 @@ func TestShellUpdater(t *testing.T) {
 		t.Fatal("后端不应替换自己")
 	}
 }
+
+// 两步更新：先下载并校验（状态 ready，不重启、不替换），确认后再安装；有更新的版本出现时丢掉旧的已下载包。
+func TestDownloadThenApply(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	built, err := bootstrap.Build(cfg, bootstrap.Options{Workspace: t.TempDir(), NoStore: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer built.Close()
+
+	pubB64, priv, _ := update.GenerateKey()
+	pub, _ := update.ParsePublicKey(pubB64)
+	asset := []byte("#!/bin/sh\nexit 0\n")
+	sum := sha256.Sum256(asset)
+	version := "2.0.0"
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	manifest := func() update.Manifest {
+		return update.Manifest{Version: version, Notes: "新功能", Platforms: map[string]update.Asset{
+			"linux-amd64": {URL: srv.URL + "/app", SHA256: hex.EncodeToString(sum[:]), Size: int64(len(asset))},
+		}}
+	}
+	mux.HandleFunc("/m.json", func(w http.ResponseWriter, _ *http.Request) { b, _ := json.Marshal(manifest()); w.Write(b) })
+	mux.HandleFunc("/m.json.sig", func(w http.ResponseWriter, _ *http.Request) {
+		b, _ := json.Marshal(manifest())
+		sig, _ := update.Sign(priv, b)
+		w.Write(sig)
+	})
+	mux.HandleFunc("/app", func(w http.ResponseWriter, _ *http.Request) { w.Write(asset) })
+
+	exe := filepath.Join(t.TempDir(), "app")
+	_ = os.WriteFile(exe, []byte("old"), 0o755)
+	a := New(built.Engine, built.Settings, func(context.Context, string, ...any) {})
+	a.upd = &update.Updater{ManifestURL: srv.URL + "/m.json", PubKey: pub, Current: "1.0.0", GOOS: "linux", GOARCH: "amd64", ExePath: exe}
+	quit := make(chan struct{})
+	a.us.quit = func(context.Context) { close(quit) }
+
+	if err := a.ApplyUpdate(); err == nil {
+		t.Fatal("没有下载好的更新时安装应报错")
+	}
+	if _, err := a.CheckUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DownloadUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	waitState := func(want string) UpdateStatus {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if st := a.GetUpdateStatus(); st.State == want {
+				return st
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("状态没有变成 %s: %+v", want, a.GetUpdateStatus())
+		return UpdateStatus{}
+	}
+	st := waitState("ready")
+	if st.Version != "2.0.0" || st.Done != st.Total || st.Total == 0 {
+		t.Fatalf("ready 状态: %+v", st)
+	}
+	// 下载完不能自己安装或重启。
+	select {
+	case <-quit:
+		t.Fatal("下载完成后不应自动重启")
+	case <-time.After(200 * time.Millisecond):
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old" {
+		t.Fatal("下载完成后不应替换程序")
+	}
+	// 重复下载同一个版本是空操作。
+	if err := a.DownloadUpdate(); err != nil || a.GetUpdateStatus().State != "ready" {
+		t.Fatalf("已下载好时再次下载应直接返回: %v %+v", err, a.GetUpdateStatus())
+	}
+
+	// 出现更新的版本：旧的已下载包作废，状态回到 idle。
+	version = "2.1.0"
+	if _, err := a.CheckUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	if st := a.GetUpdateStatus(); st.State != "idle" {
+		t.Fatalf("有更新的版本后应丢掉旧的已下载包: %+v", st)
+	}
+	if err := a.ApplyUpdate(); err == nil {
+		t.Fatal("旧包作废后不能再安装")
+	}
+
+	// 重新下载新版本，确认后安装并重启。
+	if err := a.DownloadUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	waitState("ready")
+	if err := a.ApplyUpdate(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-quit:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("安装没有完成: %+v", a.GetUpdateStatus())
+	}
+	if b, _ := os.ReadFile(exe); string(b) != string(asset) {
+		t.Fatalf("应已替换: %q", b)
+	}
+	if st := a.GetUpdateStatus(); st.State != "restarting" || st.Version != "2.1.0" {
+		t.Fatalf("状态: %+v", st)
+	}
+}

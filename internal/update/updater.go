@@ -229,6 +229,7 @@ func (u *Updater) Download(ctx context.Context, info *Info, progress func(done, 
 			return "", err
 		}
 		dir = filepath.Dir(exe)
+		clearOldDownloads(dir) // 上次下载好但没来得及安装的安装包
 	}
 	// 保留原文件的扩展名：Windows 上安装程序必须以 .exe 结尾才能运行。
 	ext := ""
