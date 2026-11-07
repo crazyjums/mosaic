@@ -2,8 +2,10 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/harness"
@@ -66,6 +68,19 @@ func (e *Engine) runHarness(ctx context.Context, sess *Session, h harness.Harnes
 
 func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harness, pcfg provider.ProfileConfig, model string, rt RuntimeConfig, in UserInput, userMsg provider.Message, text string, em emitter, res *TurnResult, end func(event.TurnEndReason, error) TurnResult) TurnResult {
 	em.emit("", event.TurnStart{TurnID: res.TurnID, Provider: pcfg.Name, Model: model})
+	// 这一轮之前会话里已有的消息，哪些引擎没见过：新会话切到引擎、或在别的引擎聊过又切回来。
+	prior := sess.messages()
+	st := parseHarnessState(sess.harnessState())
+	var missing []provider.Message
+	switch {
+	case st.Resume == "":
+		missing = prior // 引擎还没有这个会话的线程：此前的所有消息都是新的
+	case st.Synced < len(prior):
+		missing = prior[st.Synced:]
+	}
+	if ctxText := catchUpContext(missing); ctxText != "" {
+		text = ctxText + text
+	}
 	sess.appendMessage(userMsg)
 	em.emit("", event.UserMessage{Text: in.Text, Attachments: attachmentInfos(userMsg)})
 
@@ -76,7 +91,7 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 		Model:          model,
 		PermissionMode: permission.Mode(e.permissionMode()),
 		Options:        pcfg.Options,
-		Resume:         sess.harnessState(),
+		Resume:         st.Resume,
 		Emit:           func(messageID string, p event.Payload) { em.emit(messageID, p) },
 		Ask: func(ctx context.Context, r permission.Request) (permission.Decision, error) {
 			return e.askHarness(ctx, em, r)
@@ -89,7 +104,10 @@ func (e *Engine) driveHarness(ctx context.Context, sess *Session, h harness.Harn
 		sess.appendMessage(m)
 	}
 	sess.addUsage(out.Usage)
-	sess.setHarnessState(out.Resume)
+	if out.Resume != "" {
+		// 引擎没能建出线程（比如没登录）时保留原来的状态，下一轮仍然按“没见过”补背景。
+		sess.setHarnessState(harnessState{Resume: out.Resume, Synced: len(sess.messages())}.String())
+	}
 	res.Usage = out.Usage
 	res.Steps = 1
 
@@ -126,4 +144,69 @@ func (e *Engine) askHarness(ctx context.Context, em emitter, r permission.Reques
 	}
 	em.emit("", resolved)
 	return decision, err
+}
+
+// harnessState 是存在 Session.HarnessState 里的内容：引擎自己的恢复凭据，加上内核记的“引擎已经看到会话的前几条消息”。
+// 后者用来发现“这个会话在别的引擎里（或被切走又切回来）聊过几轮，引擎没见过”，并把缺的部分补给它。
+type harnessState struct {
+	Resume string `json:"resume,omitempty"`
+	// Synced 是上次引擎那一轮结束时会话里的消息条数。
+	Synced int `json:"synced"`
+}
+
+func parseHarnessState(raw string) harnessState {
+	var st harnessState
+	if raw != "" && json.Unmarshal([]byte(raw), &st) != nil {
+		return harnessState{}
+	}
+	return st
+}
+
+func (st harnessState) String() string {
+	b, _ := json.Marshal(st)
+	return string(b)
+}
+
+// 补给引擎的上下文上限：只保留最近的部分，免得把引擎的上下文窗口占满。
+const catchUpMaxRunes = 20000
+
+// catchUpContext 把引擎没见过的消息渲染成一段背景说明，加在这一轮用户输入的前面。
+// 只含文字、工具调用名和被截断的工具结果——引擎不需要原始的工具参数，更不能把别家的思考块交给它。
+func catchUpContext(missing []provider.Message) string {
+	var parts []string
+	for _, m := range missing {
+		var b strings.Builder
+		for _, blk := range m.Content {
+			switch blk.Type {
+			case provider.BlockText:
+				if blk.Attachment != "" {
+					fmt.Fprintf(&b, "[附件 %s]\n", blk.Attachment)
+				} else {
+					b.WriteString(blk.Text + "\n")
+				}
+			case provider.BlockToolUse:
+				fmt.Fprintf(&b, "[调用了工具 %s]\n", blk.ToolName)
+			case provider.BlockToolResult:
+				fmt.Fprintf(&b, "[工具结果] %s\n", truncateRunes(blk.Text, 300))
+			}
+		}
+		text := strings.TrimSpace(b.String())
+		if text == "" {
+			continue
+		}
+		who := "用户"
+		if m.Role == provider.RoleAssistant {
+			who = "助手"
+		}
+		parts = append(parts, who+"：\n"+text)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	out := strings.Join(parts, "\n\n")
+	if utf8.RuneCountInString(out) > catchUpMaxRunes {
+		r := []rune(out)
+		out = "（更早的内容已省略）\n" + string(r[len(r)-catchUpMaxRunes:])
+	}
+	return "（背景：这个对话此前有一部分不是在你这里进行的，下面是你没有见过的内容，供你了解上下文。）\n\n" + out + "\n\n（以上是背景。用户现在说的是：）\n"
 }

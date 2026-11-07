@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/crazyjums/myllmapp/internal/core"
@@ -113,7 +114,7 @@ func TestHarnessTurnLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.HarnessState != "thread-1" || len(saved.Messages) != 2 || saved.Messages[1].Text() != "好的" || saved.Usage.InputTokens != 7 {
+	if saved.HarnessState != `{"resume":"thread-1","synced":2}` || len(saved.Messages) != 2 || saved.Messages[1].Text() != "好的" || saved.Usage.InputTokens != 7 {
 		t.Fatalf("保存的会话: %+v", saved)
 	}
 
@@ -219,5 +220,89 @@ func TestHarnessTextAttachmentsAreInlined(t *testing.T) {
 	}
 	if got := he.seen[0].Text; got != "总结一下\n\n[Attached file: notes.md]\n```\n# 标题\n```" {
 		t.Fatalf("文本: %q", got)
+	}
+}
+
+// 在引擎之间切换时，引擎没见过的对话要作为背景补给它（评审指出：只发最新一句会让引擎在缺上下文的情况下继续）。
+func TestHarnessCatchUpOnEngineSwitch(t *testing.T) {
+	he := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		return ext.Result{Reason: event.TurnCompleted, Resume: "thread-1"}
+	}}
+	eng, _, mem, _ := newHarnessEngine(t, he, nil)
+	ctx := context.Background()
+
+	// 一个已经有对话的会话（之前在别的引擎里聊的），第一次交给 Codex 这类引擎。
+	old := core.NewSession("sess_old", "ext", "default")
+	old.Messages = []provider.Message{
+		provider.UserText("先帮我读一下 main.go"),
+		{Role: provider.RoleAssistant, Content: []provider.Block{
+			{Type: provider.BlockThinking, Text: "机密的思考内容"},
+			{Type: provider.BlockText, Text: "好的，我来读"},
+			{Type: provider.BlockToolUse, ToolCallID: "c1", ToolName: "read_file", ToolInput: []byte(`{"path":"main.go"}`)},
+		}},
+		{Role: provider.RoleUser, Content: []provider.Block{{Type: provider.BlockToolResult, ToolCallID: "c1", Text: "package main"}}},
+	}
+	if err := mem.SaveSession(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.LoadSession(ctx, "sess_old"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Send(ctx, "接着改一下"); err != nil {
+		t.Fatal(err)
+	}
+	got := he.seen[0].Text
+	for _, want := range []string{"先帮我读一下 main.go", "好的，我来读", "[调用了工具 read_file]", "[工具结果] package main", "接着改一下"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("背景里缺少 %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "机密的思考内容") {
+		t.Error("别家的思考内容不能交给引擎")
+	}
+	if !strings.HasSuffix(got, "接着改一下") {
+		t.Errorf("用户这一轮的话应该在最后: %q", got)
+	}
+
+	// 引擎已经看到了这些：下一轮不再补。
+	if _, err := eng.Send(ctx, "再来一轮"); err != nil {
+		t.Fatal(err)
+	}
+	if got := he.seen[1].Text; got != "再来一轮" {
+		t.Fatalf("已同步的会话不该再补背景: %q", got)
+	}
+
+	// 之后会话被别的引擎续写了两条消息（状态里记着引擎只见过前 N 条）：只补这两条。
+	st := eng.Status()
+	cur, err := mem.LoadSession(ctx, st.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur.Messages = append(cur.Messages, provider.UserText("中间在别处问的问题"), provider.Message{Role: provider.RoleAssistant, Content: []provider.Block{{Type: provider.BlockText, Text: "中间在别处的回答"}}})
+	if err := mem.SaveSession(ctx, cur); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.LoadSession(ctx, "sess_old"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.Send(ctx, "回到这里"); err != nil {
+		t.Fatal(err)
+	}
+	got = he.seen[2].Text
+	if !strings.Contains(got, "中间在别处的回答") || strings.Contains(got, "先帮我读一下 main.go") {
+		t.Fatalf("只应补没见过的部分:\n%s", got)
+	}
+}
+
+func TestHarnessNewSessionHasNoCatchUp(t *testing.T) {
+	he := &stubEngine{run: func(ctx context.Context, req ext.Request) ext.Result {
+		return ext.Result{Reason: event.TurnCompleted, Resume: "t"}
+	}}
+	eng, _, _, _ := newHarnessEngine(t, he, nil)
+	if _, err := eng.Send(context.Background(), "第一句"); err != nil {
+		t.Fatal(err)
+	}
+	if got := he.seen[0].Text; got != "第一句" {
+		t.Fatalf("全新的会话不该有背景: %q", got)
 	}
 }
