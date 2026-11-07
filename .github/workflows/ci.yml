@@ -41,71 +41,82 @@ jobs:
           npx tsc --noEmit -p .
           npx vitest run
 
-  # 只有 master 上的全部平台测试成功后，才考虑自动发布。
-  release_candidate:
+  # 合并到 master、全平台测试通过后自动发布：版本号加 0.0.1（CHANGELOG 最上面手写了更大且没打 tag 的版本就用它），
+  # 把 [Unreleased] 写成这个版本的小节并提交回 master，再独立触发 release.yml（固定构建这个提交）。
+  # 不想发布的合并：在 PR 标题里写 [skip release]（GitHub 的合并提交信息会带上 PR 标题）。
+  auto_release:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
+    permissions:
+      contents: write # 把写好的 CHANGELOG 提交回 master
+      actions: write # 触发 release.yml
+    # 同一时间只处理一次发布；排队的那次会因为 master 已经变了而跳过，它的内容会算进下一次。
+    concurrency:
+      group: auto-release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - name: 从最新 CHANGELOG 小节决定待发布 Tag
-        id: version
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: 决定版本号并写入 CHANGELOG
+        id: bump
         shell: bash
         run: |
           set -euo pipefail
-          # 旧提交的 CI 即使较晚结束，也不能发布已经过时的代码。
+          # 旧提交的 CI 即使较晚结束，也不能发布已经过时的代码；它的改动会算进最新那次合并的发布里。
           current="$(git ls-remote origin refs/heads/master | cut -f1)"
           if [ "$current" != "$GITHUB_SHA" ]; then
             echo "master 已更新，跳过旧提交的发布"
             exit 0
           fi
-          version="$(sed -nE 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/p' CHANGELOG.md | head -n 1)"
-          if [ -z "$version" ]; then
-            echo "CHANGELOG.md 没有可发布的版本小节"
+          # 不用管道：grep -q 提前退出时 git 会收到 SIGPIPE，在 pipefail 下整个条件反而变成“不匹配”。
+          if grep -qiF '[skip release]' <<<"$(git log -1 --format=%B)"; then
+            echo "提交信息带 [skip release]，本次不发布"
             exit 0
           fi
-          tag="v$version"
-          # 已有 Tag 即视为已处理，不因其他不相关 PR 重复发布。
-          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-            echo "$tag 已存在，跳过发布"
+          git fetch --tags --quiet
+          git tag -l 'v*' > "$RUNNER_TEMP/tags.txt"
+          prev="$(git tag -l 'v*' | grep -v -- - | sort -V | tail -n 1 || true)"
+          git log --first-parent --format='%s%x1f%b%x1e' ${prev:+"$prev"..}HEAD > "$RUNNER_TEMP/log.txt"
+          tag="$(go run ./cmd/mkmanifest bump -changelog CHANGELOG.md -tags-file "$RUNNER_TEMP/tags.txt" -log-file "$RUNNER_TEMP/log.txt")"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag 已存在，跳过重复发布"
             exit 0
           fi
-          echo "准备发布 $tag（经全平台测试的提交 $GITHUB_SHA）"
+          sha="$GITHUB_SHA"
+          if ! git diff --quiet -- CHANGELOG.md; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add CHANGELOG.md
+            git commit -q -m "chore(release): $tag [skip release]"
+            # 用 GITHUB_TOKEN 推送的提交不会再触发 CI，不会循环。不强推：master 在这期间变了就放弃，交给下一次。
+            if ! git push origin HEAD:master; then
+              if [ "$(git ls-remote origin refs/heads/master | cut -f1)" != "$GITHUB_SHA" ]; then
+                echo "master 在写更新日志期间又有了新提交，本次不发布，交给下一次合并"
+                exit 0
+              fi
+              echo "::error::无法把更新日志推送到 master（可能开启了分支保护，需要允许 github-actions 推送）"
+              exit 1
+            fi
+            sha="$(git rev-parse HEAD)"
+          fi
+          echo "准备发布 $tag（提交 $sha）"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-  # 经 master 全平台测试及版本检查后，独立触发已有 release.yml。
-  # 发布运行将单独出现在 Actions → release，而非嵌入 ci 的 jobs。
-  auto_release:
-    needs: release_candidate
-    if: needs.release_candidate.outputs.tag != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-    concurrency:
-      group: auto-release-dispatch-${{ needs.release_candidate.outputs.tag }}
-      cancel-in-progress: false
-    steps:
-      - name: 检查目标提交、Tag 和同版本发布运行
-        id: guard
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: 独立触发 release 工作流
+        if: steps.bump.outputs.tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release_candidate.outputs.tag }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          SHA: ${{ steps.bump.outputs.sha }}
         run: |
           set -euo pipefail
-          current="$(gh api "repos/$GITHUB_REPOSITORY/branches/master" --jq '.commit.sha')"
-          if [ "$current" != "$GITHUB_SHA" ]; then
-            echo "master 已更新，跳过旧提交的发布"
-            exit 0
-          fi
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --silent 2>/dev/null; then
-            echo "$TAG 已存在，跳过重复发布"
-            exit 0
-          fi
-          # 防止 CI 重跑时，同一版本的 Release 已在构建但尚未创建 Tag。
+          # 防止 CI 重跑时，同一版本的发布已在构建但尚未创建 Tag。
           if gh run list --workflow release.yml --event workflow_dispatch \
             --json displayTitle,status --limit 100 \
             | jq -e --arg title "release $TAG" \
@@ -113,12 +124,5 @@ jobs:
             echo "$TAG 已有正在执行或排队的发布，跳过重复触发"
             exit 0
           fi
-          echo "dispatch=true" >> "$GITHUB_OUTPUT"
-      - name: 独立触发 release 工作流
-        if: steps.guard.outputs.dispatch == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release_candidate.outputs.tag }}
-        run: |
-          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref master -f tag="$TAG"
-          echo "已请求独立发布：$TAG；请到 Actions → release 查看运行记录"
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref master -f tag="$TAG" -f sha="$SHA"
+          echo "已请求发布：$TAG（提交 $SHA）；请到 Actions → release 查看运行记录"
