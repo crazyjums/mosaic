@@ -374,7 +374,7 @@ func apply(out *core.HookOutcome, in *core.HookInput, h Hook, res execResult, ru
 	}
 	var o hookOutput
 	if err := json.Unmarshal([]byte(text), &o); err != nil {
-		run.Outcome, run.Message = "error", "输出看起来是 JSON 但解析失败："+err.Error()
+		fail("error", "输出看起来是 JSON 但解析失败："+err.Error()) // 设了 BlockOnFailure 的 PreToolUse 照样阻止
 		return
 	}
 	var notes []string
