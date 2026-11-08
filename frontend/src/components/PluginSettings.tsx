@@ -247,6 +247,7 @@ export default function PluginSettings() {
           ))}
         </div>
         <div className="flex-1" />
+        {!!plugins?.some((p) => p.hooks?.length) && <HooksSwitch />}
         <input className="input w-52 text-sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("搜索插件…")} aria-label={t("搜索插件…")} />
         <div className="relative">
           <button className="btn-primary px-3 text-sm" onClick={() => setMenuOpen((v) => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>
@@ -496,6 +497,8 @@ function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRem
       {!p.error && p.enabled && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
       {!p.error && p.enabled && p.actions.length > 0 && <ActionsBlock plugin={p} />}
+
+      {!p.error && !!p.hooks?.length && <HooksBlock plugin={p} onChange={onChange} />}
 
       {!!p.ignored?.length && (
         <Block title={t("不会生效的部分")}>
@@ -1040,5 +1043,64 @@ function PluginTrialBlock({ plugin, toolCount }: { plugin: PluginInfo; toolCount
         ))}
       </div>
     </Block>
+  );
+}
+
+// HooksBlock 逐条列出插件的钩子（原样命令），每条一个开关。没打开的钩子不会运行。
+function HooksBlock({ plugin, onChange }: { plugin: PluginInfo; onChange: (p: PluginInfo) => void }) {
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const toggle = async (id: string, on: boolean) => {
+    setBusy(id);
+    setError("");
+    try {
+      onChange(await backend().setPluginHookApproved(plugin.id, id, on));
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <Block title={t("钩子")}>
+      <div className="space-y-2 text-xs">
+        <div className="text-muted">{t("打开的钩子会在对应的时机自动运行这条命令；钩子只能让检查更严，不会跳过确认。插件更新后命令变了的钩子需要重新打开。")}</div>
+        {error && <div className="text-danger">{error}</div>}
+        {plugin.hooks!.map((h) => (
+          <label key={h.id} className="flex cursor-pointer items-start gap-2 rounded-ctl border border-line p-2">
+            <input type="checkbox" className="mt-0.5" checked={h.approved} disabled={busy === h.id} onChange={() => void toggle(h.id, !h.approved)} />
+            <span className="min-w-0 flex-1">
+              <span className="font-medium">{h.event}</span>
+              {h.matcher && <span className="text-muted"> · {t("匹配")} {h.matcher}</span>}
+              <span className={h.approved ? "text-ok" : "text-muted"}> · {h.approved ? t("已打开") : t("未打开")}</span>
+              <code className="mt-1 block break-all font-mono text-[11px]">{h.command}</code>
+            </span>
+          </label>
+        ))}
+      </div>
+    </Block>
+  );
+}
+
+// HooksSwitch 是“运行插件钩子”的总开关：关掉之后所有插件的钩子都不运行（逐条的批准保留）。
+function HooksSwitch() {
+  const [on, setOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    void backend().hooksEnabled().then(setOn).catch(() => setOn(null));
+  }, []);
+  if (on === null) return null;
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted" title={t("关掉后所有插件的钩子都不运行；各条钩子的批准会保留")}>
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={() => {
+          const next = !on;
+          setOn(next);
+          void backend().setHooksEnabled(next).catch(() => setOn(!next));
+        }}
+      />
+      {t("运行插件钩子")}
+    </label>
   );
 }
