@@ -74,6 +74,8 @@ type Manifest struct {
 	// Agents 是插件带来的子 agent 文件（相对插件目录的路径，Claude Code 格式）。只由导入器填写；
 	// 启用时交给装配层解析并登记（见 HostOptions.Agents）。
 	Agents []string `json:"-"`
+	// Hooks 是插件声明的钩子（只由导入器填写）。每条都要用户单独批准才会运行（见 hooks.go）。
+	HookDecls []HookDecl `json:"-"`
 }
 
 // SkillRef 指向一个技能文件夹（里面有 SKILL.md）。

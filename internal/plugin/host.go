@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -36,6 +37,22 @@ type AgentsApplier interface {
 	DescribePluginAgents(pluginID, dir string, rels []string) []AgentView
 }
 
+// HooksApplier 接收插件里用户批准过的钩子：插件启用时给出批准过的那些，停用、卸载或一条都没批准时 hooks 为空。
+// 执行在装配层（internal/hooks），这个包不依赖它。
+type HooksApplier interface {
+	ApplyPluginHooks(pluginID, name, dir, dataDir string, hooks []HookDecl)
+	SetHooksDisabled(off bool)
+}
+
+// HookView 是一条钩子的概要（安装确认和详情里逐条列出原样命令）。
+type HookView struct {
+	HookDecl
+	Approved bool `json:"approved"`
+}
+
+// HookApprovalPrefix 加在 Install 的 approved 列表里，表示批准的是钩子（后面跟钩子 ID），其余项是 MCP 服务名。
+const HookApprovalPrefix = "hook:"
+
 // AgentView 是插件带来的一个子 agent 的概要。
 type AgentView struct {
 	Name        string   `json:"name"`
@@ -53,6 +70,8 @@ type HostOptions struct {
 	MCP     MCPApplier
 	// Agents 接收插件带来的子 agent（可为 nil）。
 	Agents AgentsApplier
+	// Hooks 接收插件里批准过的钩子（可为 nil）。
+	Hooks HooksApplier
 	// AppVersion 用于检查 min_app_version；"dev" 或空表示不检查。
 	AppVersion string
 	// Catalog 是随应用发布的目录（结构见 catalog 包：registry.json 和 bundled/<目录>）；为 nil 时市场里只有远程列表。
@@ -87,6 +106,8 @@ type Host struct {
 type stateFile struct {
 	Version int                     `json:"version"`
 	Plugins map[string]*pluginState `json:"plugins"`
+	// HooksDisabled 是“停用所有钩子”的总开关。
+	HooksDisabled bool `json:"hooks_disabled,omitempty"`
 }
 
 // pluginState 是一个插件持久化的状态。
@@ -96,9 +117,11 @@ type pluginState struct {
 	// Secrets 记录哪些 secret 配置项在钥匙串里有值（界面据此显示“已设置”，不需要去读钥匙串）。
 	Secrets []string `json:"secrets,omitempty"`
 	// ReadApproved 是用户在安装确认时同意按作者声明的风险等级运行的 MCP 服务名；没在里面的一律按 exec。
-	ReadApproved []string  `json:"read_approved,omitempty"`
-	Source       string    `json:"source,omitempty"`
-	InstalledAt  time.Time `json:"installed_at"`
+	ReadApproved []string `json:"read_approved,omitempty"`
+	// HooksApproved 是用户批准运行的钩子指纹（见 hooks.go）。钩子变了指纹就变，需要重新批准。
+	HooksApproved []string  `json:"hooks_approved,omitempty"`
+	Source        string    `json:"source,omitempty"`
+	InstalledAt   time.Time `json:"installed_at"`
 }
 
 type loaded struct {
@@ -233,6 +256,7 @@ type Info struct {
 	Skills    []string      `json:"skills"`
 	Commands  []CommandView `json:"commands"`
 	Agents    []AgentView   `json:"agents"`
+	Hooks     []HookView    `json:"hooks"`
 	Servers   []ServerView  `json:"servers"`
 	Config    []ConfigView  `json:"config"`
 	HasStatus bool          `json:"has_status"`
@@ -320,7 +344,7 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 	info := Info{
 		ID: m.ID, Name: m.Name, Version: m.Version, Description: m.Description,
 		Error: errText, Warning: warn,
-		Skills: []string{}, Commands: []CommandView{}, Agents: []AgentView{}, Servers: []ServerView{}, Config: []ConfigView{},
+		Skills: []string{}, Commands: []CommandView{}, Agents: []AgentView{}, Hooks: []HookView{}, Servers: []ServerView{}, Config: []ConfigView{},
 		Actions: []ActionView{}, Requires: []Requirement{}, Network: append([]string{}, m.Network...),
 		HasStatus: m.Status != nil,
 		Format:    m.Format, Ignored: append([]string(nil), m.Ignored...),
@@ -337,6 +361,9 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 	}
 	for _, c := range m.Commands {
 		info.Commands = append(info.Commands, CommandView{Name: c.Name, Description: c.Description})
+	}
+	for _, d := range m.HookDecls {
+		info.Hooks = append(info.Hooks, HookView{HookDecl: d, Approved: st != nil && contains(st.HooksApproved, d.ID)})
 	}
 	if len(m.Agents) > 0 {
 		if h.opts.Agents != nil {
@@ -512,10 +539,23 @@ func (h *Host) Install(token string, approved []string) (Info, error) {
 	for _, s := range sp.m.MCP {
 		declared[sp.m.ServerName(s)] = true
 	}
+	hookIDs := map[string]bool{}
+	for _, d := range sp.m.HookDecls {
+		hookIDs[d.ID] = true
+	}
+	var servers, hooksOK []string
 	for _, a := range approved {
+		if hid, ok := strings.CutPrefix(a, HookApprovalPrefix); ok {
+			if !hookIDs[hid] {
+				return Info{}, fmt.Errorf("%q 不是这个插件声明的钩子", hid)
+			}
+			hooksOK = append(hooksOK, hid)
+			continue
+		}
 		if !declared[a] {
 			return Info{}, fmt.Errorf("%q 不是这个插件声明的 MCP 服务", a)
 		}
+		servers = append(servers, a)
 	}
 
 	h.mu.Lock()
@@ -547,7 +587,9 @@ func (h *Host) Install(token string, approved []string) (Info, error) {
 		h.state.Plugins[id] = st
 	}
 	st.Enabled, st.Source, st.InstalledAt = true, sp.source, time.Now()
-	st.ReadApproved = append([]string(nil), approved...)
+	st.ReadApproved = servers
+	// 钩子的批准以这次确认为准：没勾的（包括更新后变了的）都不运行。
+	st.HooksApproved = hooksOK
 	if err := h.saveStateLocked(); err != nil {
 		return Info{}, err
 	}
@@ -579,6 +621,54 @@ func (h *Host) SetEnabled(id string, on bool) (Info, error) {
 	}
 	h.applyLocked()
 	return h.infoLocked(id), nil
+}
+
+// SetHookApproved 批准或撤销插件里的一条钩子（详情页的开关）。
+func (h *Host) SetHookApproved(id, hookID string, on bool) (Info, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	l, ok := h.plugins[id]
+	if !ok {
+		return Info{}, fmt.Errorf("没有安装插件 %q", id)
+	}
+	found := false
+	for _, d := range l.m.HookDecls {
+		found = found || d.ID == hookID
+	}
+	if !found {
+		return Info{}, fmt.Errorf("插件 %q 没有这条钩子（可能已经更新过，请刷新）", id)
+	}
+	st := h.stateLocked(id)
+	st.HooksApproved = slices.DeleteFunc(st.HooksApproved, func(x string) bool { return x == hookID })
+	if on {
+		st.HooksApproved = append(st.HooksApproved, hookID)
+	}
+	if err := h.saveStateLocked(); err != nil {
+		return Info{}, err
+	}
+	h.applyLocked()
+	return h.infoLocked(id), nil
+}
+
+// HooksDisabled 报告“停用所有钩子”的总开关。
+func (h *Host) HooksDisabled() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.state.HooksDisabled
+}
+
+// SetHooksDisabled 设置“停用所有钩子”的总开关（保存，立即生效）。
+func (h *Host) SetHooksDisabled(off bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.state.HooksDisabled = off
+	if err := h.saveStateLocked(); err != nil {
+		return err
+	}
+	if h.opts.Hooks != nil {
+		h.opts.Hooks.SetHooksDisabled(off)
+	}
+	return nil
 }
 
 func (h *Host) stateLocked(id string) *pluginState {
@@ -770,6 +860,26 @@ func (h *Host) applyLocked() {
 			} else {
 				h.opts.Agents.ApplyPluginAgents(id, "", nil)
 			}
+		}
+	}
+	// 钩子：启用的插件交出批准过、且现在仍在清单里的钩子；其余清空。
+	if h.opts.Hooks != nil {
+		h.opts.Hooks.SetHooksDisabled(h.state.HooksDisabled)
+		for id := range ids {
+			var approved []HookDecl
+			l, st := h.plugins[id], h.state.Plugins[id]
+			if active[id] && l != nil && st != nil {
+				for _, d := range l.m.HookDecls {
+					if contains(st.HooksApproved, d.ID) {
+						approved = append(approved, d)
+					}
+				}
+			}
+			name, dir := id, ""
+			if l != nil {
+				name, dir = l.m.Name, l.dir
+			}
+			h.opts.Hooks.ApplyPluginHooks(id, name, dir, h.dataDir(id), approved)
 		}
 	}
 	if h.opts.MCP == nil {
