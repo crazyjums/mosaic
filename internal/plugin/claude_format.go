@@ -24,8 +24,8 @@ import (
 //   - 变量：${CLAUDE_PLUGIN_ROOT}、${CLAUDE_PLUGIN_DATA}、${CLAUDE_PROJECT_DIR}、${user_config.键}
 //
 // 这里只做“把它翻译成 Mosaic 自己的 Manifest”：纯读文件，不执行任何东西。Mosaic 不支持的组件
-// （hooks、agents、LSP……）不会生效，也**不会被悄悄忽略**：列进 Manifest.Ignored，安装确认和详情里如实告诉用户。
-// hooks 会执行任意命令，忽略它是安全的方向；绝不静默授予。
+// （LSP、输出风格……）不会生效，也**不会被悄悄忽略**：列进 Manifest.Ignored，安装确认和详情里如实告诉用户。
+// hooks 会执行任意命令：导入后每一条都要用户单独批准才会运行（见 hooks.go），绝不静默授予。
 
 const claudeDir = ".claude-plugin"
 
@@ -153,10 +153,11 @@ func importClaudePlugin(dir, hint string) (*Manifest, error) {
 	imp.commands(cm)
 	imp.mcp(cm)
 	imp.agents(cm)
+	imp.hooks(cm)
 	imp.ignoredComponents(cm)
 
-	if len(m.Skills) == 0 && len(m.Commands) == 0 && len(m.MCP) == 0 && len(m.Agents) == 0 {
-		msg := "这个插件里没有 Mosaic 能用的内容（技能、命令、MCP 服务、子 agent）"
+	if len(m.Skills) == 0 && len(m.Commands) == 0 && len(m.MCP) == 0 && len(m.Agents) == 0 && len(m.HookDecls) == 0 {
+		msg := "这个插件里没有 Mosaic 能用的内容（技能、命令、MCP 服务、子 agent、钩子）"
 		if len(m.Ignored) > 0 {
 			msg += "；它只有这些不受支持的组件：" + strings.Join(m.Ignored, "、")
 		}
@@ -672,9 +673,6 @@ func (c *claudeImport) agents(cm claudeManifest) {
 // ---- 不支持的组件：列出来，不悄悄忽略 ----
 
 func (c *claudeImport) ignoredComponents(cm claudeManifest) {
-	if isDir(filepath.Join(c.dir, "hooks")) || fileExists(filepath.Join(c.dir, "hooks.json")) || len(strings.TrimSpace(string(cm.Hooks))) > 4 {
-		c.ignore("钩子（hooks）：会在工具调用前后执行命令，Mosaic 不执行它们（也不会绕过权限确认）")
-	}
 	if fileExists(filepath.Join(c.dir, ".lsp.json")) || len(strings.TrimSpace(string(cm.LSPServers))) > 4 {
 		c.ignore("语言服务器（LSP）")
 	}

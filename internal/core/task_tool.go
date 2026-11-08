@@ -89,6 +89,7 @@ func (t *taskTool) Execute(ctx context.Context, call tool.Call) tool.Result {
 	child := parent
 	child.ID = event.NewID("agent")
 	child.ParentID = parent.ID
+	child.AgentType = def.Name
 	// 子 agent 看不到这段对话，但项目约定（AGENTS.md 等）和技能清单是所有 agent 共享的：不给它，
 	// 它可能做出和项目约定冲突的改动。所以它自己的提示词后面接上工作区、项目约定和技能清单。
 	child.System = def.System + "\n\nWorkspace (current working directory): " + parent.Workspace + ProjectContext(parent.Workspace)
@@ -119,9 +120,18 @@ func (t *taskTool) Execute(ctx context.Context, call tool.Call) tool.Result {
 	em := emitter{pub: parent.Publisher, sessionID: call.SessionID, agentID: parent.ID, parentID: parent.ParentID}
 	em.emit("", event.SubagentStart{AgentID: child.ID, ParentID: parent.ID, Name: def.Name, Task: in.Prompt, CallID: call.ID})
 
+	// SubagentStart 钩子：不能阻止，只能给子 agent 补一段带标注的上下文（接在任务说明后面）。
+	prompt := in.Prompt
+	if parent.Hooks != nil {
+		ho := runHooks(ctx, parent.Hooks, em, HookInput{Event: HookSubagentStart, Cwd: parent.Workspace, AgentID: child.ID, AgentType: def.Name, Prompt: in.Prompt}, call.ID)
+		if s := hookContextText(ho.Context); s != "" {
+			prompt += "\n\n" + s
+		}
+	}
+
 	// 子 agent 自己的上下文：会话 ID 和主对话相同（事件要送到同一个会话的界面上），但历史是空的，也不保存。
 	sess := NewSession(call.SessionID, r.sess.Snapshot().Provider, child.Model)
-	text, res := NewAgent(child).RunSubagent(ctx, sess, in.Prompt)
+	text, res := NewAgent(child).RunSubagent(ctx, sess, prompt)
 	r.sess.addUsage(res.Usage)
 
 	status := "completed"

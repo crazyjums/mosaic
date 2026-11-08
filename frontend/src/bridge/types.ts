@@ -388,6 +388,11 @@ export interface Backend {
   installPlugin(token: string, approved: string[]): Promise<PluginInfo>;
   cancelPluginPreview(token: string): Promise<void>;
   setPluginEnabled(id: string, on: boolean): Promise<PluginInfo>;
+  /** 批准或撤销插件里的一条钩子 */
+  setPluginHookApproved(id: string, hookID: string, on: boolean): Promise<PluginInfo>;
+  /** 插件钩子的总开关 */
+  hooksEnabled(): Promise<boolean>;
+  setHooksEnabled(on: boolean): Promise<void>;
   /** purge：一并清除配置、钥匙串里的密钥和插件数据 */
   uninstallPlugin(id: string, purge: boolean): Promise<void>;
   /** secret 项为空串表示不修改 */
@@ -763,6 +768,22 @@ export interface PluginServerView {
   approved: boolean;
 }
 
+export interface PluginHookView {
+  /** 指纹：事件、匹配条件、命令、时限任何一项变了都是另一条，需要重新批准 */
+  id: string;
+  event: string;
+  matcher?: string;
+  command: string;
+  timeout?: number;
+  /** onFailure: "block"：出错、超时或输出看不懂时阻止这次工具调用 */
+  block_on_failure?: boolean;
+  file?: string;
+  approved: boolean;
+}
+
+/** 安装时批准钩子：在 installPlugin 的 approved 列表里放 "hook:<钩子 id>" */
+export const HOOK_APPROVAL_PREFIX = "hook:";
+
 export interface PluginInfo {
   id: string;
   name: string;
@@ -778,6 +799,8 @@ export interface PluginInfo {
   commands: { name: string; description?: string }[];
   /** 插件带来的子 agent（Claude Code 插件的 agents/*.md）；名字是“插件:子目录:名字”，warnings 是不会生效的字段等问题 */
   agents?: { name: string; description?: string; warnings?: string[] }[];
+  /** 插件声明的钩子（Claude Code 格式）：每条都要单独批准才会运行；approved 是这一条现在是否批准 */
+  hooks?: PluginHookView[];
   servers: PluginServerView[];
   config: PluginConfigView[];
   has_status: boolean;

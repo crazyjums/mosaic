@@ -337,6 +337,27 @@ func TestShellFormExpandsVars(t *testing.T) {
 	}
 }
 
+func TestSubagentEvents(t *testing.T) {
+	dir := t.TempDir()
+	dump := filepath.Join(dir, "in.json")
+	r := newRunner()
+	r.ReplaceSource("plugin:t", []Hook{helperHook(core.HookSubagentStop, "reviewer", "dump:"+dump), helperHook(core.HookSubagentStart, "explorer", "block:x")})
+	// 插件子 agent 的名字带前缀，精确匹配也认去掉前缀后的名字
+	o := r.Run(context.Background(), core.HookInput{Event: core.HookSubagentStop, AgentID: "agent_1", AgentType: "deploy:reviewer", LastAssistantMessage: "好了", StopHookActive: true})
+	if len(o.Runs) != 1 {
+		t.Fatalf("%+v", o)
+	}
+	var m map[string]any
+	b, _ := os.ReadFile(dump)
+	_ = json.Unmarshal(b, &m)
+	if m["agent_type"] != "deploy:reviewer" || m["agent_id"] != "agent_1" || m["last_assistant_message"] != "好了" || m["stop_hook_active"] != true {
+		t.Fatalf("%v", m)
+	}
+	if o := r.Run(context.Background(), core.HookInput{Event: core.HookSubagentStart, AgentType: "reviewer"}); len(o.Runs) != 0 {
+		t.Fatal("matcher 不匹配的子 agent 不跑")
+	}
+}
+
 func TestShellFormDoesNotInjectPaths(t *testing.T) {
 	if _, err := lookPath("sh"); err != nil {
 		t.Skip("没有 sh")

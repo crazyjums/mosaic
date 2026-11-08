@@ -48,6 +48,8 @@ type AgentConfig struct {
 	Disabled map[string]bool
 	// Hooks 运行钩子（见 hooks.go）；为 nil 表示没有钩子。
 	Hooks Hooks
+	// AgentType 是子 agent 的定义名（主 agent 为空），交给 SubagentStop 钩子。
+	AgentType string
 }
 
 // Agent 执行 agent 循环。它是无状态的（状态都在 Session 里），可以重复使用。
@@ -260,12 +262,16 @@ func (a *Agent) loop(ctx context.Context, sess *Session, em emitter, res *TurnRe
 			if stop == provider.StopMaxTokens {
 				em.emit("", event.Error{Code: "max_tokens", Message: "模型输出达到 max_tokens 上限被截断。", Fatal: false})
 			}
-			// Stop 钩子（只对主 agent；子 agent 的在 H2 里用 SubagentStop）：block 表示“还没做完”，原因交给模型接着做。
-			if a.cfg.Hooks != nil && a.cfg.ParentID == "" && ctx.Err() == nil {
-				ho := a.runHooks(ctx, em, HookInput{Event: HookStop, LastAssistantMessage: lastAssistantText([]provider.Message{msg}), StopHookActive: stopContinues > 0}, "")
+			// Stop 钩子（主 agent）/ SubagentStop 钩子（子 agent）：block 表示“还没做完”，原因交给模型接着做。
+			if a.cfg.Hooks != nil && ctx.Err() == nil {
+				ev := HookStop
+				if a.cfg.ParentID != "" {
+					ev = HookSubagentStop
+				}
+				ho := a.runHooks(ctx, em, HookInput{Event: ev, LastAssistantMessage: lastAssistantText([]provider.Message{msg}), StopHookActive: stopContinues > 0}, "")
 				if ho.Block && !ho.StopTurn && stopContinues < maxStopContinues && strings.TrimSpace(ho.Reason) != "" {
 					stopContinues++
-					sess.appendMessage(provider.Message{Role: provider.RoleUser, Content: []provider.Block{{Type: provider.BlockText, Text: hookContextText([]string{"Stop 钩子认为还没做完：" + ho.Reason})}}})
+					sess.appendMessage(provider.Message{Role: provider.RoleUser, Content: []provider.Block{{Type: provider.BlockText, Text: hookContextText([]string{string(ev) + " 钩子认为还没做完：" + ho.Reason})}}})
 					continue
 				}
 			}

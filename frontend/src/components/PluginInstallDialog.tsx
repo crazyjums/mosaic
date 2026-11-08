@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { PluginPreview } from "../bridge";
+import { HOOK_APPROVAL_PREFIX } from "../bridge/types";
 import { t } from "../i18n";
 
 // 安装确认：把这个插件要做的事逐项摆出来，用户确认后才真正安装。
@@ -77,6 +78,24 @@ export default function PluginInstallDialog({ preview, busy, error, onConfirm, o
                 </span>
               ))}
             </div>
+          </Section>
+
+          <Section title={t("钩子（会在你的电脑上执行命令）")} empty="" show={(p.hooks?.length ?? 0) > 0}>
+            <div className="mb-2 text-xs text-warn">
+              {t("钩子会在工具调用前后、你发消息时、一轮结束时自动运行下面的命令。每一条都要单独勾选才会运行，不勾选的装上了也不会运行；以后可以在插件详情里打开或关闭。钩子只能让检查更严：它说“允许”也不会跳过确认。")}
+            </div>
+            {p.hooks!.map((h) => (
+              <label key={h.id} className="mb-2 flex cursor-pointer items-start gap-2 rounded-ctl border border-line p-2.5 text-xs">
+                <input type="checkbox" className="mt-0.5" checked={approved.includes(HOOK_APPROVAL_PREFIX + h.id)} onChange={() => toggle(HOOK_APPROVAL_PREFIX + h.id)} />
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{h.event}</span>
+                  {h.matcher && <span className="text-muted"> · {t("匹配")} {h.matcher}</span>}
+                  {!!h.timeout && <span className="text-muted"> · {t("{n} 秒", { n: String(h.timeout) })}</span>}
+                  {h.block_on_failure && <span className="text-muted"> · {t("出错时阻止")}</span>}
+                  <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded-sm bg-code px-2 py-1.5 font-mono text-[11px]">{h.command}</pre>
+                </span>
+              </label>
+            ))}
           </Section>
 
           <Section title={t("带来的子 agent")} empty="" show={(p.agents?.length ?? 0) > 0}>

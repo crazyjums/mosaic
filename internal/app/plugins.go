@@ -116,6 +116,27 @@ func (a *App) SetPluginEnabled(id string, on bool) (plugin.Info, error) {
 	return a.plugins.SetEnabled(id, on)
 }
 
+// SetPluginHookApproved 批准或撤销插件里的一条钩子（详情页逐条的开关）。
+func (a *App) SetPluginHookApproved(id, hookID string, on bool) (plugin.Info, error) {
+	if a.plugins == nil {
+		return plugin.Info{}, errNoPlugins
+	}
+	return a.plugins.SetHookApproved(id, hookID, on)
+}
+
+// HooksEnabled 报告插件钩子的总开关（没有插件系统时视为关闭）。
+func (a *App) HooksEnabled() bool {
+	return a.plugins != nil && !a.plugins.HooksDisabled()
+}
+
+// SetHooksEnabled 打开或关闭所有插件钩子（保存，立即生效）。
+func (a *App) SetHooksEnabled(on bool) error {
+	if a.plugins == nil {
+		return errNoPlugins
+	}
+	return a.plugins.SetHooksDisabled(!on)
+}
+
 // UninstallPlugin 卸载插件；purge 为 true 时一并清除配置、密钥和插件数据。
 func (a *App) UninstallPlugin(id string, purge bool) error {
 	if a.plugins == nil {

@@ -41,6 +41,7 @@ const catalog = (): Omit<PluginCatalogEntry, "installed" | "installed_version">[
 
 export function createDemoPlugins() {
   let installed: PluginInfo[] = [];
+  let hooksOn = true;
   const staged = new Map<string, PluginPreview>();
   const markets = new Map<string, string>();
   let n = 0;
@@ -211,6 +212,15 @@ export function createDemoPlugins() {
       staged.delete(token);
     },
     setPluginEnabled: async (id: string, on: boolean): Promise<PluginInfo> => warn(replace({ ...find(id), enabled: on })),
+    setPluginHookApproved: async (id: string, hookID: string, on: boolean): Promise<PluginInfo> => {
+      const p = find(id);
+      if (!p.hooks?.some((h) => h.id === hookID)) throw new Error("插件没有这条钩子");
+      return warn(replace({ ...p, hooks: p.hooks.map((h) => (h.id === hookID ? { ...h, approved: on } : h)) }));
+    },
+    hooksEnabled: async (): Promise<boolean> => hooksOn,
+    setHooksEnabled: async (on: boolean): Promise<void> => {
+      hooksOn = on;
+    },
     uninstallPlugin: async (id: string): Promise<void> => {
       find(id);
       installed = installed.filter((x) => x.id !== id);

@@ -28,6 +28,9 @@ const (
 	HookPostToolUse      HookEvent = "PostToolUse"
 	HookUserPromptSubmit HookEvent = "UserPromptSubmit"
 	HookStop             HookEvent = "Stop"
+	// 子 agent 开始 / 做完。Start 不能阻止，只能补充上下文；Stop 的 block 表示“还没做完”，让它接着做。
+	HookSubagentStart HookEvent = "SubagentStart"
+	HookSubagentStop  HookEvent = "SubagentStop"
 )
 
 // HookInput 是交给钩子的上下文（internal/hooks 把它转成 Claude Code 格式的 JSON 写进标准输入）。
@@ -36,6 +39,8 @@ type HookInput struct {
 	SessionID string
 	Cwd       string
 	AgentID   string
+	// AgentType 是子 agent 的名字（SubagentStart / SubagentStop 用它匹配 matcher）。
+	AgentType string
 
 	ToolName  string
 	ToolInput json.RawMessage
@@ -80,14 +85,22 @@ const maxHookContext = 2000
 
 // runHooks 运行钩子并把运行记录发成事件。callID 不为空时，事件挂在那个工具卡片上。
 func (a *Agent) runHooks(ctx context.Context, em emitter, in HookInput, callID string) HookOutcome {
-	if a.cfg.Hooks == nil {
+	in.SessionID, in.Cwd, in.AgentID = a.cfg.SessionID, a.cfg.Workspace, a.cfg.ID
+	if in.AgentType == "" {
+		in.AgentType = a.cfg.AgentType
+	}
+	return runHooks(ctx, a.cfg.Hooks, em, in, callID)
+}
+
+// runHooks 是不依赖 Agent 的版本（task 工具在派出子 agent 之前用它跑 SubagentStart）。
+func runHooks(ctx context.Context, h Hooks, em emitter, in HookInput, callID string) HookOutcome {
+	if h == nil {
 		return HookOutcome{}
 	}
-	in.SessionID, in.Cwd, in.AgentID = a.cfg.SessionID, a.cfg.Workspace, a.cfg.ID
 	if in.SessionID == "" {
 		in.SessionID = em.sessionID
 	}
-	out := a.cfg.Hooks.Run(ctx, in)
+	out := h.Run(ctx, in)
 	for _, r := range out.Runs {
 		r.Hook = string(in.Event)
 		if r.CallID == "" {

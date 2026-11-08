@@ -124,7 +124,10 @@ func TestClaudeCodePluginImport(t *testing.T) {
 
 	// 不支持的组件必须列出来，不能悄悄忽略
 	ig := strings.Join(m.Ignored, "\n")
-	for _, want := range []string{"钩子", "语言服务器", "输出风格", "后台监视器", "live", "proj", "!`"} {
+	if len(m.HookDecls) != 1 || m.HookDecls[0].Event != "PostToolUse" || m.HookDecls[0].Matcher != "Write|Edit" || !strings.Contains(m.HookDecls[0].Command, "${CLAUDE_PLUGIN_ROOT}") || m.HookDecls[0].ID == "" {
+		t.Fatalf("钩子应导入（等待批准）: %+v", m.HookDecls)
+	}
+	for _, want := range []string{"语言服务器", "输出风格", "后台监视器", "live", "proj", "!`"} {
 		if !strings.Contains(ig, want) {
 			t.Errorf("忽略清单里应有 %q:\n%s", want, ig)
 		}
@@ -234,7 +237,7 @@ func TestClaudeCodeLayoutVariants(t *testing.T) {
 	t.Run("只有不支持的组件：报错并说明有什么", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"hooks-only"}`)
-		writeFile(t, filepath.Join(dir, "hooks", "hooks.json"), `{"hooks":{}}`)
+		writeFile(t, filepath.Join(dir, "hooks", "hooks.json"), `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"x"}]}]}}`)
 		writeFile(t, filepath.Join(dir, ".lsp.json"), `{}`)
 		_, err := ParseManifest(dir, "dev")
 		if err == nil || !strings.Contains(err.Error(), "没有 Mosaic 能用的内容") || !strings.Contains(err.Error(), "钩子") || !strings.Contains(err.Error(), "语言服务器") {

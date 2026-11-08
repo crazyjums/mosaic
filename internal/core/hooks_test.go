@@ -296,13 +296,18 @@ func TestHookStop(t *testing.T) {
 			t.Fatalf("%+v", in)
 		}
 	})
-	t.Run("子 agent 不跑 Stop 钩子", func(t *testing.T) {
-		r := newHookRig(t, permission.RiskRead, permission.ModeDefault, map[HookEvent][]HookOutcome{HookStop: {{Block: true, Reason: "x"}}})
+	t.Run("子 agent 跑的是 SubagentStop（带名字），不是 Stop / UserPromptSubmit", func(t *testing.T) {
+		r := newHookRig(t, permission.RiskRead, permission.ModeDefault, map[HookEvent][]HookOutcome{HookSubagentStop: {{Block: true, Reason: "再查一下"}, {}}})
 		r.agent.cfg.ParentID = "main"
 		r.agent.cfg.ID = "agent_x"
+		r.agent.cfg.AgentType = "explorer"
 		r.agent.RunSubagent(context.Background(), r.sess, "go")
 		if len(r.hooks.inputs(HookStop)) != 0 || len(r.hooks.inputs(HookUserPromptSubmit)) != 0 {
 			t.Fatal("子 agent 不应触发 Stop / UserPromptSubmit")
+		}
+		in := r.hooks.inputs(HookSubagentStop)
+		if len(in) != 2 || in[0].AgentType != "explorer" || in[0].AgentID != "agent_x" || !in[1].StopHookActive || len(r.p.reqs) != 2 {
+			t.Fatalf("SubagentStop 的 block 让子 agent 接着做一次: %+v reqs=%d", in, len(r.p.reqs))
 		}
 	})
 }

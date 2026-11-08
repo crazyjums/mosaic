@@ -62,6 +62,9 @@ export interface GoApp {
   CancelPluginPreview(token: string): Promise<void>;
   SetPluginEnabled(id: string, on: boolean): Promise<PluginInfo>;
   UninstallPlugin(id: string, purge: boolean): Promise<void>;
+  SetPluginHookApproved(id: string, hookID: string, on: boolean): Promise<PluginInfo>;
+  HooksEnabled(): Promise<boolean>;
+  SetHooksEnabled(on: boolean): Promise<void>;
   SavePluginConfig(id: string, values: Record<string, string>): Promise<PluginInfo>;
   ClearPluginSecret(id: string, key: string): Promise<PluginInfo>;
   GetPluginStatus(id: string): Promise<PluginStatus>;
@@ -211,6 +214,9 @@ export function createBackendFrom(app: GoApp, runtime: EventRuntime, kind: "wail
     installPlugin: (token, approved) => app.InstallPlugin(token, approved),
     cancelPluginPreview: (token) => app.CancelPluginPreview(token),
     setPluginEnabled: (id, on) => app.SetPluginEnabled(id, on),
+    setPluginHookApproved: (id, hookID, on) => app.SetPluginHookApproved(id, hookID, on),
+    hooksEnabled: () => app.HooksEnabled(),
+    setHooksEnabled: (on) => app.SetHooksEnabled(on),
     uninstallPlugin: (id, purge) => app.UninstallPlugin(id, purge),
     savePluginConfig: (id, values) => app.SavePluginConfig(id, values),
     clearPluginSecret: (id, key) => app.ClearPluginSecret(id, key),
