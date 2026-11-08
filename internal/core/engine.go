@@ -738,6 +738,9 @@ func (e *Engine) openSession(ctx context.Context, id string) (*Session, error) {
 	return s, nil
 }
 
+// Tool 按名字取一个已注册的工具（包括 MCP 工具）。插件详情里的“试调用”用它。
+func (e *Engine) Tool(name string) (tool.Tool, bool) { return e.cfg.Tools.Get(name) }
+
 func (e *Engine) riskOf(name string) permission.Risk {
 	if t, ok := e.cfg.Tools.Get(name); ok {
 		return t.Spec().Risk

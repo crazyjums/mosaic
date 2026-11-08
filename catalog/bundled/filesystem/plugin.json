@@ -1,0 +1,25 @@
+{
+  "id": "filesystem",
+  "name": "文件系统（官方 MCP）",
+  "version": "0.1.0",
+  "description": "MCP 官方的文件系统服务器：让模型读写你指定的那个目录里的文件，不依赖任何账号。需要本机有 npx（Node.js）。",
+  "min_app_version": "1.3.2",
+  "protocol": 1,
+  "mcp": [
+    {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem@2.2.0", "${config.root}"]
+    }
+  ],
+  "config": [
+    {
+      "key": "root",
+      "label": "允许访问的目录",
+      "type": "path",
+      "required": true,
+      "help": "模型只能读写这个目录里的文件。选一个专门放资料的目录，不要选整个用户目录。"
+    }
+  ],
+  "requires": { "commands": ["npx"] },
+  "network": ["registry.npmjs.org"]
+}
