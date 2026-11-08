@@ -514,6 +514,18 @@ function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRem
         <div className="space-y-1 text-sm">
           <Row label={t("技能")}>{p.skills.length ? p.skills.join("、") : "—"}</Row>
           <Row label={t("斜杠命令")}>{p.commands.length ? p.commands.map((c) => "/" + c.name).join("  ") : "—"}</Row>
+          {!!p.agents?.length && (
+            <Row label={t("子 agent")}>
+              {p.agents.map((a, i) => (
+                <div key={a.name + i} title={a.description}>
+                  <span className="font-mono">{a.name}</span>
+                  {a.warnings?.map((w) => (
+                    <div key={w} className="text-xs text-warn">{w}</div>
+                  ))}
+                </div>
+              ))}
+            </Row>
+          )}
           <Row label={t("外部工具")}>
             {p.servers.length ? (
               <span className="space-y-0.5">
