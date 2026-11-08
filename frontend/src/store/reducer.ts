@@ -183,6 +183,8 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
         streaming: true,
         startedAt: s.running ? Date.parse(ev.ts) : undefined,
       };
+      // 子 agent 可能用别的模型：会话的模型只跟着主 agent 走，否则模型选择器会显示成子 agent 的。
+      if (ev.agent_id !== "main") return { ...s, timeline: [...s.timeline, item] };
       return { ...s, provider: ev.data.provider, model: ev.data.model, timeline: [...s.timeline, item] };
     }
 

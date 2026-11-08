@@ -16,7 +16,11 @@ import (
 const TaskToolName = "task"
 
 // 子 agent 默认的最大步数：派出去的活应该是一件具体的小事，不是另一整轮对话。
-const defaultSubagentSteps = 20
+// 定义里写了更大的 maxTurns 也最多 maxSubagentSteps 步（并且不超过主 agent 的上限）。
+const (
+	defaultSubagentSteps = 20
+	maxSubagentSteps     = 100
+)
 
 // taskTool 把子 agent 定义包装成主 agent 可以调用的工具，见 subagent.go 开头的说明。
 type taskTool struct{ e *Engine }
@@ -85,18 +89,26 @@ func (t *taskTool) Execute(ctx context.Context, call tool.Call) tool.Result {
 	child := parent
 	child.ID = event.NewID("agent")
 	child.ParentID = parent.ID
-	child.System = def.System
+	// 子 agent 看不到这段对话，但项目约定（AGENTS.md 等）和技能清单是所有 agent 共享的：不给它，
+	// 它可能做出和项目约定冲突的改动。所以它自己的提示词后面接上工作区、项目约定和技能清单。
+	child.System = def.System + "\n\nWorkspace (current working directory): " + parent.Workspace + ProjectContext(parent.Workspace)
+	if t.e.cfg.SkillsPrompt != nil {
+		child.System += t.e.cfg.SkillsPrompt(parent.Workspace)
+	}
 	child.Compactor = NoopCompactor{} // 派出去的是一件小事：上下文从零开始，不需要压缩
 	child.MaxSteps = def.MaxSteps
-	if child.MaxSteps <= 0 || child.MaxSteps > defaultSubagentSteps*5 {
+	switch {
+	case child.MaxSteps <= 0:
 		child.MaxSteps = defaultSubagentSteps
+	case child.MaxSteps > maxSubagentSteps:
+		child.MaxSteps = maxSubagentSteps
 	}
 	if parent.MaxSteps > 0 && child.MaxSteps > parent.MaxSteps {
 		child.MaxSteps = parent.MaxSteps
 	}
 	// 模型：只有当前厂商配置档里确实有这个模型时才换，否则沿用主对话的模型。
-	if def.Model != "" && slices.Contains(r.profile.Models, def.Model) {
-		child.Model = def.Model
+	if m := resolveModel(def.Model, r.profile.Models); m != "" {
+		child.Model = m
 	}
 	reg, err := subagentTools(parent.Tools, def)
 	if err != nil {
@@ -174,4 +186,25 @@ func subagentTools(all *tool.Registry, def SubagentDefinition) (*tool.Registry, 
 		return nil, fmt.Errorf("子 agent %s 的工具白名单一个都对不上现有的工具（%s），为安全起见不运行", def.Name, strings.Join(names, ", "))
 	}
 	return reg, nil
+}
+
+// resolveModel 在厂商配置档的模型里找子 agent 定义要的模型：先找完全相同的 ID；
+// 再把 Claude Code 的别名（sonnet / opus / haiku）对应到名字里含这个词的模型（取列表里第一个）。找不到返回空串。
+func resolveModel(want string, models []string) string {
+	want = strings.TrimSpace(want)
+	if want == "" || want == "inherit" {
+		return ""
+	}
+	if slices.Contains(models, want) {
+		return want
+	}
+	switch strings.ToLower(want) {
+	case "sonnet", "opus", "haiku":
+		for _, m := range models {
+			if strings.Contains(strings.ToLower(m), strings.ToLower(want)) {
+				return m
+			}
+		}
+	}
+	return ""
 }
