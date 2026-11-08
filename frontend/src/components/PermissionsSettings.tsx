@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { backend, type PermissionRule, type ToolInfo } from "../bridge";
+import { backend, type PermissionRule, type SubagentsView, type ToolInfo } from "../bridge";
 import { t } from "../i18n";
 
 // 设置 → 权限与工具。
@@ -22,6 +22,7 @@ export default function PermissionsSettings() {
     <div className="flex-1 space-y-8 overflow-y-auto px-6 py-5">
       <RulesEditor />
       <ToolToggles />
+      <SubagentList />
     </div>
   );
 }
@@ -184,6 +185,61 @@ function ToolToggles() {
           </li>
         ))}
       </ul>
+    </Section>
+  );
+}
+
+// 子 agent：主对话可以用 task 工具把一件具体的活派给它们。权限和主对话完全相同。
+function SubagentList() {
+  const [view, setView] = useState<SubagentsView | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    backend().listSubagents().then(setView).catch((e) => setError(String(e instanceof Error ? e.message : e)));
+  }, []);
+  const reload = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      setView(await backend().reloadSubagents());
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section title={t("子 agent")} hint={t("主对话可以用 task 工具把一件具体的活派给子 agent：它在独立的上下文里干活，只把结论交回来。权限和主对话完全相同。定义文件用 Claude Code 的格式（Markdown，开头写 name、description、tools），放进下面的目录后点“重新加载”。")}>
+      <div className="mb-2 flex items-center gap-2 text-xs text-muted">
+        <code className="min-w-0 flex-1 truncate">{view?.dir ?? ""}</code>
+        <button className="btn px-2 py-0.5 text-xs" onClick={() => void reload()} disabled={busy}>
+          {busy ? t("加载中…") : t("重新加载")}
+        </button>
+      </div>
+      {error && <div className="mb-2 text-xs text-danger">{error}</div>}
+      {view?.problems.map((p) => (
+        <div key={p} className="mb-1 text-xs text-warn">{p}</div>
+      ))}
+      {view && view.agents.length === 0 && <div className="text-xs text-muted">{t("还没有子 agent。")}</div>}
+      <div className="space-y-2">
+        {view?.agents.map((a) => (
+          <div key={a.name} className="rounded-ctl border border-line p-2.5 text-xs">
+            <div className="flex items-center gap-2">
+              <code className="font-semibold">{a.name}</code>
+              <span className="text-muted">{a.source === "user" ? t("用户目录") : a.source.replace(/^plugin:/, t("插件") + " ")}</span>
+            </div>
+            <div className="mt-0.5 text-muted">{a.description}</div>
+            <div className="mt-1 text-muted">
+              {t("工具")}：{a.tools.length ? a.tools.join("、") : t("和主对话相同（task 除外）")}
+              {a.model ? ` · ${t("模型")}：${a.model}` : ""}
+              {a.max_steps ? ` · ${t("最多 {n} 步", { n: String(a.max_steps) })}` : ""}
+            </div>
+            {a.warnings?.map((w) => (
+              <div key={w} className="mt-1 text-warn">{w}</div>
+            ))}
+          </div>
+        ))}
+      </div>
     </Section>
   );
 }

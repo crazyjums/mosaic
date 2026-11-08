@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import { OPENABLE_EXT } from "../store/artifacts";
 import { FileLink } from "./FileLink";
 import { IMAGE_EXT, svgDataURL, WorkspaceImage, ZoomableImage } from "./MediaView";
+import SubagentRun from "./SubagentRun";
 
 // label 是中文原文，渲染时翻译。
 const STATUS: Record<ToolStatus, { label: string; className: string }> = {
@@ -51,6 +52,7 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
           {!!tool.durationMs && <span className="text-muted">· {tool.durationMs}ms</span>}
         </span>
       </button>
+      {tool.name === "task" && <SubagentRun callId={tool.callId} />}
       <ImagePreview tool={tool} />
       <FileRow tool={tool} />
       {/* 失败的调用不用展开就能看到原因（只取第一行，避免撑开版面） */}

@@ -7,18 +7,18 @@ import (
 	"sync"
 )
 
-// 本文件是"子 agent"能力的扩展点：定义与注册已实现，调度（SubagentRunner）只有接口。
+// 子 agent：主 agent 把一件会产生大量中间输出的活（查资料、跑测试、审代码）派出去，自己只拿到结论。
 //
-// 设想中的工作方式（详见 docs/roadmap.md 和 docs/extending.md）：
-//  1. 用户/插件通过 SubagentRegistry.Register 注册子 agent 定义（名称、用途、系统提示词、可用工具）；
-//  2. 内核把所有定义包装成一个名为 "task" 的工具暴露给主 agent，参数是 {agent, prompt}；
-//  3. 主 agent 调用该工具时，SubagentRunner 用一份新的 AgentConfig（新 ID、ParentID=调用者、
-//     受限的工具注册表）创建一个 Agent，在独立的 Session 里运行；
-//  4. 子 agent 的所有事件照常发到同一个总线，信封里的 agent_id/parent_id 让前端把它们挂到树上；
-//     开始和结束时额外发 subagent_start / subagent_end；
-//  5. 子 agent 的最终文本作为 tool_result 返回给主 agent。
+// 工作方式（设计见 docs/design/hooks-and-subagents.md）：
+//  1. 定义来自用户目录（~/.myllmapp/agents/*.md）和插件，按来源登记在 SubagentRegistry；
+//  2. 有定义时，主 agent 多一个 task 工具（参数 {agent, prompt}，描述里列出所有子 agent）；
+//  3. 调用时用主 agent 这一轮的配置复制一份 AgentConfig：新 agent ID、ParentID=主 agent、子 agent 的系统提示词、
+//     受限的工具表（没有 task 本身：第一版不允许嵌套），在**独立的上下文**里跑（看不到主对话历史）；
+//  4. 事件照常发到总线，信封里的 agent_id/parent_id 让界面把它们挂到 task 卡片下面；开始、结束各发
+//     subagent_start / subagent_end；
+//  5. 子 agent 最后一条回复的文字作为 task 的结果交回主 agent；用量计入这个会话。
 //
-// 因为 Agent 本身是无状态的、所有依赖都通过 AgentConfig 注入，第 3 步不需要修改 Agent。
+// 权限和主对话完全相同：同一个 Policy、同一个 Broker、同一个确认弹窗。子 agent 不能有比主对话更宽的权限。
 
 // SubagentDefinition 描述一种子 agent。
 type SubagentDefinition struct {
@@ -27,9 +27,15 @@ type SubagentDefinition struct {
 	System      string
 	// Tools 是允许子 agent 使用的工具名；为空表示继承主 agent 的全部工具。
 	Tools []string
-	// Model 为空表示与主 agent 相同。
+	// DisallowedTools 先于 Tools 生效：在里面的一律去掉。
+	DisallowedTools []string
+	// Model 为空表示与主 agent 相同；只有当前厂商配置档里有这个模型时才换。
 	Model    string
 	MaxSteps int
+	// Source 是定义的来源："user"（用户目录）或 "plugin:<id>"。同一来源的定义一起替换。
+	Source string
+	// Warnings 是加载时发现的问题（不认识的工具名等），界面上显示。
+	Warnings []string
 }
 
 // SubagentRegistry 保存子 agent 定义。
@@ -40,6 +46,30 @@ type SubagentRegistry struct {
 
 func NewSubagentRegistry() *SubagentRegistry {
 	return &SubagentRegistry{defs: map[string]SubagentDefinition{}}
+}
+
+// ReplaceSource 用 defs 替换来源为 source 的全部定义（用户目录重新扫描、插件启停时用）。
+// 名字已被别的来源占用的定义不登记，返回它们的名字。
+func (r *SubagentRegistry) ReplaceSource(source string, defs []SubagentDefinition) (skipped []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for name, d := range r.defs {
+		if d.Source == source {
+			delete(r.defs, name)
+		}
+	}
+	for _, d := range defs {
+		d.Source = source
+		if d.Name == "" {
+			continue
+		}
+		if cur, dup := r.defs[d.Name]; dup && cur.Source != source {
+			skipped = append(skipped, d.Name)
+			continue
+		}
+		r.defs[d.Name] = d
+	}
+	return skipped
 }
 
 func (r *SubagentRegistry) Register(d SubagentDefinition) error {

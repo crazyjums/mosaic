@@ -476,6 +476,10 @@ export interface Backend {
   getContextBreakdown(): Promise<ContextBreakdown>;
   // ---- 设置：权限与工具 ----
   listTools(): Promise<ToolInfo[]>;
+  /** 已加载的子 agent（用户目录的、插件带来的）以及加载时的问题 */
+  listSubagents(): Promise<SubagentsView>;
+  /** 重新扫描用户的子 agent 目录（目录不存在时创建） */
+  reloadSubagents(): Promise<SubagentsView>;
   setDisabledTools(names: string[]): Promise<void>;
   getPermissionRules(): Promise<PermissionRule[]>;
   setPermissionRules(rules: PermissionRule[]): Promise<void>;
@@ -828,6 +832,24 @@ export interface PluginTryResult {
   output: string;
   is_error: boolean;
   duration_ms: number;
+}
+
+/** 设置页上的一个子 agent */
+export interface SubagentView {
+  name: string;
+  description: string;
+  /** "user"（用户目录）或 "plugin:<id>" */
+  source: string;
+  /** 空表示继承主对话的全部工具（task 除外） */
+  tools: string[];
+  model?: string;
+  max_steps?: number;
+  warnings?: string[];
+}
+export interface SubagentsView {
+  dir: string;
+  agents: SubagentView[];
+  problems: string[];
 }
 
 /** 插件市场里的一项 */

@@ -78,6 +78,9 @@ export interface AgentNode {
   name: string;
   task: string;
   status: "running" | string;
+  /** 派出这个子 agent 的 task 工具调用：界面把子 agent 的过程折叠在那张工具卡片下面 */
+  callId?: string;
+  summary?: string;
 }
 
 /** 预留：后台任务。 */
@@ -180,6 +183,8 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
         streaming: true,
         startedAt: s.running ? Date.parse(ev.ts) : undefined,
       };
+      // 子 agent 可能用别的模型：会话的模型只跟着主 agent 走，否则模型选择器会显示成子 agent 的。
+      if (ev.agent_id !== "main") return { ...s, timeline: [...s.timeline, item] };
       return { ...s, provider: ev.data.provider, model: ev.data.model, timeline: [...s.timeline, item] };
     }
 
@@ -310,12 +315,12 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
     // ---- 预留能力：子 agent 与后台任务 ----
     case "subagent_start": {
       const d = ev.data;
-      return { ...s, agents: { ...s.agents, [d.agent_id]: { id: d.agent_id, parentId: d.parent_id, name: d.name, task: d.task, status: "running" } } };
+      return { ...s, agents: { ...s.agents, [d.agent_id]: { id: d.agent_id, parentId: d.parent_id, name: d.name, task: d.task, status: "running", callId: d.call_id } } };
     }
     case "subagent_end": {
       const a = s.agents[ev.data.agent_id];
       if (!a) return s;
-      return { ...s, agents: { ...s.agents, [a.id]: { ...a, status: ev.data.status } } };
+      return { ...s, agents: { ...s.agents, [a.id]: { ...a, status: ev.data.status, summary: ev.data.summary } } };
     }
     case "task_start":
       return { ...s, tasks: { ...s.tasks, [ev.data.task_id]: { id: ev.data.task_id, title: ev.data.title, status: "running", log: "" } } };

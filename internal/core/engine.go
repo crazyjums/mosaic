@@ -90,8 +90,11 @@ type Engine struct {
 
 // run 是一个会话正在进行的一轮。
 type run struct {
-	sess   *Session
-	cancel context.CancelFunc
+	// cfg / profile 是这一轮主 agent 的配置：task 工具据此为子 agent 复制一份（同一个厂商、权限、发布器）。
+	cfg     AgentConfig
+	profile provider.ProfileConfig
+	sess    *Session
+	cancel  context.CancelFunc
 	// ending 在 turn_end 事件发出之前置位：界面收到 turn_end 的那一刻，Status 就已经显示“不在运行”，
 	// 紧接着发下一条（发送队列就是这样做的）也不会撞上 ErrBusy。轮结束后的保存、清理还在进行，
 	// 下一轮会等 done 关闭再开始，所以历史的保存顺序不会乱。
@@ -170,6 +173,10 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 		cfg.Subagents = NewSubagentRegistry()
 	}
 	e := &Engine{cfg: cfg, bus: event.NewBus(), broker: permission.NewBroker(), grants: newGrantBook(), runs: map[string]*run{}, harnesses: map[string]harness.Harness{}}
+	// task 工具：有子 agent 定义时才发给模型（见 taskTool.Available）。名字已被占用（例如测试里自己注册了）就不覆盖。
+	if _, taken := cfg.Tools.Get(TaskToolName); !taken {
+		_ = cfg.Tools.Register(&taskTool{e: e})
+	}
 	for typ, h := range cfg.Harnesses {
 		e.harnesses[typ] = h
 	}
@@ -536,7 +543,7 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 	if h := e.harnessFor(pcfg.Type); h != nil {
 		res = e.runHarness(ctx, sess, h, pcfg, snap.Model, rt, in, endWatcher{Publisher: e.bus, r: r})
 	} else {
-		agent := NewAgent(AgentConfig{
+		cfg := AgentConfig{
 			ID:                    event.RootAgentID,
 			Provider:              p,
 			Model:                 snap.Model,
@@ -552,8 +559,11 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 			AllowOutsideWorkspace: func() bool { return e.permissionMode() == string(permission.ModeAuto) },
 			SessionID:             sid,
 			Disabled:              disabled,
-		})
-		res = agent.RunInput(ctx, sess, in)
+		}
+		e.mu.Lock()
+		r.cfg, r.profile = cfg, pcfg
+		e.mu.Unlock()
+		res = NewAgent(cfg).RunInput(ctx, sess, in)
 	}
 
 	// 步骤 3：持久化。即使本轮出错/取消也要保存——用户已经看到的内容不应该丢。

@@ -63,7 +63,7 @@ export interface PayloadMap {
   permission_resolved: { request_id: string; call_id: string; decision: Decision; reason?: string };
 
   // 预留能力：第一阶段后端不会产生，但前端已能接收和展示。
-  subagent_start: { agent_id: string; parent_id: string; name: string; task: string };
+  subagent_start: { agent_id: string; parent_id: string; name: string; task: string; call_id?: string };
   subagent_end: { agent_id: string; parent_id: string; status: string; summary?: string };
   task_start: { task_id: string; title: string; kind: string };
   task_log: { task_id: string; stream: string; text: string };

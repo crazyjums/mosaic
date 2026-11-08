@@ -94,3 +94,20 @@ describe("applyEvent", () => {
     expect(m.route).toEqual({ group: "主力", tried: 2, handedOn: [{ profile: "anthropic", model: "sonnet", kind: "rate_limit", message: "429" }] });
   });
 });
+
+describe("子 agent", () => {
+  const mk = (type: string, data: unknown, agent = "main", parent?: string, message_id?: string) =>
+    ({ v: 1, id: `e_${Math.random()}`, seq: 0, ts: "2026-01-01T00:00:00Z", session_id: "s", agent_id: agent, parent_id: parent, message_id, type, data }) as unknown as AgentEvent;
+
+  it("subagent_start 记下派出它的 task 调用；子 agent 的消息带自己的 agent_id；结束时记下状态和结论", () => {
+    let s = initialState("s");
+    s = applyEvent(s, mk("subagent_start", { agent_id: "a1", parent_id: "main", name: "explorer", task: "看看", call_id: "c1" }));
+    expect(s.agents.a1).toMatchObject({ name: "explorer", callId: "c1", status: "running" });
+    s = applyEvent(s, mk("message_start", { provider: "fake", model: "demo", step: 1 }, "a1", "main", "m1"));
+    const item = s.timeline.find((it) => it.kind === "assistant") as AssistantItem;
+    expect(item.agentId).toBe("a1");
+    expect(s.model).not.toBe("demo"); // 子 agent 的模型不改会话的模型
+    s = applyEvent(s, mk("subagent_end", { agent_id: "a1", parent_id: "main", status: "completed", summary: "有 a.txt" }));
+    expect(s.agents.a1).toMatchObject({ status: "completed", summary: "有 a.txt" });
+  });
+});

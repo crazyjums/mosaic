@@ -10,6 +10,7 @@ import { t } from "../i18n";
 // omitAnswer：这条消息的正文已经作为"最终回答"显示在折叠区外面（见 TurnView），这里不再重复。
 export default function AssistantMessage({ item, omitAnswer = false }: { item: AssistantItem; omitAnswer?: boolean }) {
   const tools = useChat((s) => s.tools);
+  const agentName = useChat((s) => (item.agentId !== "main" ? s.agents[item.agentId]?.name : undefined));
   const lastIndex = item.blocks.length - 1;
   const hasTool = item.blocks.some((b) => b.type === "tool");
   const onlyThinking = !hasTool && item.blocks.every((b) => b.type === "thinking");
@@ -31,7 +32,7 @@ export default function AssistantMessage({ item, omitAnswer = false }: { item: A
               [{item.route.group}]
             </span>
           )}
-          {item.agentId !== "main" && <span className="ml-2 normal-case text-accent">agent {item.agentId}</span>}
+          {item.agentId !== "main" && <span className="ml-2 normal-case text-accent">{t("子 agent")} {agentName ?? item.agentId}</span>}
         </span>
         {item.route && item.route.handedOn.length > 0 && <HandoffMark route={item.route} />}
         <div className="flex-1" />
