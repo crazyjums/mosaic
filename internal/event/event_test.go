@@ -30,6 +30,7 @@ func TestRoundTripAllTypes(t *testing.T) {
 		ContextCompacted{BeforeTokens: 100, AfterTokens: 10},
 		Error{Code: "internal", Message: "boom", Fatal: true},
 		SessionUpdated{Title: "新标题"},
+		HookRun{Hook: "PreToolUse", Source: "plugin:x", Command: "./check.sh", CallID: "c1", Outcome: "blocked", Message: "不许删", DurationMS: 12},
 		Route{Group: "主力", Profile: "b", Model: "m", Try: 2, HandedOn: []RouteAttempt{{Profile: "a", Model: "m", Kind: "rate_limit", Message: "429"}}},
 	}
 	if len(samples) != len(AllTypes()) {

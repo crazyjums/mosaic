@@ -246,6 +246,7 @@ func (PermissionRequest) EventType() Type  { return TypePermissionRequest }
 func (PermissionResolved) EventType() Type { return TypePermissionResolved }
 func (SubagentStart) EventType() Type      { return TypeSubagentStart }
 func (SubagentEnd) EventType() Type        { return TypeSubagentEnd }
+func (HookRun) EventType() Type            { return TypeHookRun }
 func (TaskStart) EventType() Type          { return TypeTaskStart }
 func (TaskLog) EventType() Type            { return TypeTaskLog }
 func (TaskEnd) EventType() Type            { return TypeTaskEnd }
@@ -267,7 +268,25 @@ func register[T Payload]() {
 	}
 }
 
+// HookRun 是一条钩子的一次运行。CallID 不为空时属于那个工具调用（界面挂在工具卡片上），否则属于这一轮。
+type HookRun struct {
+	Hook string `json:"hook"` // 钩子事件：PreToolUse / PostToolUse / UserPromptSubmit / Stop
+	// Source 是钩子的来源（"plugin:<id>"），SourceName 是给人看的名字。
+	Source     string `json:"source"`
+	SourceName string `json:"source_name,omitempty"`
+	Command    string `json:"command"`
+	CallID     string `json:"call_id,omitempty"`
+	// Outcome：ok / blocked / ask / error / timeout。
+	Outcome string `json:"outcome"`
+	// Message 是阻止的原因、出错信息或说明（例如“allow 不会跳过确认”）。
+	Message      string `json:"message,omitempty"`
+	UpdatedInput bool   `json:"updated_input,omitempty"`
+	AddedContext bool   `json:"added_context,omitempty"`
+	DurationMS   int64  `json:"duration_ms"`
+}
+
 func init() {
+	register[HookRun]()
 	register[TurnStart]()
 	register[TurnEnd]()
 	register[UserMessage]()
