@@ -61,10 +61,29 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             desktop/package-lock.json
-      - name: Desktop install, typecheck and tests
+      # Electron 的程序本体在第一次 require 时才从 GitHub Releases 下载，那里时不时 504，整个任务就红了。
+      # 所以：下载目录放进缓存（版本不变就不再下载），没命中缓存时先单独下载、失败了等一会儿重试。
+      - name: Cache Electron binary
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/electron-cache
+          key: electron-${{ runner.os }}-${{ hashFiles('desktop/package-lock.json') }}
+      - name: Desktop install
         working-directory: desktop
+        env:
+          electron_config_cache: ${{ runner.temp }}/electron-cache
+        shell: bash
         run: |
           npm ci --no-audit --no-fund
+          for i in 1 2 3 4; do
+            node node_modules/electron/install.js && break
+            if [ "$i" = 4 ]; then echo "Electron 下载连续失败 4 次"; exit 1; fi
+            echo "Electron 下载失败，$((i * 20)) 秒后重试（第 $i 次）"
+            sleep $((i * 20))
+          done
+      - name: Desktop typecheck and tests
+        working-directory: desktop
+        run: |
           npx tsc --noEmit -p .
           npm test
       - name: Smoke test in a real Electron window (Linux)
