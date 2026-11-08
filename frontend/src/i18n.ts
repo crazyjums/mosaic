@@ -190,6 +190,7 @@ export const EN: Record<string, string> = {
   "发现新版本 {v}": "New version {v} available",
   "只手动检查": "Manual only",
   "启动时和每隔几小时自动检查": "Check at startup and every few hours",
+  "子进程输出": "Process output",
   "启动时、每小时和重新打开窗口时检查": "Check at startup, hourly and when returning to the app",
   "自动检查更新失败，点击重试：{reason}": "Automatic update check failed — click to retry: {reason}",
   "自动检查更新失败：{reason}": "Automatic update check failed: {reason}",

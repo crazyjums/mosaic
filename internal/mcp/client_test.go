@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -94,6 +95,11 @@ func runFakeStdioServer() {
 	}
 	fmt.Fprintln(out, "this is a log line that should have gone to stderr")
 	out.Flush()
+	// 模拟第一次运行要下载依赖：先在 stderr 里报进度，过一会儿才开始服务。
+	if ms, _ := strconv.Atoi(os.Getenv("MCP_FAKE_SLOW_MS")); ms > 0 {
+		fmt.Fprintln(os.Stderr, "npm http fetch GET 200 https://registry.example/pkg")
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
 	in := bufio.NewScanner(os.Stdin)
 	for in.Scan() {
 		var m message
@@ -444,5 +450,94 @@ func TestPluginEnvWhitelist(t *testing.T) {
 	}
 	if !IsPluginSource("plugin:x") || IsPluginSource("") || IsPluginSource("user") {
 		t.Fatal("IsPluginSource")
+	}
+}
+
+func TestTimeoutFor(t *testing.T) {
+	cases := []struct {
+		cfg    ServerConfig
+		want   time.Duration
+		runner bool
+	}{
+		{ServerConfig{Transport: TransportStdio, Command: "python3"}, connectTimeout, false},
+		{ServerConfig{Command: "npx"}, packageRunnerTimeout, true},
+		{ServerConfig{Command: `C:\Program Files\nodejs\npx.cmd`}, packageRunnerTimeout, true},
+		{ServerConfig{Command: "/usr/local/bin/UVX"}, packageRunnerTimeout, true},
+		{ServerConfig{Command: "uvx.exe"}, packageRunnerTimeout, true},
+		{ServerConfig{Command: "node"}, connectTimeout, false},
+		{ServerConfig{Transport: TransportHTTP, Command: "npx", URL: "https://x"}, connectTimeout, false},
+	}
+	for _, c := range cases {
+		got, runner := timeoutFor(c.cfg)
+		if got != c.want || runner != c.runner {
+			t.Errorf("%q: got %v/%v, want %v/%v", c.cfg.Command, got, runner, c.want, c.runner)
+		}
+	}
+}
+
+// 启动慢的 server：握手期间就能从状态里看到子进程的输出，不是干等到成功或超时。
+func TestManagerShowsOutputWhileConnecting(t *testing.T) {
+	m := NewManager(tool.NewRegistry())
+	defer m.Close()
+	cfg := fakeStdioConfig("slow")
+	cfg.Env["MCP_FAKE_SLOW_MS"] = "1500"
+	m.Apply([]ServerConfig{cfg})
+	waitFor(t, func() bool {
+		st := m.Statuses()
+		return len(st) == 1 && st[0].State == StateConnecting && strings.Contains(st[0].Output, "registry.example")
+	})
+	if m.Statuses()[0].StartedAt.IsZero() {
+		t.Error("连接中应带开始时间")
+	}
+	waitFor(t, func() bool { return m.Statuses()[0].State == StateConnected })
+}
+
+// 超时：错误要人能看懂，包管理器启动的要带上联网提示，并保留子进程的输出。
+func TestManagerTimeoutMessage(t *testing.T) {
+	old := packageRunnerTimeout
+	packageRunnerTimeout = 600 * time.Millisecond
+	defer func() { packageRunnerTimeout = old }()
+
+	m := NewManager(tool.NewRegistry())
+	defer m.Close()
+	// 命令名是 npx，但实际运行的是会一直不握手的假服务器：用一个名为 npx 的符号链接/副本会不跨平台，
+	// 这里直接换掉连接函数，让它写点输出然后等到超时。
+	m.connect = func(ctx context.Context, cfg ServerConfig, prog *Progress) (conn, error) {
+		prog.tail.Write([]byte("npm error code SELF_SIGNED_CERT_IN_CHAIN\n"))
+		<-ctx.Done()
+		return nil, fmt.Errorf("mcp: initialize: %w", ctx.Err())
+	}
+	m.Apply([]ServerConfig{{Name: "pkg", Transport: TransportStdio, Command: "npx", Args: []string{"-y", "x"}}})
+	waitFor(t, func() bool { return m.Statuses()[0].State == StateFailed })
+	st := m.Statuses()[0]
+	for _, want := range []string{"连接超时", "首次运行需要下载依赖", "NODE_EXTRA_CA_CERTS"} {
+		if !strings.Contains(st.Error, want) {
+			t.Errorf("错误里应有 %q: %s", want, st.Error)
+		}
+	}
+	if strings.Contains(st.Error, "deadline") {
+		t.Errorf("不应把 context deadline exceeded 直接给用户: %s", st.Error)
+	}
+	if !strings.Contains(st.Output, "SELF_SIGNED_CERT_IN_CHAIN") {
+		t.Errorf("失败后应保留子进程的输出: %q", st.Output)
+	}
+
+	// 不是包管理器启动的：没有联网提示。
+	oldC := connectTimeout
+	connectTimeout = 400 * time.Millisecond
+	defer func() { connectTimeout = oldC }()
+	m.Apply([]ServerConfig{{Name: "py", Transport: TransportStdio, Command: "python3"}})
+	waitFor(t, func() bool {
+		for _, s := range m.Statuses() {
+			if s.Name == "py" && s.State == StateFailed {
+				return true
+			}
+		}
+		return false
+	})
+	for _, s := range m.Statuses() {
+		if s.Name == "py" && (strings.Contains(s.Error, "下载依赖") || !strings.Contains(s.Error, "连接超时")) {
+			t.Errorf("python 的超时提示不对: %s", s.Error)
+		}
 	}
 }

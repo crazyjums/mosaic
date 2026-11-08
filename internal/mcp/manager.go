@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sort"
@@ -25,12 +27,16 @@ const (
 
 // ServerStatus 是设置页显示的连接状态。
 type ServerStatus struct {
-	Name          string   `json:"name"`
-	State         State    `json:"state"`
-	Error         string   `json:"error,omitempty"`
-	Tools         []string `json:"tools"` // 注册进工具表的名字（带 mcp__ 前缀）
-	ServerName    string   `json:"server_name,omitempty"`
-	ServerVersion string   `json:"server_version,omitempty"`
+	Name  string   `json:"name"`
+	State State    `json:"state"`
+	Error string   `json:"error,omitempty"`
+	Tools []string `json:"tools"` // 注册进工具表的名字（带 mcp__ 前缀）
+	// StartedAt 是这次连接开始的时间（连接中时界面据此显示“已等待 N 秒”）。
+	StartedAt time.Time `json:"started_at,omitempty"`
+	// Output 是子进程 stderr 的最后几行：连接中能看到 npx 在下载还是在报错，失败后保留作为排查依据。
+	Output        string `json:"output,omitempty"`
+	ServerName    string `json:"server_name,omitempty"`
+	ServerVersion string `json:"server_version,omitempty"`
 	// Source 同 ServerConfig.Source：界面据此区分“你添加的”和“插件带来的”（后者不能在设置里直接编辑）。
 	Source string `json:"source,omitempty"`
 }
@@ -42,8 +48,28 @@ type conn interface {
 	Err() error
 }
 
-// connectTimeout 是建立连接 + 列出工具的时限。stdio 常用 npx/uvx 启动，第一次运行要下载包，给得宽一些。
-const connectTimeout = 60 * time.Second
+// connectTimeout 是建立连接 + 列出工具的时限；用包管理器启动的（npx、uvx 等）第一次运行要下载包，给得更宽。
+// 是变量而不是常量：测试里要缩短。
+var (
+	connectTimeout       = 60 * time.Second
+	packageRunnerTimeout = 120 * time.Second
+)
+
+// packageRunners 是会在第一次运行时联网下载依赖的启动命令（不含扩展名，不分大小写）。
+var packageRunners = map[string]bool{"npx": true, "bunx": true, "uvx": true, "pipx": true, "pnpx": true, "pnpm": true, "yarn": true, "deno": true}
+
+// timeoutFor 返回这个配置的连接时限，以及它是不是包管理器启动的（用于超时时给出更贴切的提示）。
+func timeoutFor(cfg ServerConfig) (time.Duration, bool) {
+	if cfg.Transport != "" && cfg.Transport != TransportStdio {
+		return connectTimeout, false
+	}
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(cfg.Command, "\\", "/")))
+	base = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(base, ".exe"), ".cmd"), ".bat")
+	if packageRunners[base] {
+		return packageRunnerTimeout, true
+	}
+	return connectTimeout, false
+}
 
 // Manager 管理所有 MCP server 的连接，并把它们的工具注册进（或移出）工具注册表。
 //
@@ -51,7 +77,7 @@ const connectTimeout = 60 * time.Second
 // 工具注册表本身是并发安全的，agent 每一步都会重新读取工具列表，所以连上之后下一步就能用到新工具。
 type Manager struct {
 	reg     *tool.Registry
-	connect func(ctx context.Context, cfg ServerConfig) (conn, error)
+	connect func(ctx context.Context, cfg ServerConfig, prog *Progress) (conn, error)
 
 	mu      sync.Mutex
 	servers map[string]*server
@@ -61,6 +87,9 @@ type Manager struct {
 }
 
 type server struct {
+	prog   *Progress
+	runner bool // 是包管理器启动的（超时提示用）
+	limit  time.Duration
 	cfg    ServerConfig
 	status ServerStatus
 	client conn
@@ -73,7 +102,9 @@ func NewManager(reg *tool.Registry) *Manager {
 		reg:     reg,
 		servers: map[string]*server{},
 		lists:   map[string][]string{},
-		connect: func(ctx context.Context, cfg ServerConfig) (conn, error) { return Connect(ctx, cfg) },
+		connect: func(ctx context.Context, cfg ServerConfig, prog *Progress) (conn, error) {
+			return ConnectWith(ctx, cfg, prog)
+		},
 	}
 }
 
@@ -164,6 +195,9 @@ func (m *Manager) Statuses() []ServerStatus {
 	for _, name := range m.order {
 		if s, ok := m.servers[name]; ok {
 			st := s.status
+			if st.State == StateConnecting {
+				st.Output = s.prog.Output() // 连接中：实时看子进程在输出什么
+			}
 			st.Tools = slices.Clone(st.Tools)
 			if st.Tools == nil {
 				st.Tools = []string{}
@@ -189,13 +223,14 @@ func (m *Manager) Close() {
 // ---- 内部（调用方持有 m.mu） ----
 
 func (m *Manager) startLocked(cfg ServerConfig) {
-	s := &server{cfg: cfg, status: ServerStatus{Name: cfg.Name, State: StateConnecting, Source: cfg.Source}}
+	s := &server{cfg: cfg, prog: NewProgress(), status: ServerStatus{Name: cfg.Name, State: StateConnecting, Source: cfg.Source, StartedAt: time.Now()}}
 	m.servers[cfg.Name] = s
 	if cfg.Disabled {
-		s.status.State = StateDisabled
+		s.status.State, s.status.StartedAt = StateDisabled, time.Time{}
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
+	s.limit, s.runner = timeoutFor(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), s.limit)
 	s.cancel = cancel
 	go m.run(ctx, s)
 }
@@ -225,13 +260,21 @@ func (m *Manager) current(s *server) bool { return m.servers[s.cfg.Name] == s }
 // run 在后台连接一个 server、注册工具，然后等待连接断开。
 func (m *Manager) run(ctx context.Context, s *server) {
 	defer s.cancel()
-	c, err := m.connect(ctx, s.cfg)
+	c, err := m.connect(ctx, s.cfg, s.prog)
 	var tools []ToolInfo
 	if err == nil {
 		tools, err = c.ListTools(ctx)
 		if err != nil {
 			c.Close()
 		}
+	}
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		// 超时：把“context deadline exceeded”换成人能看懂的话，包管理器启动的还要提示最常见的原因。
+		msg := fmt.Sprintf("连接超时（%s 内没有完成握手）", s.limit.Round(time.Second))
+		if s.runner {
+			msg += "。首次运行需要下载依赖，请检查网络、npm/PyPI 镜像或代理（公司网络要能访问包仓库，自签证书需要设置 NODE_EXTRA_CA_CERTS）"
+		}
+		err = errors.New(msg)
 	}
 
 	m.mu.Lock()
@@ -244,6 +287,7 @@ func (m *Manager) run(ctx context.Context, s *server) {
 	}
 	if err != nil {
 		s.status.State, s.status.Error = StateFailed, err.Error()
+		s.status.Output = s.prog.Output()
 		m.mu.Unlock()
 		return
 	}
