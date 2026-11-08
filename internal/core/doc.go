@@ -8,7 +8,8 @@
 //   - 工具执行（tools.go）：权限裁决 → 等待确认 → 执行 → 结果，全部在这里串起来。
 //   - Engine（engine.go）：内核的"命令接口"。CLI 和 Wails 绑定层只调用 Engine 的方法、只订阅 Engine 的事件总线。
 //   - 会话（session.go）与重放（replay.go）：会话数据结构、持久化接口、把历史消息重放成事件。
-//   - 预留扩展点（只有接口）：Compactor（上下文压缩）、子 agent 定义与调度、后台任务。
+//   - 子 agent：定义注册（SubagentRegistry）与调度（task 工具，见 subagent.go / task_tool.go）；
+//   - 预留扩展点（只有接口）：后台任务。
 //
 // # 不负责什么
 //

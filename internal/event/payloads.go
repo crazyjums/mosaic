@@ -152,6 +152,8 @@ type SubagentStart struct {
 	ParentID string `json:"parent_id"`
 	Name     string `json:"name"`
 	Task     string `json:"task"`
+	// CallID 是派出这个子 agent 的 task 工具调用：界面把子 agent 的过程折叠在那张工具卡片下面。
+	CallID string `json:"call_id,omitempty"`
 }
 
 type SubagentEnd struct {

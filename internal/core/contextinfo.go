@@ -99,6 +99,12 @@ func (e *Engine) ContextBreakdown() ContextBreakdown {
 			if disabled[s.Name] {
 				continue
 			}
+			// 和 Agent.toolSpecs 一致：暂时不可用的工具（没有子 agent 时的 task）不发给模型，也不计入。
+			if t, ok := e.cfg.Tools.Get(s.Name); ok {
+				if av, ok := t.(availability); ok && !av.Available() {
+					continue
+				}
+			}
 			toolCount++
 			def, _ := json.Marshal(map[string]any{"name": s.Name, "description": s.Description, "input_schema": s.InputSchema})
 			add("tools", EstimateTokens(string(def)), nil)

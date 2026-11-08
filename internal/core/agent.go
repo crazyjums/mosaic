@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/crazyjums/myllmapp/internal/event"
 	"github.com/crazyjums/myllmapp/internal/permission"
@@ -146,6 +147,47 @@ func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnR
 	sess.appendMessage(userMsg)
 	em.emit("", event.UserMessage{Text: in.Text, Attachments: attachmentInfos(userMsg)})
 
+	reason, err := a.loop(ctx, sess, em, &res)
+	return end(reason, err)
+}
+
+// RunSubagent 以子 agent 的身份完成一个任务：prompt 是主 agent 写的任务说明，sess 是子 agent 自己的上下文
+// （看不到主对话的历史）。返回子 agent 最后一条回复的文字。
+//
+// 和 RunInput 的区别：不发 turn_start / user_message / turn_end。那是“会话的这一轮”的边界，属于主 agent；
+// 子 agent 发了会让界面以为整轮已经结束（解锁输入框、清掉权限请求）。开始和结束由调用方发 subagent_start / subagent_end。
+func (a *Agent) RunSubagent(ctx context.Context, sess *Session, prompt string) (string, TurnResult) {
+	em := emitter{pub: a.cfg.Publisher, sessionID: sess.ID, agentID: a.cfg.ID, parentID: a.cfg.ParentID}
+	res := TurnResult{TurnID: event.NewID("turn")}
+	sess.appendMessage(provider.UserText(prompt))
+	reason, err := a.loop(ctx, sess, em, &res)
+	res.Reason, res.Err = reason, err
+	return lastAssistantText(sess.messages()), res
+}
+
+// lastAssistantText 取最后一条助手消息里的文字。
+func lastAssistantText(msgs []provider.Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role != provider.RoleAssistant {
+			continue
+		}
+		var b strings.Builder
+		for _, blk := range msgs[i].Content {
+			if blk.Type == provider.BlockText {
+				b.WriteString(blk.Text)
+			}
+		}
+		if t := strings.TrimSpace(b.String()); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+// loop 是 agent 循环本身（主 agent 和子 agent 共用）：返回这一轮为什么结束。不发 turn_* 事件。
+func (a *Agent) loop(ctx context.Context, sess *Session, em emitter, res *TurnResult) (event.TurnEndReason, error) {
+	// 子 agent 出的错只影响它自己这一步任务，结果会交回主 agent，不是整轮的致命错误。
+	fatal := a.cfg.ParentID == ""
 	// 本轮里摘要失败过就不再重试：否则每一步都多花一次必然失败的请求。
 	compactFailed := false
 	for step := 1; ; step++ {
@@ -154,9 +196,9 @@ func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnR
 			em.emit("", event.Error{
 				Code:    "max_steps",
 				Message: fmt.Sprintf("已达到最大步数 %d，agent 循环被停止。可以发送“继续”让它接着做，或在 设置 → 常规 → 最大步数 中调大（最多 500）。", a.cfg.MaxSteps),
-				Fatal:   true,
+				Fatal:   fatal,
 			})
-			return end(event.TurnMaxSteps, nil)
+			return event.TurnMaxSteps, nil
 		}
 		res.Steps = step
 
@@ -164,7 +206,7 @@ func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnR
 		msgs, err := a.prepareContext(ctx, sess, em, &compactFailed)
 		if err != nil {
 			// 只有取消会走到这里（摘要失败是非致命的，见 prepareContext）。
-			return end(event.TurnCancelled, err)
+			return event.TurnCancelled, err
 		}
 
 		// ② 调用模型。
@@ -177,10 +219,10 @@ func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnR
 				sess.appendMessage(partial)
 			}
 			if ctx.Err() != nil {
-				return end(event.TurnCancelled, ctx.Err())
+				return event.TurnCancelled, ctx.Err()
 			}
-			em.emit("", event.Error{Code: "provider_error", Message: err.Error(), Fatal: true})
-			return end(event.TurnError, err)
+			em.emit("", event.Error{Code: "provider_error", Message: err.Error(), Fatal: fatal})
+			return event.TurnError, err
 		}
 		sess.appendMessage(msg)
 
@@ -190,14 +232,14 @@ func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnR
 			if stop == provider.StopMaxTokens {
 				em.emit("", event.Error{Code: "max_tokens", Message: "模型输出达到 max_tokens 上限被截断。", Fatal: false})
 			}
-			return end(event.TurnCompleted, nil)
+			return event.TurnCompleted, nil
 		}
 
 		// ④ 执行工具。即使中途取消，runTools 也会为每个调用补上结果，保证历史合法。
 		results := a.runTools(ctx, em, calls)
 		sess.appendMessage(provider.Message{Role: provider.RoleUser, Content: results})
 		if ctx.Err() != nil {
-			return end(event.TurnCancelled, ctx.Err())
+			return event.TurnCancelled, ctx.Err()
 		}
 	}
 }
@@ -326,6 +368,12 @@ func (a *Agent) toolSpecs() []provider.ToolSpec {
 	for _, s := range specs {
 		if a.cfg.Disabled[s.Name] {
 			continue
+		}
+		// 暂时没有意义的工具（比如一个子 agent 都没有时的 task）不发给模型。
+		if t, ok := a.cfg.Tools.Get(s.Name); ok {
+			if av, ok := t.(availability); ok && !av.Available() {
+				continue
+			}
 		}
 		out = append(out, provider.ToolSpec{Name: s.Name, Description: s.Description, InputSchema: s.InputSchema})
 	}
