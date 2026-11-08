@@ -10,6 +10,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Electron](https://img.shields.io/badge/Electron-45-47848F?logo=electron&logoColor=white)](desktop/package.json)
 [![Wails](https://img.shields.io/badge/Wails-v2-red)](https://wails.io)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](frontend/package.json)
 [![Release](https://img.shields.io/github/v/release/crazyjums/mosaic?display_name=tag)](https://github.com/crazyjums/mosaic/releases/latest)
@@ -20,13 +21,13 @@
 
 ![Mosaic 桌面端会话、思考过程、执行记录、上下文和输入框](docs/images/readme-chat.png)
 
-> **截图说明**：图片由当前 React 前端的浏览器演示模式自动截取，使用离线 fake Provider 和示例数据，不涉及真实账号、API Key 或用户文件。界面结构与桌面版共用；浏览器演示本身不代表真实模型、MCP 服务或系统权限已经连接。文档功能基于 **v1.7.9（2026-11-01）** 核对；后续版本以 [最新 Release](https://github.com/crazyjums/mosaic/releases/latest) 和 [更新日志](CHANGELOG.md) 为准。
+> **截图说明**：图片由当前 React 前端的浏览器演示模式自动截取，使用离线 fake Provider 和示例数据，不涉及真实账号、API Key 或用户文件。界面结构与桌面版共用；浏览器演示本身不代表真实模型、MCP 服务或系统权限已经连接。各版本具体改了什么，以 [最新 Release](https://github.com/crazyjums/mosaic/releases/latest) 和 [更新日志](CHANGELOG.md) 为准。
 
 ## 为什么做 Mosaic
 
 Mosaic 不只是给模型提供一个聊天框，而是尝试把 **Agent 循环、模型适配、工具、上下文、权限和执行结果** 做成可以看见、理解和控制的桌面工作台。
 
-底层 Agent 内核由项目自行实现，不依赖外部 Agent SDK。Go 内核、Wails 桌面端和 CLI 共享统一的执行模型及事件协议；React 前端负责展示会话、任务过程、产物及状态。
+底层 Agent 内核由项目自行实现，内置循环不依赖外部 Agent SDK；同时也可以把一轮对话整个交给 **Codex、Claude Code、pi** 这类外部 Agent（见下）。Go 内核、桌面端（Electron 版与 Wails 版）和 CLI 共享统一的执行模型及事件协议；React 前端负责展示会话、任务过程、产物及状态。
 
 名字来自马赛克：不同模型、技能、MCP 工具和界面模块可以拼在一起，也可以逐步替换。
 
@@ -37,11 +38,13 @@ Mosaic 不只是给模型提供一个聊天框，而是尝试把 **Agent 循环�
 | **Agent 编码对话** | 流式回复、思考摘要与折叠详情、连续工具调用、权限确认、取消与最大步数保护 |
 | **多会话和队列** | 多个会话独立运行；同一会话忙碌时新消息进入队列，可调整顺序或移除 |
 | **模型与账号** | OpenAI 兼容接口、Anthropic 原生接口、ChatGPT 账号登录；模型切换、模型组故障转移、网络代理和用量统计 |
+| **外部 Agent 引擎** | 把整轮对话交给 **Codex**（本机 CLI）、**Claude Code**（官方 Agent SDK，Electron 版）或 **pi**（官方 SDK，Electron 版）；权限确认仍在 Mosaic 里弹出，会话可恢复、可在引擎之间切换 |
 | **工作区与产物** | 工作区选择、图片/文本附件、文件与图表预览（HTML、SVG、Markdown、Mermaid、Graphviz 等） |
 | **上下文** | 分组用量估算、上下文明细与占用可视化、可配置的自动压缩 |
 | **插件 / Skill / MCP** | 插件市场、文件夹/ZIP/Git 安装、斜杠命令、MCP 连接及工具注册、插件健康诊断与重连 |
 | **Git 与状态栏** | Git 分支、历史及只读 diff 窗口；可配置的状态项、模型额度、脚本输出 |
-| **界面与更新** | 深浅主题、多套内置皮肤、中英文界面、签名校验的更新检查和新版本提示 |
+| **桌面能力（Electron 版）** | 系统托盘与后台运行、通知、全局快捷键、Git 窗口和产物预览的独立窗口、关闭窗口行为可设置 |
+| **界面与更新** | 深浅主题、多套内置皮肤、中英文界面、签名校验的更新检查；更新窗口可最小化，下载完成后询问是否现在安装，有对话在跑时等跑完再装 |
 
 ### 模型与登录：两条链路不能混淆
 
@@ -50,17 +53,35 @@ Mosaic 不只是给模型提供一个聊天框，而是尝试把 **Agent 循环�
 - **Claude Code 订阅登录**：可以在模型厂商设置中检查本机官方 Claude Code CLI 的登录状态，并打开终端完成登录。**它只管理官方 CLI，不会把 Claude Pro/Max 订阅转换为 Mosaic 的 Anthropic API 额度。** 要在 Mosaic 中通过 Anthropic API 调用 Claude，仍需单独配置 API Key。
 - **成本与额度**：API 花费是根据模型价格配置计算的估算值；套餐额度由对应账号接口提供，不等同于 API 账单。
 
-### 插件系统（v1.7.9）
+### 外部 Agent 引擎：Codex、Claude Code、pi
+
+在 **设置 → 模型厂商 → 添加** 里把协议选为「Codex（本机 CLI）」「Claude Code（本机 CLI）」或「pi（本机配置）」，这个配置档选中后，整轮对话（循环、工具、它们自己的提示词和上下文管理）都交给对应的引擎完成，Mosaic 负责展示过程、弹出权限确认、保存和恢复会话。
+
+| 引擎 | 怎么接入 | 登录与模型 | 可用范围 |
+| --- | --- | --- | --- |
+| **Codex** | Go 直接驱动本机的 `codex app-server` | 终端里 `codex login`；模型填 `default` 或具体型号 | Electron 版、Wails 版 |
+| **Claude Code** | 官方 Claude Agent SDK，运行在 Electron 的后台进程里 | 用你本机装好并登录的 `claude`（或环境里的 `ANTHROPIC_API_KEY`） | 仅 Electron 版 |
+| **pi** | 官方 pi SDK（随安装包提供），运行在 Electron 的后台进程里 | 你自己的 pi 配置（`~/.pi/agent`）；模型写 `default` 或 `提供商/模型ID` | 仅 Electron 版 |
+
+- **凭证是引擎自己的**：Mosaic 不读取也不保存它们的登录信息。Claude Code 请按 Anthropic 的使用条款使用（第三方应用通常应使用 API Key 方式认证）。
+- **权限仍由你决定**：写文件、执行命令前在 Mosaic 里确认（pi 自己没有逐次确认机制，由 Mosaic 补上）。
+- **可以中途切换引擎**：引擎没见过的对话，会在下一轮把文字部分补给它。
+- **限制**：暂不支持图片附件；子 agent 里的过程不显示。Windows / macOS 上 Claude Code、pi 的真机运行还没有充分验证，遇到问题请反馈。
+
+设计与边界见 [docs/design/harness.md](docs/design/harness.md)。
+
+### 插件系统
 
 Mosaic 把插件视为 **Skill 工作流程 + 斜杠命令 + MCP 工具** 的可组合扩展：
 
 - 在 **设置 → 插件** 中浏览市场，或从文件夹、ZIP、HTTPS Git 地址安装；安装前预览并确认来源、可执行组件与风险。
-- 支持 Mosaic 自有 `plugin.json`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`，兼容旧版 `.codex-plugin/plugin.json`。**不是**完整 Codex 插件运行环境。
+- 支持 Mosaic 自有 `plugin.json`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`，兼容旧版 `.codex-plugin/plugin.json`。**不是**完整 Codex 插件运行环境；**Claude Code 格式**（`.claude-plugin/`）的插件目前还装不上，正在做（见设计文档）。
 - 已安装插件分别显示 **已就绪 / 待配置 / 连接中 / 部分可用 / 运行异常 / 已停用**；详情里可以查看真实 MCP 连接状态、已注册工具和缺少的命令，必要时单独重连。
 - 斜杠命令可以复制到会话中使用；纯 Skill 插件不需要 MCP 服务。启用插件不代表已经完成依赖安装、外部登录或工具连接。
+- 用 `npx` / `uvx` 启动的 MCP 服务第一次运行要联网下载依赖：连接过程中会显示已等待时间和子进程输出，时限放宽到 120 秒；插件子进程会收到包管理器联网所需的证书 / 镜像 / 代理类环境变量（不含任何带 token / 密钥字样的变量）。
 - **当前限制**：不支持自动运行插件的 Hooks / Subagents、自定义插件 UI 和通用 MCP 工具试用器；飞书插件属于早期集成示例，仍需要 `lark-cli` / Python 及真实环境验证。
 
-[插件开发指南](docs/plugin-development.md) · [Plugin System V2 设计](docs/design/plugin-system-v2.md)
+[插件开发指南](docs/plugin-development.md) · [插件系统重设计（v3）](docs/design/plugin-system-v3.md)
 
 ### 权限与安全
 
@@ -75,9 +96,9 @@ Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权�
 
 桌面版会在启动后和运行过程中自动检查新版本，正常情况下约 **每 15 分钟**复查一次；检测失败会提示原因，网络恢复或重新激活窗口后也会适时重试。
 
-- 发现新版本时，窗口右上角的 **检查更新** 按钮会高亮显示版本号；是否安装由用户确认，不会在后台静默替换程序。
+- 发现新版本时，窗口右上角的 **检查更新** 按钮会高亮显示版本号；是否安装由用户确认，不会在后台静默替换程序。更新窗口可以最小化；下载完成后会问你是现在安装还是以后手动安装；有对话正在运行时，会等它们跑完再安装。
 - 更新清单使用 Ed25519 验签，安装包再校验 SHA-256 与大小；更新检查和下载复用应用的全局代理设置。
-- **Windows / Linux**：支持在应用内下载安装并重启，若无写入权限会提示手动操作。
+- **Windows / Linux**：支持在应用内下载安装并重启（Electron 版：Windows 静默运行 NSIS 安装包，Linux 覆盖 AppImage），若无写入权限会提示手动操作。
 - **macOS**：目前检测到更新后跳转 Release 下载页，**不支持应用内自动替换 .app**。
 - 本地 `dev` 构建不会自动更新为正式版。
 
@@ -99,15 +120,18 @@ Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权�
 
 ## 下载安装
 
-前往 [**GitHub Releases · 最新版本**](https://github.com/crazyjums/mosaic/releases/latest) 下载对应平台的文件。当前发布的是**可执行文件/应用压缩包**，并非三个平台都有图形化安装向导。
+前往 [**GitHub Releases · 最新版本**](https://github.com/crazyjums/mosaic/releases/latest) 下载对应平台的文件。推荐 **Electron 版**（有安装向导、托盘、外部 Agent 引擎等全部功能）；单文件的 **Wails 版**仍在并行发布，不含 Claude Code / pi 引擎。
 
-| 系统 | Release 文件 | 安装或启动方式 |
+| 系统 | Electron 版（推荐） | Wails 版（单文件） |
 | --- | --- | --- |
-| **Windows x64** | `mosaic-windows-amd64.exe` | 下载后直接运行；首次启动可能遇到 Windows SmartScreen 提醒（当前未做 Windows 代码签名）。 |
-| **macOS（Intel / Apple Silicon）** | `mosaic-darwin-universal.zip` | 解压得到 `mosaic.app`，按需拖入“应用程序”；当前没有 Apple 公证，macOS 可能提示安全限制。 |
-| **Linux x64** | `mosaic-linux-amd64` | 下载后执行 `chmod +x mosaic-linux-amd64 && ./mosaic-linux-amd64`；需要 GTK3 / WebKit2GTK 图形库，构建基于 WebKit2GTK 4.1。 |
+| **Windows x64** | `Mosaic-<版本>-win-x64.exe`：安装向导，可选安装目录 | `mosaic-windows-amd64.exe`：下载后直接运行 |
+| **macOS（Intel / Apple Silicon）** | `Mosaic-<版本>-mac-universal.dmg`（或 `.zip`）：拖入“应用程序” | `mosaic-darwin-universal.zip`：解压得到 `mosaic.app` |
+| **Linux x64** | `Mosaic-<版本>-linux-x86_64.AppImage`：`chmod +x` 后运行（AppImage 需要 FUSE，如 `libfuse2`） | `mosaic-linux-amd64`：需要 GTK3 / WebKit2GTK 4.1 |
 
-> **Linux 依赖示例（Ubuntu 24.04+）**：`sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0`。Linux 服务器没有图形桌面时，建议用 CLI 而不是运行 Wails 窗口。Windows、macOS 与 Linux Release 都由 [发布工作流](.github/workflows/release.yml) 构建；客户端升级校验签名不代表 Windows/macOS 可执行文件已经做操作系统代码签名。
+- **没有代码签名 / 公证**：Windows 首次运行可能出现 SmartScreen 提醒，macOS 可能提示安全限制（右键 → 打开）。客户端升级用 Ed25519 验签并校验 SHA-256，这不等于可执行文件做了操作系统代码签名。
+- 应用图标是 Mosaic 的马赛克方块图标；安装程序、托盘、窗口都使用它。
+- **Wails 版 Linux 依赖示例（Ubuntu 24.04+）**：`sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0`。Linux 服务器没有图形桌面时，建议用 CLI。
+- Release 由 [发布工作流](.github/workflows/release.yml) 构建；资源里的 `manifest.json` / `manifest.json.sig` 是更新清单及其签名，不用下载。
 
 ## 快速开始
 
@@ -118,7 +142,7 @@ Mosaic 提供 **只读 / 默认 / 自动接受编辑 / 全部放行** 四档权�
 
 ### 从源码运行
 
-环境：**Go ≥ 1.26**、**Node.js ≥ 20.19（推荐 22）**、[Wails CLI v2.17](https://wails.io)。桌面构建还需要对应平台的本机依赖。
+环境：**Go ≥ 1.26**、**Node.js ≥ 20.19（推荐 22）**；Wails 版另需 [Wails CLI v2.17](https://wails.io) 和对应平台的本机依赖。
 
 ~~~bash
 git clone https://github.com/crazyjums/mosaic.git
@@ -134,6 +158,17 @@ npm run dev                               # 浏览器演示（fake，不连接 G
 # 返回仓库根目录后使用以下桌面命令
 cd ..
 
+# Electron 版（推荐）：Go 后端 mosaicd 作为子进程，通过 stdio JSON-RPC 与 Electron 主进程通信
+(cd frontend && npm run build)            # 前端先构建一次
+go build -o build/bin/mosaicd ./cmd/mosaicd   # 后端；开发时 Electron 在 build/bin/ 里找它（Windows 是 mosaicd.exe），或用环境变量 MOSAIC_MOSAICD 指定
+cd desktop
+npm ci
+npm start                                 # 构建并启动 Electron
+npm test                                  # 外壳的测试
+npm run pack                              # 本机打一个未压缩的安装目录到 release/
+
+# Wails 版
+cd ..
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 wails doctor
 wails dev                                 # 桌面开发
@@ -162,36 +197,53 @@ flowchart LR
         FE["React 前端<br/>frontend/"]
         CLI["终端 CLI<br/>cmd/cli"]
     end
-    APP["Wails 绑定<br/>internal/app"]
+    subgraph SH["桌面壳"]
+        EL["Electron 主进程<br/>desktop/"]
+        WL["Wails<br/>main.go"]
+    end
+    APP["绑定层<br/>internal/app"]
     subgraph K["内核 internal/core"]
         ENG["Engine<br/>命令接口"]
-        AG["Agent 循环"]
+        AG["Agent 循环（内置）"]
+        HN["Harness<br/>外部引擎"]
     end
     BUS(("事件总线<br/>internal/event"))
     P["Provider 接口"] --> OAI["openai"] & ANT["anthropic"] & CG["chatgpt<br/>(ChatGPT 账号)"] & FAKE["fake"]
     T["Tool 接口"] --> BI["文件 / 搜索 / shell / git"] & MCP["MCP 工具"]
     PERM["权限<br/>档位 + 规则 + Broker"]
     ST["SQLite<br/>internal/store"]
+    CX["Codex<br/>codex app-server"]
+    WK["Claude Code / pi<br/>utilityProcess 里的 SDK"]
 
-    FE -- "命令" --> APP --> ENG
+    FE -- "命令" --> EL -- "stdio JSON-RPC<br/>(mosaicd)" --> APP
+    FE -- "命令" --> WL --> APP
+    APP --> ENG
     CLI -- "命令" --> ENG
-    ENG --> AG
+    ENG --> AG & HN
     AG --> P & T & PERM
+    HN --> CX
+    HN -. "反向请求" .-> EL --> WK
+    HN --> PERM
     AG -- "统一事件" --> BUS
+    HN -- "统一事件" --> BUS
     BUS -- "agent:event" --> FE
     BUS --> CLI
     ENG -. "SessionStore 接口" .-> ST
 ```
 
-所有厂商的输出先变成少量中立的 **Delta**，内核再把它们翻译成带版本号的**统一事件**（`message_start`、`thinking_delta`、`tool_call`、`permission_request` …），界面只消费事件。详见 [docs/architecture.md](docs/architecture.md)。
+所有厂商的输出先变成少量中立的 **Delta**，内核再把它们翻译成带版本号的**统一事件**（`message_start`、`thinking_delta`、`tool_call`、`permission_request` …），界面只消费事件；外部引擎（Codex、Claude Code、pi）的输出也被翻译成同一套事件，所以界面、会话历史和权限弹窗不需要区分它们。Electron 版里 Go 后端是安装包里的子程序 `mosaicd`，与主进程之间走 stdio 上的 JSON-RPC。详见 [docs/architecture.md](docs/architecture.md)、[docs/design/electron-migration.md](docs/design/electron-migration.md)、[docs/design/harness.md](docs/design/harness.md)。
 
 ## 路线图
 
 已完成：多厂商与 ChatGPT 账号、权限与规则、MCP、技能、用量与故障转移、自动更新、皮肤、发送队列、多会话同时运行、图片 / 文本附件、上下文压缩、Git 窗口。
 
-已完成（续）：插件市场、Skill / 斜杠命令 / MCP、插件诊断和单独重连、Codex / Agent Plugins 基础格式导入（v1.7.9）。飞书属于尚需真实租户验证的早期集成。
+已完成（续）：插件市场、Skill / 斜杠命令 / MCP、插件诊断和单独重连、Codex / Agent Plugins 基础格式导入；**Electron 版**（托盘、通知、全局快捷键、多窗口、CSP 与预览沙箱、应用内更新）；**外部 Agent 引擎**：Codex、Claude Code、pi。飞书属于尚需真实租户验证的早期集成。
 
-计划中：子 Agent / Hooks 的安全执行、插件完整 OAuth 与工具级试用、更多附件类型（PDF 等）、更完整的飞书集成。完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
+进行中：插件系统重设计（见 [docs/design/plugin-system-v3.md](docs/design/plugin-system-v3.md)）——让 Claude Code / Codex 布局的插件能装能用、marketplace 仓库识别、装好后的试用入口。
+
+计划中：Electron 版成为默认并移除 Wails 版（等真机试用反馈）、安装包代码签名与公证、子 Agent / Hooks 的安全执行、插件完整 OAuth、更多附件类型（PDF 等）。
+
+完整清单与每个预留能力的接口状态见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 参与贡献
 
@@ -214,15 +266,16 @@ go vet ./... && go test ./...
 ```
 .
 ├── main.go                     Wails 桌面端入口（带构建标签，普通 go build 会跳过）
+├── desktop/                    Electron 版的外壳（TypeScript）：窗口、托盘、通知、更新、外部引擎的 worker（Claude Code / pi）；业务全在 Go 后端
 ├── wails.json                  Wails 项目配置
 ├── config.example.toml         配置示例（复制为 config.toml 使用）
 ├── Makefile                    常用命令
 ├── scripts/build.sh            一键打包：按当前系统编译桌面应用，可交叉编译 Windows 版
 ├── assets_*.go                 前端资源嵌入（只在 production 构建中嵌入）
-├── build/                      Wails 平台资源（图标、Windows manifest）；build/bin/ 是产物，不提交
+├── build/                      平台资源（Mosaic 图标 appicon.png / icon.ico，Wails 和 Electron 共用、Windows manifest）；build/bin/ 是产物，不提交
 ├── catalog/                    随应用发布的插件目录：registry.json（插件列表）和 bundled/（内置示例插件，也是插件作者的参考）
 ├── cmd/cli/                    终端入口：同一个内核，彩色渲染或 JSONL 输出事件
-├── cmd/mosaicd/                Electron 版的 Go 后端（迁移中）：在 stdio 上用 JSON-RPC 服务绑定层的全部方法
+├── cmd/mosaicd/                Electron 版的 Go 后端：在 stdio 上用 JSON-RPC 服务绑定层的全部方法，并转发外部引擎的反向请求
 ├── internal/
 │   ├── event/                  统一事件协议（带版本号）与进程内事件总线 —— 整个项目的核心契约
 │   ├── provider/               厂商中立的消息模型、Provider 接口、适配器注册表
@@ -232,6 +285,8 @@ go vet ./... && go test ./...
 │   │   ├── chatgpt/            Responses API 适配器（ChatGPT 账号登录，使用套餐额度）
 │   │   ├── fake/               剧本驱动的假厂商，用于测试与离线演示
 │   │   └── all/                空导入注册所有适配器
+│   ├── harness/                外部 Agent 引擎的接口；codex/ 直接驱动 codex app-server，remote/ 经 Electron 壳驱动 Claude Code / pi
+│   ├── rpc/                    stdio 上的 JSON-RPC（Electron 主进程 ⇄ mosaicd）
 │   ├── tool/                   Tool 接口与注册表
 │   │   └── builtin/            内置工具：读写编辑、搜索、文件管理、shell、git、todo
 │   ├── permission/             风险等级、权限策略、等待用户确认的会合点
@@ -245,7 +300,7 @@ go vet ./... && go test ./...
 │   ├── gitview/                Git 窗口的只读数据：提交图谱、分支、变更、diff
 │   ├── sysproc/                启动子进程的平台差异（Windows 上不弹出控制台窗口）
 │   ├── bootstrap/              组合根：把各层组装成 Engine（CLI 与桌面端共用）
-│   ├── app/                    Wails 绑定层：命令转发 + 事件转发，不含业务逻辑
+│   ├── app/                    绑定层（Wails / Electron 共用）：命令转发 + 事件转发，不含业务逻辑
 │   ├── mcp/                    MCP 客户端（stdio / Streamable HTTP）与连接管理器
 │   ├── skill/                  技能（Skills）：发现、解析、注入提示词
 │   ├── update/                 自动更新：检查、下载、验签、替换
@@ -254,7 +309,7 @@ go vet ./... && go test ./...
 ├── frontend/
 │   └── src/
 │       ├── protocol/           事件协议的 TypeScript 镜像
-│       ├── bridge/             后端命令接口：Wails 实现 + 浏览器演示实现（回放录制事件）
+│       ├── bridge/             后端命令接口：Wails 实现、Electron 实现 + 浏览器演示实现（回放录制事件）
 │       ├── store/              reducer（事件 → 状态的纯函数）+ Zustand store
 │       ├── components/         消息流、思考卡片、工具卡片、权限弹窗、状态栏、会话栏、设置页
 │       └── i18n.ts             中英文界面（以中文原文为 key 的查表）
@@ -342,6 +397,10 @@ go vet ./... && go test ./...
 | [docs/design/settings.md](docs/design/settings.md) | 界面设置：两层配置的合并规则、热更新、密钥与钥匙串、规则 / MCP / 状态栏脚本的持久化 |
 | [docs/plugin-development.md](docs/plugin-development.md) | 插件开发指南：5 分钟上手、清单字段、技能 / 命令 / MCP / 配置表单、分发到市场 |
 | [docs/design/plugin-system.md](docs/design/plugin-system.md) | 插件系统：plugin.json 格式、安装确认、MCP 来源管理、密钥与安全边界 |
+| [docs/design/plugin-system-v3.md](docs/design/plugin-system-v3.md) | 插件系统重设计：真实流程的复现结果，以及让现成插件能装能用的方案 |
+| [docs/design/harness.md](docs/design/harness.md) | 外部 Agent 引擎（Codex、Claude Code、pi）：接口、会话恢复、远程引擎通道、各引擎的映射与边界 |
+| [docs/design/electron-migration.md](docs/design/electron-migration.md) | Electron 版：架构、stdio 协议、分阶段计划 |
+| [docs/design/auto-update.md](docs/design/auto-update.md) | 自动更新：签名清单、下载校验、各平台安装方式 |
 | [docs/extending.md](docs/extending.md) | 如何新增厂商 / 工具 / 子 agent / 界面 |
 | [docs/design/mosaic-ui.md](docs/design/mosaic-ui.md) | Mosaic 品牌与界面设计：Logo、皮肤、状态动效 |
 | [docs/roadmap.md](docs/roadmap.md) | 后续阶段规划与每个预留能力的接口状态 |
