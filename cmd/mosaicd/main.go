@@ -22,7 +22,7 @@ import (
 const ProtocolVersion = 1
 
 // excluded 是 App 上不能让前端调用的方法（生命周期、装配用的）。
-var excluded = []string{"Startup", "Shutdown", "SetHost", "SetPlugins", "SetChangelog", "UseShellUpdater"}
+var excluded = []string{"Startup", "Shutdown", "SetHost", "SetPlugins", "SetAgentsDir", "SetChangelog", "UseShellUpdater"}
 
 func main() {
 	cfgPath := flag.String("config", "", "配置文件路径（默认查找 ./config.toml、~/.myllmapp/config.toml）")
@@ -70,6 +70,7 @@ func main() {
 func serve(ctx context.Context, built *bootstrap.Built, changelog string, in io.Reader, out io.Writer) error {
 	a := app.New(built.Engine, built.Settings, nil)
 	a.SetPlugins(built.Plugins)
+	a.SetAgentsDir(built.AgentsDir)
 	a.SetChangelog(changelog)
 	// 更新由 Electron 壳安装：本程序只是安装包里的一个子程序，不能自己替换自己。
 	// 安装包下载到用户私有的缓存目录（程序目录通常不可写）。

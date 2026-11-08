@@ -47,6 +47,7 @@ func main() {
 
 	a := app.New(built.Engine, built.Settings, nil)
 	a.SetPlugins(built.Plugins)
+	a.SetAgentsDir(built.AgentsDir)
 	a.SetChangelog(changelog)
 	// 对话框、打开链接、推事件这些需要窗口的能力交给 Wails（wails_host.go）；绑定层本身不依赖 Wails。
 	startup := func(ctx context.Context) {

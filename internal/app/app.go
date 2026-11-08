@@ -36,7 +36,9 @@ type App struct {
 	engine   *core.Engine
 	settings *settings.Manager
 	plugins  *plugin.Host
-	emit     EmitFunc
+	// agentsDir 是用户子 agent 的目录（见 subagents.go）。
+	agentsDir string
+	emit      EmitFunc
 
 	hostMu sync.Mutex
 	host   Host

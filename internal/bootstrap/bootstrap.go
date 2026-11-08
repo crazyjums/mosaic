@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"github.com/crazyjums/myllmapp/internal/agents"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -52,6 +53,8 @@ type Built struct {
 	Config    *config.Config
 	Workspace string
 	DataDir   string
+	// AgentsDir 是用户自己的子 agent 定义目录（*.md，Claude Code 的格式）。
+	AgentsDir string
 	Close     func() error
 }
 
@@ -214,6 +217,11 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		return nil, err
 	}
 
+	// 步骤 8：用户自己的子 agent（~/.myllmapp/agents/*.md）。有问题的文件只跳过它自己，设置页里能看到原因。
+	agentsDir := filepath.Join(dataDir, "agents")
+	userAgents, _ := agents.LoadDir(agentsDir, "")
+	engine.Subagents().ReplaceSource("user", userAgents)
+
 	settingsMgr.Attach(engine)
 	shellTool, _ := shell.(*builtin.Shell)
 	settingsMgr.SetRuntimeBase(settings.RuntimeBase{Defaults: defaults, WorkspaceOverride: override, Shell: shellTool, MCP: mcpMgr})
@@ -221,7 +229,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		mcpMgr.Close()
 		return closeFn()
 	}
-	return &Built{Engine: engine, Settings: settingsMgr, Plugins: plugins, Config: cfg, Workspace: workspace, DataDir: dataDir, Close: closeAll}, nil
+	return &Built{Engine: engine, Settings: settingsMgr, Plugins: plugins, Config: cfg, Workspace: workspace, DataDir: dataDir, AgentsDir: agentsDir, Close: closeAll}, nil
 }
 
 // DesktopWorkspace 返回桌面端应使用的工作区；返回空字符串表示沿用配置文件中的设置。
