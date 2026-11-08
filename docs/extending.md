@@ -226,7 +226,7 @@ engine.Subagents().ReplaceSource("my-source", []core.SubagentDefinition{{
 }})
 ```
 
-有子 agent 时，主 agent 会多一个 `task` 工具（`{agent, prompt}`）。子 agent 在独立的上下文里跑，事件带着自己的 `agent_id` 和 `parent_id = "main"`；界面把它的过程折叠在 `task` 工具卡片下面，最终回复作为 `task` 的结果交回主 agent。权限和主对话完全相同；第一版不允许子 agent 再派子 agent。
+有子 agent 时，主 agent 会多一个 `task` 工具（`{agent, prompt}`）。子 agent 在独立的上下文里跑，事件带着自己的 `agent_id` 和 `parent_id = "main"`；界面把它的过程折叠在 `task` 工具卡片下面，最终回复作为 `task` 的结果交回主 agent。权限和主对话完全相同；第一版不允许子 agent 再派子 agent。`task` 工具和子 agent 定义只在 Mosaic 内置的对话引擎里有效，Codex、Claude Code、pi 这些外部引擎不会调用它们。
 
 ## 4. 新增事件类型
 
