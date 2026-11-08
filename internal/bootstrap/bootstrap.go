@@ -203,6 +203,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		StateFile:  filepath.Join(dataDir, "plugins.json"),
 		Secrets:    secrets,
 		MCP:        mcpMgr,
+		Agents:     pluginAgents{reg: engine.Subagents()},
 		AppVersion: update.Version,
 		Catalog:    pluginCatalog.FS,
 		// 在线列表只增加“可以安装的来源”，装之前仍要用户确认；离线或失败时用内置的那一份。
