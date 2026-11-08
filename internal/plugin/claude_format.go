@@ -641,7 +641,9 @@ func (c *claudeImport) agents(cm claudeManifest) {
 			c.m.Agents = append(c.m.Agents, rel)
 		}
 	}
-	if paths, ok := rawStrings(cm.Agents); ok && len(paths) > 0 {
+	// 写了 agents 就替换默认目录，哪怕是空列表（"agents": [] 表示“不要带子 agent”）；只有没写或写 null 才扫描默认目录。
+	declared := len(strings.TrimSpace(string(cm.Agents))) > 0 && strings.TrimSpace(string(cm.Agents)) != "null"
+	if paths, ok := rawStrings(cm.Agents); ok && declared {
 		for _, p := range paths {
 			add(strings.TrimPrefix(p, "./"))
 		}
