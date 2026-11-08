@@ -194,6 +194,7 @@ export const EN: Record<string, string> = {
   "这是 Claude Code 格式的插件。下面这些 Mosaic 不支持，装上之后也不会运行：": "This is a Claude Code–format plugin. Mosaic does not support the following, so they will not run after installing:",
   "下面这些 Mosaic 不支持，装上之后也不会运行：": "Mosaic does not support the following, so they will not run after installing:",
   "这个插件的原格式里有下面这些 Mosaic 不支持的组件，它们不会运行：": "The plugin's original format contains the following components Mosaic does not support. They will not run:",
+  "子进程输出": "Process output",
   "启动时、每小时和重新打开窗口时检查": "Check at startup, hourly and when returning to the app",
   "自动检查更新失败，点击重试：{reason}": "Automatic update check failed — click to retry: {reason}",
   "自动检查更新失败：{reason}": "Automatic update check failed: {reason}",

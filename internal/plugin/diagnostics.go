@@ -25,6 +25,9 @@ type ServerHealth struct {
     State   mcp.State `json:"state"`
     Tools   []string  `json:"tools"`
     Error   string    `json:"error,omitempty"`
+    // StartedAt / Output 来自 MCP 连接：连接中据此显示“已等待 N 秒”和子进程最近的输出，失败后保留输出供排查。
+    StartedAt time.Time `json:"started_at,omitempty"`
+    Output    string    `json:"output,omitempty"`
 }
 
 type PluginDiagnostics struct {
@@ -101,6 +104,8 @@ func (h *Host) Diagnostics(id string) (PluginDiagnostics, error) {
             health.State = status.State
             health.Tools = append(health.Tools, status.Tools...)
             health.Error = status.Error
+            health.StartedAt = status.StartedAt
+            health.Output = status.Output
         }
         switch {
         case found && status.State == mcp.StateConnected && len(status.Tools) > 0:

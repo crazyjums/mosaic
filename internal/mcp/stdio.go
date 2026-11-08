@@ -34,7 +34,7 @@ type stdioTransport struct {
 	closeOnce sync.Once
 }
 
-func startStdio(cfg ServerConfig) (*stdioTransport, error) {
+func startStdio(cfg ServerConfig, prog *Progress) (*stdioTransport, error) {
 	if strings.TrimSpace(cfg.Command) == "" {
 		return nil, errors.New("mcp: stdio server has no command")
 	}
@@ -63,7 +63,7 @@ func startStdio(cfg ServerConfig) (*stdioTransport, error) {
 	t := &stdioTransport{
 		cmd:     cmd,
 		stdin:   stdin,
-		stderr:  &tailBuffer{max: 4096},
+		stderr:  newTail(prog),
 		pending: map[string]chan message{},
 		closed:  make(chan struct{}),
 	}
@@ -237,4 +237,34 @@ func (b *tailBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return string(b.buf)
+}
+
+// Progress 让调用方在握手还没完成时就能看到子进程的输出（比如 npx 在下载、npm 报证书错误）。
+// 没有它，连接要等到成功或超时才有结果，期间界面上只能是“启动中”。
+type Progress struct{ tail *tailBuffer }
+
+// NewProgress 创建一个进度记录。
+func NewProgress() *Progress { return &Progress{tail: &tailBuffer{max: 4096}} }
+
+// Output 返回子进程 stderr 的最后几行（去掉首尾空白，最多 800 个字符）。
+func (p *Progress) Output() string {
+	if p == nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(p.tail.String()), "\n")
+	if len(lines) > 8 {
+		lines = lines[len(lines)-8:]
+	}
+	out := strings.TrimSpace(strings.Join(lines, "\n"))
+	if r := []rune(out); len(r) > 800 {
+		out = "…" + string(r[len(r)-800:])
+	}
+	return out
+}
+
+func newTail(p *Progress) *tailBuffer {
+	if p != nil {
+		return p.tail
+	}
+	return &tailBuffer{max: 4096}
 }
