@@ -24,12 +24,47 @@ var baseEnvNames = []string{
 	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
 }
 
+// 工具链透传：让 npx / uvx / pip / cargo / go 这类包管理器在公司代理、自签证书、国内镜像的环境里还能联网。
+// 没有它们，插件的 npx 服务器会卡到握手超时（复现过：自签证书代理下 npm 报 SELF_SIGNED_CERT_IN_CHAIN）。
+// 按名字规则放行，但名字里带凭据字样的一律剔除（例如 npm_config__authToken）；
+// NODE_OPTIONS、PYTHONPATH、LD_PRELOAD 这类能改变程序加载什么代码的变量不放行。
+var toolchainPrefixes = []string{"npm_config_", "UV_", "PIP_", "CARGO_", "GOPROXY", "GONOSUMDB", "GONOPROXY", "GOPRIVATE", "GOFLAGS"}
+
+var toolchainExact = []string{"NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NIX_SSL_CERT_FILE"}
+
+var credentialWords = []string{"token", "auth", "password", "passwd", "secret", "key", "credential", "cookie"}
+
+// isToolchainEnv 报告这个名字是不是可以透传给插件子进程的工具链变量。
+func isToolchainEnv(name string) bool {
+	lower := strings.ToLower(name)
+	for _, w := range credentialWords {
+		if strings.Contains(lower, w) {
+			return false
+		}
+	}
+	for _, n := range toolchainExact {
+		if strings.EqualFold(name, n) {
+			return true
+		}
+	}
+	for _, p := range toolchainPrefixes {
+		if strings.HasPrefix(lower, strings.ToLower(p)) {
+			return true
+		}
+	}
+	return false
+}
+
 // BaseEnv 返回基础环境变量（"名=值"）：只包含白名单里当前进程里确实存在的那些。
 func BaseEnv() []string {
 	var out []string
 	for _, kv := range os.Environ() {
 		name, _, ok := strings.Cut(kv, "=")
 		if !ok || name == "" {
+			continue
+		}
+		if isToolchainEnv(name) {
+			out = append(out, kv)
 			continue
 		}
 		for _, allowed := range baseEnvNames {

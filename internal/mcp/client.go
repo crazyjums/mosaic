@@ -84,13 +84,18 @@ type RPCClient struct {
 
 // Connect 按配置建立连接并完成 initialize 握手。ctx 只约束握手阶段，不约束连接的生命周期。
 func Connect(ctx context.Context, cfg ServerConfig) (*RPCClient, error) {
+	return ConnectWith(ctx, cfg, nil)
+}
+
+// ConnectWith 同 Connect，另外把子进程的输出记到 prog 里（可为 nil），握手期间就能读到。
+func ConnectWith(ctx context.Context, cfg ServerConfig, prog *Progress) (*RPCClient, error) {
 	var (
 		t   transport
 		err error
 	)
 	switch cfg.Transport {
 	case "", TransportStdio:
-		t, err = startStdio(cfg)
+		t, err = startStdio(cfg, prog)
 	case TransportHTTP:
 		t, err = newHTTP(cfg)
 	default:
