@@ -49,6 +49,18 @@ func TestParseVariants(t *testing.T) {
 			t.Fatalf("%+v", d)
 		}
 	})
+	t.Run("列表项顶格写（和键对齐）也认", func(t *testing.T) {
+		d, err := Parse([]byte("---\nname: x\ndescription: d\ntools:\n- Read\n- Grep\ndisallowedTools:\n- Bash\n---\nbody"), "")
+		if err != nil || !slices.Equal(d.Tools, []string{"read_file", "search_content"}) || !slices.Equal(d.DisallowedTools, []string{"shell"}) {
+			t.Fatalf("顶格列表不能丢: %+v %v", d, err)
+		}
+	})
+	t.Run("写了 tools 却读不出任何项：不运行，不是放开全部", func(t *testing.T) {
+		d, err := Parse([]byte("---\nname: x\ndescription: d\ntools:\n---\nbody"), "")
+		if err != nil || !slices.Equal(d.Tools, []string{"__none__"}) || len(d.Warnings) == 0 {
+			t.Fatalf("%+v %v", d, err)
+		}
+	})
 	t.Run("名字取文件名", func(t *testing.T) {
 		d, err := Parse([]byte("---\ndescription: d\n---\nbody"), "from-file")
 		if err != nil || d.Name != "from-file" {

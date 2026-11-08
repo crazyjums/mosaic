@@ -114,6 +114,10 @@ func Parse(data []byte, nameHint string) (core.SubagentDefinition, error) {
 		if len(d.Tools) == 0 {
 			d.Tools = []string{"__none__"} // 写了白名单却一个都对不上：保留“有白名单”的语义，运行时会拒绝而不是放开全部工具
 		}
+	} else if _, declared := fm["tools"]; declared {
+		// 写了 tools 却没读出任何一项（写法看不懂，或者是空的）：宁可不运行，也不当成“没限制”给它全部工具。
+		d.Tools = []string{"__none__"}
+		d.Warnings = append(d.Warnings, "tools 写了但没读出任何工具（写法不支持或为空），为安全起见这个子 agent 不会运行")
 	}
 	if dis := fm.list("disallowedTools"); len(dis) > 0 {
 		var u2 []string
@@ -206,7 +210,8 @@ func parseFrontmatter(head string) frontmatter {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		if item, ok := strings.CutPrefix(trimmed, "- "); ok && listKey != "" && (line != trimmed) {
+		// YAML 允许列表项和键对齐（“- Read” 顶格写），所以不要求缩进；只要前面是一个值为空的键就算它的项。
+		if item, ok := strings.CutPrefix(trimmed, "- "); ok && listKey != "" {
 			fm[listKey] = append(fm[listKey], unquote(item))
 			continue
 		}
