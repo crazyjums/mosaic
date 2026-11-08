@@ -431,6 +431,16 @@ func TestClaudePluginAgents(t *testing.T) {
 			t.Fatalf("逃逸和非 .md 要告知: %v", m.Ignored)
 		}
 	})
+	t.Run("清单里写了空列表：不带子 agent，不扫描默认目录", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"no-agents","agents":[]}`)
+		writeFile(t, filepath.Join(dir, "agents", "reviewer.md"), "---\nname: reviewer\ndescription: d\n---\nbody")
+		writeFile(t, filepath.Join(dir, "commands", "x.md"), "do x")
+		m, err := ParseManifest(dir, "dev")
+		if err != nil || len(m.Agents) != 0 {
+			t.Fatalf("%v %v", m.Agents, err)
+		}
+	})
 	t.Run("启用时交给装配层，停用、卸载时清空", func(t *testing.T) {
 		src := t.TempDir()
 		writeDeployTools(t, src)
