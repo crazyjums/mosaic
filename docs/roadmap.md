@@ -23,8 +23,8 @@
 | 上下文压缩 | ✅ `context_compacted` | ✅ `SummaryCompactor`（估算触发、摘要、保留最近几轮）；⬜ 手动“立即压缩”、按厂商返回的 input_tokens 校准、服务端压缩 | ✅ 提示 + 可展开摘要 | 见下文“上下文压缩” |
 | MCP 接入 | — | ✅ stdio / Streamable HTTP 客户端、`mcp.Manager` | ✅ 设置 → MCP | resources / prompts、服务器推送（工具列表变化通知） |
 | 插件：状态栏脚本 | — | ✅ `plugin.CommandStatusLine` | ✅ 状态栏"脚本输出"项 | — |
-| 插件：技能 / 斜杠命令 / MCP 工具 | — | ✅ `plugin.Host` | ✅ 设置 → 插件（含市场、Git 安装） | 飞书插件、钩子、自动更新 |
-| 插件：钩子 | — | ⬜ | ⬜ | 见 design/plugin-system.md 第 4 阶段 |
+| 插件：技能 / 斜杠命令 / MCP 工具 | — | ✅ `plugin.Host` | ✅ 设置 → 插件（含市场、Git 安装） | 飞书插件、自动更新 |
+| 插件：钩子 | — | ✅ `internal/hooks` + `core/hooks.go` | ✅ 安装确认逐条批准、详情开关、总开关 | 见 design/hooks-and-subagents.md |
 
 ✅ 已有　⬜ 只有接口 / 未做
 
@@ -122,7 +122,7 @@ OAuth 认证（目前只能在请求头里填令牌）；把服务器的 `instru
 
 已实现（续）：插件一键登录（`login`）；飞书插件第一版（只读，基于 lark-cli；**未在真实租户验证**）和“私密工具”标记（每次询问，绕不过“总是允许”）。
 
-还没做：飞书插件的真实环境验证、第 4 阶段钩子（PreToolUse / PostToolUse）、子 agent、插件自动更新与固定提交、插件签名。
+还没做：飞书插件的真实环境验证、插件自动更新与固定提交、插件签名。
 
 ## 其他改进方向
 

@@ -253,7 +253,7 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 - **启停与卸载**：停用后技能、斜杠命令和 MCP 工具将被移除；不能再新发起该插件的状态脚本、动作或登录命令。卸载可以选择同时清理配置与插件数据。
 - **使用**：插件的技能会出现在技能清单里，命令在输入框键入 `/` 后可选；插件的 MCP 工具以 `mcp__<插件id>__工具名` 形式出现，照常走权限确认。
 - **飞书**：插件市场里的“飞书”用你自己的飞书账号登录，让模型读取你的文档和群消息（只读）。需要先装好飞书的命令行 `lark-cli`，然后首次使用点一次“初始化应用配置”，然后点“登录飞书”——会在浏览器里打开飞书授权页，用你的公司账号登录并同意，回到应用会自动显示“已登录”（令牌由 lark-cli 保存在系统钥匙串里，应用不接触）。它读到的内容会发给你选择的模型厂商，所以**每次读取都会弹窗确认，没有“本会话总是允许”**。这是第一版，登录流程还没有在真实飞书租户里完整验证，遇到问题请把按钮的输出反馈给我们。
-- **Claude Code 格式的插件**：目录里有 `.claude-plugin/plugin.json`，或者没有清单但有约定的目录（`skills/`、`commands/`、`.mcp.json`、根目录的 `SKILL.md`），照常用“安装文件夹 / zip / Git 地址”安装，GitHub 下载的压缩包（外面套一层目录）也能识别。Mosaic 读懂的部分：技能（`skills/<名>/SKILL.md`）、斜杠命令（`commands/*.md`，支持 `$ARGUMENTS` 和 `$1`…`$9`）、MCP 服务（`.mcp.json` 和清单里的 `mcpServers`，stdio 和 http；`${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` / `${user_config.键}` 自动换成 Mosaic 的写法）、配置项（`userConfig`，`sensitive` 的存系统钥匙串）、子 agent（`agents/` 下的 `*.md`，含子目录；清单里写了 `agents` 就只用清单列的；名字是 `插件:子目录:名字`，见 §2.12.1）。**不支持的组件不会运行，并且不会被悄悄忽略**：钩子（`hooks/`）、LSP、输出风格、监视器等会在安装确认和详情里列在“不会生效的部分”；命令里的 `` !`…` `` 内联命令也不会执行。导入的 MCP 服务一律按“每次调用都询问”，你在确认页勾选信任之后才降级。名字太长或带特殊字符时，插件 id 会转成小写字母、数字和 `-`（最长 24 个字符）。
+- **Claude Code 格式的插件**：目录里有 `.claude-plugin/plugin.json`，或者没有清单但有约定的目录（`skills/`、`commands/`、`.mcp.json`、根目录的 `SKILL.md`），照常用“安装文件夹 / zip / Git 地址”安装，GitHub 下载的压缩包（外面套一层目录）也能识别。Mosaic 读懂的部分：技能（`skills/<名>/SKILL.md`）、斜杠命令（`commands/*.md`，支持 `$ARGUMENTS` 和 `$1`…`$9`）、MCP 服务（`.mcp.json` 和清单里的 `mcpServers`，stdio 和 http；`${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` / `${user_config.键}` 自动换成 Mosaic 的写法）、配置项（`userConfig`，`sensitive` 的存系统钥匙串）、子 agent（`agents/` 下的 `*.md`，含子目录；清单里写了 `agents` 就只用清单列的；名字是 `插件:子目录:名字`，见 §2.12.1）、钩子（`hooks/hooks.json` 和清单里的 `hooks`，**每条都要单独批准**，见 §2.12.2）。**不支持的组件不会运行，并且不会被悄悄忽略**：不支持的钩子事件和类型、LSP、输出风格、监视器等会在安装确认和详情里列在“不会生效的部分”；命令里的 `` !`…` `` 内联命令也不会执行。导入的 MCP 服务一律按“每次调用都询问”，你在确认页勾选信任之后才降级。名字太长或带特殊字符时，插件 id 会转成小写字母、数字和 `-`（最长 24 个字符）。
 - **插件合集（marketplace）**：很多插件以“一个仓库里放多个插件”的形式发布，根目录有 `.claude-plugin/marketplace.json`。在“＋ 添加”里选“安装文件夹…”（选合集的文件夹）或“从 Git 地址安装…”（填合集的仓库地址），Mosaic 会识别出这是合集，列出里面的插件让你挑一个，挑中之后和其他来源一样先预览、确认再安装。列表里每个插件都写明来自哪里（仓库里的路径、GitHub 仓库、Git 地址…）；暂时不能安装的会灰显并说明原因，不是悄悄不见。支持的来源：仓库内的相对路径（包括 `metadata.pluginRoot` 下的名字）、`github`、`url`（仅 https）、`git-subdir`；**不支持** `npm`、`archive`（压缩包）和 `command`（会在本机运行命令生成插件）。条目里写了 `sha` 的，克隆下来的提交必须与它一致，否则拒绝安装。取每个插件时才会去下载它自己的仓库。
 - **Codex / Agent Plugins 基础格式导入**：支持带标准 schema 的 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`（以及旧版 `.codex-plugin/plugin.json` 的基础映射）。其中的 hooks / agents 不再导致整个插件装不上，而是同样列为“不会生效”。**暂不支持**自动执行 Hooks / Subagents 或通用插件 OAuth；不能将这种格式兼容理解为完整的 Codex 插件运行时。
 - **自己写插件**：点“新建插件模板…”生成一个最小插件，改完用“安装文件夹…”试；写法见 [plugin-development.md](plugin-development.md)。
@@ -346,6 +346,17 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 - **模型**：`model` 只有在当前厂商配置档里有同名模型时才换（`sonnet` / `opus` / `haiku` 这类别名对应到名字里含这个词的模型），否则沿用主对话的模型。`maxTurns` 是它的最大步数（默认 20，最多 100，也不超过主对话的上限），到了上限会把停下时的结论标注“可能不完整”交回来。
 - **上下文**：子 agent 看不到这段对话，但会拿到工作区路径、项目约定（`AGENTS.md` 等）和技能清单。
 - **限制**：子 agent 不能再派子 agent；多个子 agent 顺序运行；重新打开会话时只看得到 `task` 的结论，看不到子 agent 的中间过程；只在 Mosaic 内置的对话引擎里有效（Codex、Claude Code、pi 引擎有它们自己的机制）。
+
+## 2.12.2 插件钩子
+
+Claude Code 格式的插件可以带**钩子**：在固定的时机自动运行一条命令（例如每次写文件之后跑格式化、执行 shell 之前检查命令）。Mosaic 支持的时机：`PreToolUse`（工具调用前）、`PostToolUse`（工具调用后）、`UserPromptSubmit`（你发消息时）、`Stop`（一轮结束时）、`SubagentStart` / `SubagentStop`（子 agent 开始 / 做完）。只支持 `command` 类型。
+
+- **每条都要你批准**：安装确认里逐条列出事件、匹配条件和**原样命令**，每条单独勾选，**默认不勾**；不勾的装上了也不会运行。之后在插件详情的“钩子”里可以逐条打开或关闭。插件更新后，命令（或匹配条件、时限）变了的钩子需要重新打开。插件页右上角的“运行插件钩子”是总开关。
+- **只能更严，不能更松**：钩子可以阻止一次工具调用（退出码 2，或输出 `permissionDecision: "deny"`）、要求确认（`"ask"`）、在确认之前改参数（`updatedInput`，确认弹窗里看到的就是改后的参数）、拦下你的一条消息、让 agent 接着做（`Stop` 的 `decision: "block"`，一轮最多 3 次）、停止这一轮（`continue: false`）。钩子说 `allow` **不会**跳过确认。
+- **看得见**：每次运行都显示在对应的工具卡片下面（或对话里的一行），写明哪个插件、哪个事件、结论；被钩子阻止时写明原因。钩子加进对话的文字带“来自插件钩子”的标注，最多 2000 字。
+- **环境和时限**：命令在工作区目录里运行，只拿到白名单环境变量（不含你的 API Key），外加 `CLAUDE_PLUGIN_ROOT`、`CLAUDE_PLUGIN_DATA`、`CLAUDE_PROJECT_DIR`；默认 30 秒（`UserPromptSubmit` 10 秒），最多 120 秒；输出最多 10000 字。标记为私密的工具（例如读飞书文档）的输出**不会**交给任何钩子。
+- **Windows**：钩子命令用 `sh -c` 执行，需要电脑上有 `sh`（例如装了 Git for Windows）；没有时会在卡片上提示。
+- **限制**：只在 Mosaic 内置的对话引擎里有效；交给钩子的 `tool_name` 用 Claude Code 的名字（`Bash`、`Write`、`Edit`…），另有 `mosaic_tool_name`；`tool_response` 是 `{"output": …, "is_error": …}`；没有 `transcript_path`。
 
 ## 2.13 技能（Skills）
 

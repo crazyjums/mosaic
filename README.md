@@ -79,7 +79,7 @@ Mosaic 不只是给模型提供一个聊天框，而是尝试把 **Agent 循环�
 Mosaic 把插件视为 **Skill 工作流程 + 斜杠命令 + MCP 工具** 的可组合扩展：
 
 - 在 **设置 → 插件** 中浏览市场，或从文件夹、ZIP、HTTPS Git 地址安装；安装前预览并确认来源、可执行组件与风险。
-- 支持 Mosaic 自有 `plugin.json`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`，兼容旧版 `.codex-plugin/plugin.json`。**不是**完整 Codex 插件运行环境。也能安装 **Claude Code 格式**的插件（`.claude-plugin/plugin.json`，或只有 `skills/`、`commands/`、`.mcp.json`）：技能、斜杠命令（`$ARGUMENTS`、`$1`…）、MCP 服务（stdio / http）和配置项和子 agent（`agents/*.md`）可用；钩子、LSP 等不支持，会在安装确认里列为“不会生效的部分”。一个仓库里放多个插件的**插件合集**（`.claude-plugin/marketplace.json`）会列出里面的插件让你挑一个。
+- 支持 Mosaic 自有 `plugin.json`，以及 **Codex / Agent Plugins 的基础导入**：识别标准 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`，兼容旧版 `.codex-plugin/plugin.json`。**不是**完整 Codex 插件运行环境。也能安装 **Claude Code 格式**的插件（`.claude-plugin/plugin.json`，或只有 `skills/`、`commands/`、`.mcp.json`）：技能、斜杠命令（`$ARGUMENTS`、`$1`…）、MCP 服务（stdio / http）和配置项、子 agent（`agents/*.md`）和钩子（`hooks/hooks.json`，每条都要你单独批准，只能让检查更严）可用；LSP 等不支持，会在安装确认里列为“不会生效的部分”。一个仓库里放多个插件的**插件合集**（`.claude-plugin/marketplace.json`）会列出里面的插件让你挑一个。
 - 已安装插件分别显示 **已就绪 / 待配置 / 连接中 / 部分可用 / 运行异常 / 已停用**；详情里可以查看真实 MCP 连接状态、已注册工具和缺少的命令，必要时单独重连。
 - 斜杠命令可以复制到会话中使用；纯 Skill 插件不需要 MCP 服务。启用插件不代表已经完成依赖安装、外部登录或工具连接。
 - 用 `npx` / `uvx` 启动的 MCP 服务第一次运行要联网下载依赖：连接过程中会显示已等待时间和子进程输出，时限放宽到 120 秒；插件子进程会收到包管理器联网所需的证书 / 镜像 / 代理类环境变量（不含任何带 token / 密钥字样的变量）。
