@@ -206,7 +206,8 @@ mcp.RegisterServerTools(ctx, tools, "github", client, permission.RiskExec)
 ---
 name: explorer
 description: 只读地探索代码库，回答“某某功能在哪里实现”这类问题。
-tools: Read, Glob, Grep        # Claude Code 的工具名会映射成 read_file、find_files、search_content
+# Claude Code 的工具名会映射成 read_file、find_files、search_content（注释要单独一行）
+tools: Read, Glob, Grep
 maxTurns: 15
 ---
 
