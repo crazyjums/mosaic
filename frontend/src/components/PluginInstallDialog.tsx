@@ -91,6 +91,7 @@ export default function PluginInstallDialog({ preview, busy, error, onConfirm, o
                   <span className="font-medium">{h.event}</span>
                   {h.matcher && <span className="text-muted"> · {t("匹配")} {h.matcher}</span>}
                   {!!h.timeout && <span className="text-muted"> · {t("{n} 秒", { n: String(h.timeout) })}</span>}
+                  {h.block_on_failure && <span className="text-muted"> · {t("出错时阻止")}</span>}
                   <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded-sm bg-code px-2 py-1.5 font-mono text-[11px]">{h.command}</pre>
                 </span>
               </label>

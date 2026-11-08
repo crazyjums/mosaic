@@ -15,7 +15,7 @@ import (
 //
 // 钩子是会在用户电脑上执行任意命令的东西，而且站在权限系统旁边，所以：
 //   - 导入时只记下来，不会自动运行：每一条都要用户在安装确认里单独勾选（默认不勾），之后在详情里也能单独关掉；
-//   - 批准认的是钩子的“指纹”（事件 + 匹配条件 + 命令 + 时限）：插件更新后钩子变了，指纹就变了，需要重新批准；
+//   - 批准认的是钩子的“指纹”（事件 + 匹配条件 + 命令 + 时限 + 出错时是否阻止）：插件更新后钩子变了，指纹就变了，需要重新批准；
 //   - 设置里有一个“停用所有钩子”的总开关。
 // 执行和“只能更严”的规则在 internal/hooks 和 internal/core/hooks.go。
 
@@ -28,6 +28,8 @@ type HookDecl struct {
 	Command string `json:"command"`
 	// Timeout 是秒数，0 表示默认。
 	Timeout int `json:"timeout,omitempty"`
+	// BlockOnFailure 对应 onFailure: "block"：PreToolUse 上这条钩子出错、超时或输出看不懂就阻止（更严）。
+	BlockOnFailure bool `json:"block_on_failure,omitempty"`
 	// File 是声明它的文件（相对插件目录），显示用。
 	File string `json:"file,omitempty"`
 }
@@ -41,8 +43,8 @@ var supportedHookEvents = map[string]bool{
 const maxPluginHooks = 50
 
 // hookFingerprint 是钩子的指纹。命令、匹配条件、事件、时限任何一项变了都算一条新钩子。
-func hookFingerprint(event, matcher, command string, timeout int) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d", event, matcher, command, timeout)))
+func hookFingerprint(event, matcher, command string, timeout int, blockOnFailure bool) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%d\x00%t", event, matcher, command, timeout, blockOnFailure)))
 	return hex.EncodeToString(sum[:])[:16]
 }
 
@@ -122,9 +124,10 @@ func (c *claudeImport) parseHooks(file string, raw []byte) {
 		var groups []struct {
 			Matcher string `json:"matcher"`
 			Hooks   []struct {
-				Type    string  `json:"type"`
-				Command string  `json:"command"`
-				Timeout float64 `json:"timeout"`
+				Type      string  `json:"type"`
+				Command   string  `json:"command"`
+				Timeout   float64 `json:"timeout"`
+				OnFailure string  `json:"onFailure"`
 			} `json:"hooks"`
 		}
 		if err := json.Unmarshal(events[ev], &groups); err != nil {
@@ -150,13 +153,14 @@ func (c *claudeImport) parseHooks(file string, raw []byte) {
 					return
 				}
 				timeout := int(h.Timeout)
-				id := hookFingerprint(ev, g.Matcher, cmd, timeout)
+				block := strings.EqualFold(strings.TrimSpace(h.OnFailure), "block")
+				id := hookFingerprint(ev, g.Matcher, cmd, timeout, block)
 				dup := false
 				for _, x := range c.m.HookDecls {
 					dup = dup || x.ID == id
 				}
 				if !dup {
-					c.m.HookDecls = append(c.m.HookDecls, HookDecl{ID: id, Event: ev, Matcher: g.Matcher, Command: cmd, Timeout: timeout, File: file})
+					c.m.HookDecls = append(c.m.HookDecls, HookDecl{ID: id, Event: ev, Matcher: g.Matcher, Command: cmd, Timeout: timeout, BlockOnFailure: block, File: file})
 				}
 			}
 		}

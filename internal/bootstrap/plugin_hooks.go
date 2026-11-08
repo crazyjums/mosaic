@@ -17,7 +17,7 @@ func (p pluginHooks) ApplyPluginHooks(id, name, dir, dataDir string, decls []plu
 	for _, d := range decls {
 		hs = append(hs, hooks.Hook{
 			ID: d.ID, SourceName: name, Event: core.HookEvent(d.Event), Matcher: d.Matcher,
-			Command: d.Command, Timeout: time.Duration(d.Timeout) * time.Second,
+			Command: d.Command, Timeout: time.Duration(d.Timeout) * time.Second, BlockOnFailure: d.BlockOnFailure,
 			PluginRoot: dir, PluginData: dataDir,
 		})
 	}

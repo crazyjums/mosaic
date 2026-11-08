@@ -523,6 +523,7 @@ export const EN: Record<string, string> = {
   "未打开": "off",
   "关掉后所有插件的钩子都不运行；各条钩子的批准会保留": "When off, no plugin hook runs; each hook's approval is kept",
   "运行插件钩子": "Run plugin hooks",
+  "出错时阻止": "blocks on failure",
   "主对话可以把任务派给它们；它们的每个工具调用照常按你的权限设置确认，插件里写的权限设置不生效。": "The main conversation can hand tasks to them. Each of their tool calls still follows your permission settings; permission settings written in the plugin have no effect.",
   "插件是在你电脑上运行的外部程序，应用无法限制它能做什么。请只安装你信任的作者写的插件，并仔细看下面它要运行的内容。": "A plugin is an external program running on your computer and the app cannot limit what it does. Only install plugins from authors you trust, and read what it will run below.",
   "插件读取到的内容（例如文档、消息）会作为工具结果发给你当前选择的模型厂商。": "Content a plugin reads (documents, messages…) is sent to your current model provider as tool results.",

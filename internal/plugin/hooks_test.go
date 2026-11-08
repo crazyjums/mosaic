@@ -26,7 +26,7 @@ func writeHookPlugin(t *testing.T, dir, command string) {
 	t.Helper()
 	writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"guard"}`)
 	writeFile(t, filepath.Join(dir, "hooks", "hooks.json"), `{"hooks":{
-  "PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"`+command+`","timeout":5},{"type":"prompt","prompt":"x"}]}],
+  "PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"`+command+`","timeout":5,"onFailure":"block"},{"type":"prompt","prompt":"x"}]}],
   "SessionStart":[{"hooks":[{"type":"command","command":"echo hi"}]}]
 }}`)
 }
@@ -67,8 +67,8 @@ func TestHookImportVariants(t *testing.T) {
 		}
 	})
 	t.Run("指纹：命令、匹配条件、时限变了就是另一条", func(t *testing.T) {
-		a := hookFingerprint("PreToolUse", "Bash", "x", 0)
-		for _, b := range []string{hookFingerprint("PreToolUse", "Bash", "y", 0), hookFingerprint("PreToolUse", "Write", "x", 0), hookFingerprint("PreToolUse", "Bash", "x", 5), hookFingerprint("PostToolUse", "Bash", "x", 0)} {
+		a := hookFingerprint("PreToolUse", "Bash", "x", 0, false)
+		for _, b := range []string{hookFingerprint("PreToolUse", "Bash", "y", 0, false), hookFingerprint("PreToolUse", "Write", "x", 0, false), hookFingerprint("PreToolUse", "Bash", "x", 5, false), hookFingerprint("PostToolUse", "Bash", "x", 0, false), hookFingerprint("PreToolUse", "Bash", "x", 0, true)} {
 			if a == b {
 				t.Fatal("指纹应不同")
 			}
@@ -87,7 +87,7 @@ func TestHookApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pv.Plugin.Hooks) != 1 || pv.Plugin.Hooks[0].Approved || pv.Plugin.Hooks[0].Command != "./guard.sh" {
+	if len(pv.Plugin.Hooks) != 1 || pv.Plugin.Hooks[0].Approved || pv.Plugin.Hooks[0].Command != "./guard.sh" || !pv.Plugin.Hooks[0].BlockOnFailure {
 		t.Fatalf("安装确认里逐条列出，默认没批准: %+v", pv.Plugin.Hooks)
 	}
 	hid := pv.Plugin.Hooks[0].ID

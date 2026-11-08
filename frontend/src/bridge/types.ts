@@ -775,6 +775,8 @@ export interface PluginHookView {
   matcher?: string;
   command: string;
   timeout?: number;
+  /** onFailure: "block"：出错、超时或输出看不懂时阻止这次工具调用 */
+  block_on_failure?: boolean;
   file?: string;
   approved: boolean;
 }
