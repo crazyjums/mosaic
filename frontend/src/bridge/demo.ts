@@ -200,7 +200,7 @@ export function createDemoBackend(): Backend {
       const json = JSON.stringify(original);
       const ev = JSON.parse(recordedPrompt ? json.replaceAll(recordedPrompt, escaped) : json) as AgentEvent;
       if (ev.message_id) ev.message_id = remap(ev.message_id);
-      if ("call_id" in ev.data) ev.data.call_id = remap(ev.data.call_id);
+      if ("call_id" in ev.data && ev.data.call_id) ev.data.call_id = remap(ev.data.call_id);
       if (ev.type === "user_message" && atts.length) ev.data.attachments = infosOf(atts);
 
       switch (ev.type) {
@@ -538,6 +538,9 @@ export function createDemoBackend(): Backend {
     },
     // ---- 权限与工具、状态栏脚本、MCP、外观：演示模式下只保存在内存里 ----
     listTools: async () => demoTools.map((t) => ({ ...t, disabled: disabledTools.includes(t.name) })),
+    // 演示：一个用户目录里的只读子 agent，带一条“工具对不上”的提示。
+    listSubagents: async () => demoSubagents(),
+    reloadSubagents: async () => demoSubagents(),
     setDisabledTools: async (names) => {
       disabledTools = names;
     },
@@ -572,5 +575,18 @@ export function createDemoBackend(): Backend {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },
+  };
+}
+
+function demoSubagents() {
+  return {
+    dir: "~/.myllmapp/agents",
+    agents: [
+      {
+        name: "explorer", source: "user", description: "只读地查看工作区，回答“某某在哪里、怎么实现的”。", tools: ["read_file", "list_dir", "find_files", "search_content"], max_steps: 15,
+        warnings: ["这些工具 Mosaic 没有对应的，已忽略：WebFetch"],
+      },
+    ],
+    problems: [],
   };
 }

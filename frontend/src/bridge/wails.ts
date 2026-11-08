@@ -11,7 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ClaudeCodeStatus, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
-  WorkspaceFile, PluginInfo, PluginPreview, PluginSourceInspection, PluginToolView, PluginTryResult, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginDiagnostics, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
+  WorkspaceFile, PluginInfo, PluginPreview, PluginSourceInspection, PluginToolView, PluginTryResult, SubagentsView, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginDiagnostics, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -116,6 +116,8 @@ export interface GoApp {
   GetUpdateStatus(): Promise<UpdateStatus>;
   GetContextBreakdown(): Promise<ContextBreakdown>;
   ListTools(): Promise<ToolInfo[] | null>;
+  ListSubagents(): Promise<SubagentsView>;
+  ReloadSubagents(): Promise<SubagentsView>;
   SetDisabledTools(names: string[]): Promise<void>;
   GetPermissionRules(): Promise<PermissionRule[] | null>;
   SetPermissionRules(rules: PermissionRule[]): Promise<void>;
@@ -269,6 +271,8 @@ export function createBackendFrom(app: GoApp, runtime: EventRuntime, kind: "wail
     getUpdateStatus: () => app.GetUpdateStatus(),
     getContextBreakdown: () => app.GetContextBreakdown(),
     listTools: async () => (await app.ListTools()) ?? [],
+    listSubagents: () => app.ListSubagents(),
+    reloadSubagents: () => app.ReloadSubagents(),
     setDisabledTools: (names) => app.SetDisabledTools(names),
     getPermissionRules: async () => (await app.GetPermissionRules()) ?? [],
     setPermissionRules: (rules) => app.SetPermissionRules(rules),

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
 import type { AssistantItem, TimelineItem } from "../store/reducer";
@@ -19,7 +19,10 @@ const REASON: Record<string, string> = {
 // 消息流。自动滚动策略：只有用户本来就在底部附近时才跟随滚动，
 // 否则用户往上翻看历史时会被新内容不停地拽回底部。
 export default function MessageList() {
-  const timeline = useChat((s) => s.timeline);
+  const allItems = useChat((s) => s.timeline);
+  const agents = useChat((s) => s.agents);
+  // 子 agent 的过程折叠在派出它的 task 工具卡片下面（见 SubagentRun），不进主时间线。
+  const timeline = useMemo(() => allItems.filter((it) => !(it.kind === "assistant" && it.agentId !== "main" && agents[it.agentId]?.callId)), [allItems, agents]);
   const running = useChat((s) => s.running);
   const backendKind = useChat((s) => s.backendKind);
   const isDemoModel = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "fake");
