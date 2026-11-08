@@ -65,6 +65,19 @@ export interface PayloadMap {
   // 预留能力：第一阶段后端不会产生，但前端已能接收和展示。
   subagent_start: { agent_id: string; parent_id: string; name: string; task: string; call_id?: string };
   subagent_end: { agent_id: string; parent_id: string; status: string; summary?: string };
+  /** 一条钩子运行完。call_id 不为空时属于那个工具调用；outcome：ok / blocked / ask / error / timeout */
+  hook_run: {
+    hook: string;
+    source: string;
+    source_name?: string;
+    command: string;
+    call_id?: string;
+    outcome: string;
+    message?: string;
+    updated_input?: boolean;
+    added_context?: boolean;
+    duration_ms: number;
+  };
   task_start: { task_id: string; title: string; kind: string };
   task_log: { task_id: string; stream: string; text: string };
   task_end: { task_id: string; status: string; exit_code: number };
@@ -109,7 +122,7 @@ const KNOWN_TYPES = new Set<string>([
   "message_start", "text_delta", "thinking_delta", "image", "message_end", "route",
   "tool_call", "tool_result", "permission_request", "permission_resolved",
   "subagent_start", "subagent_end", "task_start", "task_log", "task_end",
-  "context_compacted", "error", "session_updated",
+  "context_compacted", "error", "session_updated", "hook_run",
 ]);
 
 /** 判断一个来自后端的对象是否是本前端认识的事件。 */

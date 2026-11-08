@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEvent } from "../protocol/events";
 import raw from "../bridge/demo-events.jsonl?raw";
-import { applyEvent, initialState, type AssistantItem } from "./reducer";
+import { applyEvent, hookLine, initialState, type AssistantItem } from "./reducer";
 
 // 用真实 CLI 录制的事件流做测试数据：保证前端 reducer 与 Go 端协议一致。
 const recorded: AgentEvent[] = raw
@@ -109,5 +109,23 @@ describe("子 agent", () => {
     expect(s.model).not.toBe("demo"); // 子 agent 的模型不改会话的模型
     s = applyEvent(s, mk("subagent_end", { agent_id: "a1", parent_id: "main", status: "completed", summary: "有 a.txt" }));
     expect(s.agents.a1).toMatchObject({ status: "completed", summary: "有 a.txt" });
+  });
+});
+
+describe("钩子", () => {
+  const mk = (type: string, data: unknown, message_id?: string) =>
+    ({ v: 1, id: `e_${Math.random()}`, seq: 0, ts: "2026-01-01T00:00:00Z", session_id: "s", agent_id: "main", message_id, type, data }) as unknown as AgentEvent;
+
+  it("带 call_id 的挂在工具卡片上；不带的在对话里留一行", () => {
+    let s = initialState("s");
+    s = applyEvent(s, mk("message_start", { provider: "fake", model: "demo", step: 1 }, "m1"));
+    s = applyEvent(s, mk("tool_call", { call_id: "c1", name: "shell", input: { command: "rm -rf /" }, risk: "exec" }, "m1"));
+    s = applyEvent(s, mk("hook_run", { hook: "PreToolUse", source: "plugin:guard", source_name: "守卫", command: "./guard.sh", call_id: "c1", outcome: "blocked", message: "不许删根目录", duration_ms: 12 }));
+    expect(s.tools.c1.hooks).toHaveLength(1);
+    expect(hookLine(s.tools.c1.hooks![0])).toBe("钩子 · 守卫 · PreToolUse · 已阻止：不许删根目录");
+
+    s = applyEvent(s, mk("hook_run", { hook: "UserPromptSubmit", source: "plugin:ctx", command: "date", outcome: "ok", added_context: true, duration_ms: 3 }));
+    const last = s.timeline[s.timeline.length - 1];
+    expect(last).toMatchObject({ kind: "notice", text: "钩子 · plugin:ctx · UserPromptSubmit · 完成（补充了上下文）" });
   });
 });

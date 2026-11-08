@@ -49,6 +49,9 @@ const (
 
 	TypeError Type = "error"
 
+	// TypeHookRun：一条钩子运行完（哪个插件、哪个事件、结论、耗时）。钩子是在用户电脑上跑的命令，每次运行都要看得见。
+	TypeHookRun Type = "hook_run"
+
 	// 会话元数据变化（目前是标题：由模型生成标题时，在一轮结束之后才会得到）。
 	TypeSessionUpdated Type = "session_updated"
 )

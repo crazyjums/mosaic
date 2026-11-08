@@ -13,6 +13,7 @@ import (
 	"github.com/crazyjums/myllmapp/internal/core"
 	"github.com/crazyjums/myllmapp/internal/harness"
 	"github.com/crazyjums/myllmapp/internal/harness/codex"
+	"github.com/crazyjums/myllmapp/internal/hooks"
 	"github.com/crazyjums/myllmapp/internal/mcp"
 	"github.com/crazyjums/myllmapp/internal/permission"
 	"github.com/crazyjums/myllmapp/internal/plugin"
@@ -55,7 +56,9 @@ type Built struct {
 	DataDir   string
 	// AgentsDir 是用户自己的子 agent 定义目录（*.md，Claude Code 的格式）。
 	AgentsDir string
-	Close     func() error
+	// Hooks 运行钩子（插件导入和设置页的总开关通过它）。
+	Hooks *hooks.Runner
+	Close func() error
 }
 
 // pluginRegistryURL 是在线插件列表（仓库里的 catalog/registry.json）。
@@ -166,6 +169,10 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	// 权限规则包在档位外面：命中规则的调用直接放行/拒绝/询问，没命中的再按档位处理。
 	policy := permission.NewRulePolicy(permission.NewModePolicy(permission.Mode(mode)), settingsMgr.PermissionRules())
 
+	// 钩子：第一版只来自插件（H2 接上逐条批准之后才会有）；交给钩子的 permission_mode 跟随当前档位。
+	hookRunner := hooks.New()
+	hookRunner.Mode = func() string { return string(policy.Mode()) }
+
 	engine, err := core.NewEngine(core.EngineConfig{
 		Catalog:         catalog,
 		Tools:           tools,
@@ -179,6 +186,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		DefaultProfile:  profile,
 		DefaultModel:    model,
 		DisabledTools:   settingsMgr.DisabledTools(),
+		Hooks:           hookRunner,
 		SkillsPrompt: func(ws string) string {
 			home, _ := os.UserHomeDir()
 			return skill.Prompt(ws, home, pluginSkills()...)
@@ -230,7 +238,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		mcpMgr.Close()
 		return closeFn()
 	}
-	return &Built{Engine: engine, Settings: settingsMgr, Plugins: plugins, Config: cfg, Workspace: workspace, DataDir: dataDir, AgentsDir: agentsDir, Close: closeAll}, nil
+	return &Built{Engine: engine, Settings: settingsMgr, Plugins: plugins, Config: cfg, Workspace: workspace, DataDir: dataDir, AgentsDir: agentsDir, Hooks: hookRunner, Close: closeAll}, nil
 }
 
 // DesktopWorkspace 返回桌面端应使用的工作区；返回空字符串表示沿用配置文件中的设置。

@@ -308,7 +308,30 @@ tool_call ──(message_end)──┬──────────────
 {"title": "Go 并发入门"}
 ```
 
-### 4.6 预留事件（第一阶段不产生，前端已能接收）
+### 4.6 `hook_run`
+
+一条钩子运行完（设计见 [hooks-and-subagents.md](design/hooks-and-subagents.md) §2）。钩子是在用户电脑上运行的命令，所以每次运行都发事件、界面上都看得见。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `hook` | string | 钩子事件：`PreToolUse` / `PostToolUse` / `UserPromptSubmit` / `Stop` |
+| `source` | string | 来源，如 `plugin:guard` |
+| `source_name` | string? | 来源的显示名 |
+| `command` | string | 原样命令 |
+| `call_id` | string? | 属于哪个工具调用（`PreToolUse` / `PostToolUse`）；为空表示属于这一轮 |
+| `outcome` | string | `ok` / `blocked` / `ask` / `error` / `timeout` |
+| `message` | string? | 阻止原因、错误信息或说明（例如钩子返回 allow 时说明“不会跳过确认”） |
+| `updated_input` | bool? | 钩子改了工具参数（在权限确认之前生效） |
+| `added_context` | bool? | 钩子往对话里加了文字（带来源标注，最多 2000 字） |
+| `duration_ms` | number | 耗时 |
+
+```json
+{"hook": "PreToolUse", "source": "plugin:guard", "source_name": "守卫", "command": "${CLAUDE_PLUGIN_ROOT}/guard.sh", "call_id": "call_1", "outcome": "blocked", "message": "不许删根目录", "duration_ms": 12}
+```
+
+钩子拦下用户输入时另有一条 `error`（`code` 为 `hook_blocked`，非致命）；钩子要求停止这一轮时是 `hook_stopped`。
+
+### 4.7 预留事件（第一阶段不产生，前端已能接收）
 
 #### `subagent_start` / `subagent_end`
 

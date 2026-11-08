@@ -30,6 +30,19 @@ export interface ToolView {
   output?: string;
   durationMs?: number;
   permission?: { requestId: string; summary: string; decision?: Decision };
+  /** 这次调用前后跑过的钩子（PreToolUse / PostToolUse） */
+  hooks?: HookRunView[];
+}
+
+export interface HookRunView {
+  hook: string;
+  source: string;
+  command: string;
+  outcome: string;
+  message?: string;
+  updatedInput?: boolean;
+  addedContext?: boolean;
+  durationMs: number;
 }
 
 export type AssistantBlock =
@@ -285,6 +298,20 @@ export function applyEvent(state: ChatState, ev: AgentEvent): ChatState {
       };
     }
 
+    case "hook_run": {
+      const d = ev.data;
+      const view: HookRunView = {
+        hook: d.hook, source: d.source_name || d.source, command: d.command, outcome: d.outcome, message: d.message,
+        updatedInput: d.updated_input, addedContext: d.added_context, durationMs: d.duration_ms,
+      };
+      if (d.call_id && s.tools[d.call_id]) {
+        const tool = s.tools[d.call_id];
+        return { ...s, tools: { ...s.tools, [d.call_id]: { ...tool, hooks: [...(tool.hooks ?? []), view] } } };
+      }
+      // 不属于某个工具调用（UserPromptSubmit / Stop）：在对话里留一行，钩子跑过什么都看得见。
+      return { ...s, timeline: [...s.timeline, { kind: "notice", id: ev.id, text: hookLine(view) }] };
+    }
+
     case "error":
       return {
         ...s,
@@ -380,4 +407,14 @@ function updateTool(s: ChatState, callId: string, fn: (t: ToolView) => ToolView)
   const t = s.tools[callId];
   if (!t) return s;
   return { ...s, tools: { ...s.tools, [callId]: fn(t) } };
+}
+
+/** hookLine 把一次钩子运行写成一行人话，例如“钩子 · 安全检查 · PreToolUse · 已阻止：不许删根目录”。 */
+export function hookLine(h: HookRunView): string {
+  const outcome: Record<string, string> = { ok: "完成", blocked: "已阻止", ask: "要求确认", error: "出错", timeout: "超时" };
+  const extra = [h.updatedInput ? "改了参数" : "", h.addedContext ? "补充了上下文" : ""].filter(Boolean).join("、");
+  let s = `钩子 · ${h.source} · ${h.hook} · ${outcome[h.outcome] ?? h.outcome}`;
+  if (extra) s += `（${extra}）`;
+  if (h.message) s += `：${h.message}`;
+  return s;
 }

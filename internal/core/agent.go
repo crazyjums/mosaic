@@ -46,6 +46,8 @@ type AgentConfig struct {
 	SessionID string
 	// Disabled 是被用户在设置里关掉的工具：不发给模型，模型硬要调用也会被拒绝。
 	Disabled map[string]bool
+	// Hooks 运行钩子（见 hooks.go）；为 nil 表示没有钩子。
+	Hooks Hooks
 }
 
 // Agent 执行 agent 循环。它是无状态的（状态都在 Session 里），可以重复使用。
@@ -74,6 +76,9 @@ func NewAgent(cfg AgentConfig) *Agent {
 	}
 	return &Agent{cfg: cfg}
 }
+
+// maxStopContinues 是 Stop 钩子在一轮里最多能让 agent 继续的次数。
+const maxStopContinues = 3
 
 // TurnResult 是一轮的结果。事件流里已经有全部细节，这里只给调用方（Engine、测试）一个摘要。
 type TurnResult struct {
@@ -152,8 +157,21 @@ func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnR
 		return end(event.TurnError, err)
 	}
 	em.emit("", event.TurnStart{TurnID: res.TurnID, Provider: a.cfg.Provider.Name(), Model: a.cfg.Model})
-	sess.appendMessage(userMsg)
 	em.emit("", event.UserMessage{Text: in.Text, Attachments: attachmentInfos(userMsg)})
+
+	// UserPromptSubmit 钩子：可以拦下这条输入（不进历史、不调用模型），或者附加一段带标注的上下文。
+	if a.cfg.Hooks != nil {
+		ho := a.runHooks(ctx, em, HookInput{Event: HookUserPromptSubmit, Prompt: in.Text}, "")
+		if ho.Block || ho.StopTurn {
+			reason := orDefault(ho.Reason, ho.StopReason)
+			em.emit("", event.Error{Code: "hook_blocked", Message: "插件钩子拦下了这条输入：" + orDefault(reason, "没有给出原因"), Fatal: false})
+			return end(event.TurnCompleted, nil)
+		}
+		if s := hookContextText(ho.Context); s != "" {
+			userMsg.Content = append(userMsg.Content, provider.Block{Type: provider.BlockText, Text: s})
+		}
+	}
+	sess.appendMessage(userMsg)
 
 	reason, err := a.loop(ctx, sess, em, &res)
 	return end(reason, err)
@@ -198,6 +216,8 @@ func (a *Agent) loop(ctx context.Context, sess *Session, em emitter, res *TurnRe
 	fatal := a.cfg.ParentID == ""
 	// 本轮里摘要失败过就不再重试：否则每一步都多花一次必然失败的请求。
 	compactFailed := false
+	// Stop 钩子最多让这一轮继续几次：钩子写得不好时，agent 也一定能停下来。
+	stopContinues := 0
 	for step := 1; ; step++ {
 		// 保险丝：超过最大步数直接停止。此时最后一条消息是工具结果，下次用户发言时模型能看到完整上下文。
 		if step > a.cfg.MaxSteps {
@@ -240,14 +260,27 @@ func (a *Agent) loop(ctx context.Context, sess *Session, em emitter, res *TurnRe
 			if stop == provider.StopMaxTokens {
 				em.emit("", event.Error{Code: "max_tokens", Message: "模型输出达到 max_tokens 上限被截断。", Fatal: false})
 			}
+			// Stop 钩子（只对主 agent；子 agent 的在 H2 里用 SubagentStop）：block 表示“还没做完”，原因交给模型接着做。
+			if a.cfg.Hooks != nil && a.cfg.ParentID == "" && ctx.Err() == nil {
+				ho := a.runHooks(ctx, em, HookInput{Event: HookStop, LastAssistantMessage: lastAssistantText([]provider.Message{msg}), StopHookActive: stopContinues > 0}, "")
+				if ho.Block && !ho.StopTurn && stopContinues < maxStopContinues && strings.TrimSpace(ho.Reason) != "" {
+					stopContinues++
+					sess.appendMessage(provider.Message{Role: provider.RoleUser, Content: []provider.Block{{Type: provider.BlockText, Text: hookContextText([]string{"Stop 钩子认为还没做完：" + ho.Reason})}}})
+					continue
+				}
+			}
 			return event.TurnCompleted, nil
 		}
 
 		// ④ 执行工具。即使中途取消，runTools 也会为每个调用补上结果，保证历史合法。
-		results := a.runTools(ctx, em, calls)
+		results, hookStop := a.runTools(ctx, em, calls)
 		sess.appendMessage(provider.Message{Role: provider.RoleUser, Content: results})
 		if ctx.Err() != nil {
 			return event.TurnCancelled, ctx.Err()
+		}
+		if hookStop != "" {
+			em.emit("", event.Error{Code: "hook_stopped", Message: "插件钩子停止了这一轮：" + hookStop, Fatal: false})
+			return event.TurnCompleted, nil
 		}
 	}
 }
