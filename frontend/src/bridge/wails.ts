@@ -11,7 +11,7 @@ import { createReorderBuffer } from "./reorder";
 import type {
   Backend, GroupInput, GroupStatus, GroupView, ProxyView, UsageReport, UsageRequest, UpdateInfo, SkillInfo, Attachment, ReleaseNotes, UpdateStatus, ChatGPTStatus, ChatGPTUsage, ClaudeCodeStatus, ContextBreakdown, DataInfo, General, GeneralView, KeychainStatus, MCPServerConfig, MCPServerStatus, PermissionMode, PermissionRule, ProfileInfo,
   ProviderInput, ProviderView, SessionSummary, Status, TestResult, ToolInfo, WorkspaceInfo,
-  WorkspaceFile, PluginInfo, PluginPreview, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginDiagnostics, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
+  WorkspaceFile, PluginInfo, PluginPreview, PluginSourceInspection, PluginCatalogEntry, PluginLoginState, PluginStatus, PluginDiagnostics, PluginActionResult, SlashCommandInfo, GitOverview, GitCommit, GitCommitDetail, GitDiff,
 } from "./types";
 
 /** Go 端 internal/app.EventName */
@@ -53,6 +53,9 @@ export interface GoApp {
   RefreshPluginCatalog(): Promise<PluginCatalogEntry[] | null>;
   PreviewCatalogPlugin(id: string): Promise<PluginPreview>;
   PreviewPlugin(src: string): Promise<PluginPreview>;
+  InspectPluginSource(src: string): Promise<PluginSourceInspection>;
+  PreviewMarketplacePlugin(token: string, name: string): Promise<PluginPreview>;
+  CancelPluginMarketplace(token: string): Promise<void>;
   InstallPlugin(token: string, approved: string[]): Promise<PluginInfo>;
   CancelPluginPreview(token: string): Promise<void>;
   SetPluginEnabled(id: string, on: boolean): Promise<PluginInfo>;
@@ -196,6 +199,9 @@ export function createBackendFrom(app: GoApp, runtime: EventRuntime, kind: "wail
     refreshPluginCatalog: async () => (await app.RefreshPluginCatalog()) ?? [],
     previewCatalogPlugin: (id) => app.PreviewCatalogPlugin(id),
     previewPlugin: (src) => app.PreviewPlugin(src),
+    inspectPluginSource: (src) => app.InspectPluginSource(src),
+    previewMarketplacePlugin: (token, name) => app.PreviewMarketplacePlugin(token, name),
+    cancelPluginMarketplace: (token) => app.CancelPluginMarketplace(token),
     installPlugin: (token, approved) => app.InstallPlugin(token, approved),
     cancelPluginPreview: (token) => app.CancelPluginPreview(token),
     setPluginEnabled: (id, on) => app.SetPluginEnabled(id, on),

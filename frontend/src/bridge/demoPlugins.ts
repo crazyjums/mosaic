@@ -1,4 +1,4 @@
-import type { PluginActionResult, PluginCatalogEntry, PluginDiagnostics, PluginLoginState, PluginInfo, PluginPreview, PluginStatus, SlashCommandInfo } from "./types";
+import type { PluginActionResult, PluginCatalogEntry, PluginDiagnostics, PluginLoginState, PluginInfo, PluginPreview, PluginSourceInspection, PluginStatus, SlashCommandInfo } from "./types";
 
 // 演示模式（浏览器预览 / 截图 / 测试）里的插件：内存里的假实现，行为尽量和后端 internal/plugin 一致。
 // 选择路径里带 "hello" 得到一个只有技能和命令的插件，带 "bad" 得到校验失败，其余得到一个带 MCP 工具和配置表单的“飞书”示例。
@@ -42,6 +42,7 @@ const catalog = (): Omit<PluginCatalogEntry, "installed" | "installed_version">[
 export function createDemoPlugins() {
   let installed: PluginInfo[] = [];
   const staged = new Map<string, PluginPreview>();
+  const markets = new Map<string, string>();
   let n = 0;
   const find = (id: string) => {
     const p = installed.find((x) => x.id === id);
@@ -90,6 +91,11 @@ export function createDemoPlugins() {
     };
   };
 
+  const previewOne = async (src: string): Promise<PluginPreview> => {
+    if (/^https:\/\//i.test(src.trim()) === false && /^[a-z][a-z0-9+.-]*:\/\//i.test(src.trim())) throw new Error("Git 地址必须是 https:// 开头的完整地址");
+    if (src.includes("bad")) throw new Error("plugin.json 不是合法的 JSON：invalid character '}' looking for beginning of object key string");
+    return stage(src.includes("hello") ? hello() : feishu());
+  };
   return {
     startPluginLogin: async (id: string): Promise<PluginLoginState> => {
       const p = find(id);
@@ -135,10 +141,33 @@ export function createDemoPlugins() {
       if (!p.enabled || !p.servers.length) throw new Error("插件未启用或没有 MCP 服务");
       return diagnose(id);
     },
-    previewPlugin: async (src: string): Promise<PluginPreview> => {
-      if (/^https:\/\//i.test(src.trim()) === false && /^[a-z][a-z0-9+.-]*:\/\//i.test(src.trim())) throw new Error("Git 地址必须是 https:// 开头的完整地址");
-      if (src.includes("bad")) throw new Error("plugin.json 不是合法的 JSON：invalid character '}' looking for beginning of object key string");
-      return stage(src.includes("hello") ? hello() : feishu());
+    previewPlugin: previewOne,
+    // 演示：地址或路径里带 "market" 就当作一个插件合集，展示选择界面（含不能安装的条目和原因）。
+    inspectPluginSource: async (src: string): Promise<PluginSourceInspection> => {
+      if (!/market/i.test(src)) return { kind: "plugin", preview: await previewOne(src) };
+      const token = `market${++n}`;
+      markets.set(token, src);
+      return {
+        kind: "marketplace",
+        market: {
+          token, name: "team-tools", owner: "Example Team", description: "Plugins for the team", source: src,
+          plugins: [
+            { name: "hello", description: "一个技能加一个 /hello 命令", category: "demo", kind: "relative", where: "plugins/hello", supported: true },
+            { name: "feishu", description: "读取飞书文档", category: "office", kind: "github", where: "example/mosaic-feishu", supported: true },
+            { name: "formatter", description: "Formats code", kind: "npm", where: "@acme/formatter", supported: false, reason: "npm 包来源暂不支持" },
+            { name: "deployer", kind: "command", where: "", supported: false, reason: "会在本机运行命令来生成插件，Mosaic 不支持这种来源" },
+          ],
+        },
+      };
+    },
+    previewMarketplacePlugin: async (token: string, name: string): Promise<PluginPreview> => {
+      if (!markets.has(token)) throw new Error("这次选择已经失效，请重新输入来源");
+      if (name === "hello") return stage(hello());
+      if (name === "feishu") return stage(feishu());
+      throw new Error(`插件 "${name}" 暂时不能安装`);
+    },
+    cancelPluginMarketplace: async (token: string): Promise<void> => {
+      markets.delete(token);
     },
     installPlugin: async (token: string, approved: string[]): Promise<PluginInfo> => {
       const p = staged.get(token);
