@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { backend, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginDiagnostics, type PluginPreview, type PluginStatus } from "../bridge";
+import { backend, type MarketInfo, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginDiagnostics, type PluginPreview, type PluginSourceInspection, type PluginStatus } from "../bridge";
 import { t } from "../i18n";
 import PluginInstallDialog from "./PluginInstallDialog";
+import PluginMarketPicker from "./PluginMarketPicker";
 import { CATEGORIES, FeaturedCard, PluginCard, PluginIcon, matches } from "./PluginMarket";
 
 // 设置 → 插件：已安装的插件列表 + 详情（设置表单、状态、操作按钮、依赖、提供的内容）。
@@ -36,6 +37,10 @@ export default function PluginSettings() {
   const [preview, setPreview] = useState<PluginPreview | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState("");
+  // 来源是一个 marketplace（里面有多个插件）时，先在这里挑一个，挑中之后进入和其他来源相同的安装确认。
+  const [picker, setPicker] = useState<MarketInfo | null>(null);
+  const [pickBusy, setPickBusy] = useState("");
+  const [pickError, setPickError] = useState("");
   const [market, setMarket] = useState<PluginCatalogEntry[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [marketError, setMarketError] = useState("");
@@ -94,16 +99,56 @@ export default function PluginSettings() {
   };
   const getFromMarket = (c: PluginCatalogEntry) => void startPreview(c.id, () => backend().previewCatalogPlugin(c.id));
 
+  // 来源可能是一个插件（直接进安装确认），也可能是一个 marketplace（先挑一个）。
+  const applyInspection = (r: PluginSourceInspection) => {
+    setInstallError("");
+    if (r.kind === "marketplace" && r.market) {
+      setPickError("");
+      setPicker(r.market);
+    } else if (r.preview) {
+      setPreview(r.preview);
+    }
+    setPanel(null);
+  };
+  const startInspect = async (key: string, src: string) => {
+    setError("");
+    setFetching(key);
+    try {
+      applyInspection(await backend().inspectPluginSource(src));
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setFetching("");
+    }
+  };
   const startInstall = async (kind: "dir" | "zip") => {
     setError("");
     try {
       const path = kind === "dir" ? await backend().chooseDirectory("") : await backend().chooseFile(t("选择插件压缩包"), t("插件压缩包（*.zip）"), "*.zip");
       if (!path) return;
-      setInstallError("");
-      setPreview(await backend().previewPlugin(path));
+      await startInspect(kind, path);
     } catch (e) {
       setError(errMsg(e));
     }
+  };
+  const pickFromMarketplace = async (name: string) => {
+    if (!picker) return;
+    setPickBusy(name);
+    setPickError("");
+    try {
+      const p = await backend().previewMarketplacePlugin(picker.token, name);
+      setInstallError("");
+      setPreview(p);
+    } catch (e) {
+      setPickError(errMsg(e));
+    } finally {
+      setPickBusy("");
+    }
+  };
+  const closePicker = () => {
+    if (picker) void backend().cancelPluginMarketplace(picker.token).catch(() => {});
+    setPicker(null);
+    setPickError("");
   };
   // 新建插件模板：先选放在哪个目录，再生成；生成后提示路径，作者改完用“安装文件夹…”装上试。
   const createTemplate = async () => {
@@ -125,6 +170,7 @@ export default function PluginSettings() {
     try {
       const info = await backend().installPlugin(preview.token, approved);
       setPreview(null);
+      closePicker();
       await reload();
       void loadMarket(false);
       setSelected(info.id);
@@ -208,9 +254,9 @@ export default function PluginSettings() {
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden="true" />
               <div role="menu" className="shadow-pop absolute right-0 top-full z-20 mt-1 w-64 rounded-modal border border-line bg-panel p-1.5">
-                {menuItem(t("安装文件夹…"), t("选择一个插件文件夹（里面有 plugin.json）"), () => void startInstall("dir"))}
+                {menuItem(t("安装文件夹…"), t("选择一个插件文件夹，或一个插件合集（里面有 .claude-plugin/marketplace.json）"), () => void startInstall("dir"))}
                 {menuItem(t("安装 zip…"), t("选择一个 .zip 插件包"), () => void startInstall("zip"))}
-                {menuItem(t("从 Git 地址安装…"), "https://…#" + t("分支或标签"), () => setPanel("git"))}
+                {menuItem(t("从 Git 地址安装…"), "https://…#" + t("分支或标签") + " · " + t("插件或插件合集"), () => setPanel("git"))}
                 {menuItem(t("新建插件模板…"), t("生成一个最小的插件模板，用来学习怎么写插件"), () => setPanel("new"))}
               </div>
             </>
@@ -223,7 +269,7 @@ export default function PluginSettings() {
           className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-5 py-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (gitUrl.trim()) void startPreview("git", () => backend().previewPlugin(gitUrl.trim()));
+            if (gitUrl.trim()) void startInspect("git", gitUrl.trim());
           }}
         >
           <input className="input min-w-[16rem] flex-1 text-sm" value={gitUrl} onChange={(e) => setGitUrl(e.target.value)} placeholder="https://github.com/owner/repo#v1.0" aria-label={t("Git 地址")} autoFocus />
@@ -366,6 +412,7 @@ export default function PluginSettings() {
         </div>
       )}
 
+      {picker && !preview && <PluginMarketPicker market={picker} busy={pickBusy} error={pickError} onPick={(n) => void pickFromMarketplace(n)} onClose={closePicker} />}
       {preview && <PluginInstallDialog preview={preview} busy={installing} error={installError} onConfirm={(a) => void confirmInstall(a)} onCancel={cancelInstall} />}
     </div>
   );

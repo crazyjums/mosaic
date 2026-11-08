@@ -58,6 +58,8 @@ type Host struct {
 	state   stateFile
 	plugins map[string]*loaded
 	staged  map[string]*stagedPlugin
+	// markets 是用户正在从中挑插件的 marketplace（见 marketplace.go），取消或选完后清理。
+	markets map[string]*stagedMarket
 	warn    map[string]string
 	// remote 是在线列表里（上次刷新的）条目，见 catalog.go。
 	remote []registryEntry
@@ -115,7 +117,7 @@ func NewHost(opts HostOptions) (*Host, error) {
 			return nil, fmt.Errorf("plugin: %w", err)
 		}
 	}
-	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, warn: map[string]string{}, logins: map[string]*loginRun{}}
+	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, markets: map[string]*stagedMarket{}, warn: map[string]string{}, logins: map[string]*loginRun{}}
 	h.cleanLeftovers()
 	h.loadState()
 	h.loadRegistryCache()
@@ -408,6 +410,11 @@ func (h *Host) Preview(src string) (Preview, error) {
 // stage 把一个插件放进临时目录并校验清单，登记为待确认的安装。fill 负责把内容放进（已存在的空）临时目录；
 // source 只用来记录来源。无论来源是目录、zip、Git 还是内置，之后的校验、确认和安装走同一条路。
 func (h *Host) stage(source string, fill func(stage string) error) (Preview, error) {
+	return h.stageNamed(source, hintFromSource(source), fill)
+}
+
+// stageNamed 同 stage，hint 是别家格式的插件没写名字时用的名字（marketplace 里是条目名）。
+func (h *Host) stageNamed(source, hint string, fill func(stage string) error) (Preview, error) {
 	token, err := randomToken()
 	if err != nil {
 		return Preview{}, err
@@ -426,7 +433,7 @@ func (h *Host) stage(source string, fill func(stage string) error) (Preview, err
 		cleanup()
 		return Preview{}, err
 	}
-	m, err := ParseManifestHint(root, h.opts.AppVersion, hintFromSource(source))
+	m, err := ParseManifestHint(root, h.opts.AppVersion, hint)
 	if err != nil {
 		cleanup()
 		return Preview{}, err

@@ -41,6 +41,30 @@ func (a *App) PreviewPlugin(src string) (plugin.Preview, error) {
 
 // PreviewPlugin 的来源也可以是 https:// 开头的 Git 地址（可在末尾用 #分支或标签 指定版本）。
 
+// InspectPluginSource 看一眼来源（文件夹、.zip、https 的 Git 地址）是什么：一个 marketplace（里面有多个插件，
+// 返回列表让用户挑一个），或者一个插件（已经预览好，和 PreviewPlugin 的结果一样）。
+func (a *App) InspectPluginSource(src string) (plugin.SourceInspection, error) {
+	if a.plugins == nil {
+		return plugin.SourceInspection{}, errNoPlugins
+	}
+	return a.plugins.InspectSource(src)
+}
+
+// PreviewMarketplacePlugin 取 marketplace 里的一个插件，返回安装前要给用户确认的内容（之后的流程和 PreviewPlugin 相同）。
+func (a *App) PreviewMarketplacePlugin(token, name string) (plugin.Preview, error) {
+	if a.plugins == nil {
+		return plugin.Preview{}, errNoPlugins
+	}
+	return a.plugins.PreviewMarketplacePlugin(token, name)
+}
+
+// CancelPluginMarketplace 放弃从 marketplace 里挑插件，清理临时文件。
+func (a *App) CancelPluginMarketplace(token string) {
+	if a.plugins != nil {
+		a.plugins.CancelMarketplace(token)
+	}
+}
+
 // ListPluginCatalog 返回插件市场的列表（内置的加上上次刷新到的在线列表），马上返回，不联网。
 func (a *App) ListPluginCatalog() []plugin.CatalogEntry {
 	if a.plugins == nil {

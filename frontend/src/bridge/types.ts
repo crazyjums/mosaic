@@ -378,6 +378,12 @@ export interface Backend {
   previewCatalogPlugin(id: string): Promise<PluginPreview>;
   /** 校验插件目录、.zip 或 https:// 开头的 Git 地址（末尾可用 #分支或标签），返回安装前要给用户确认的内容；此时什么都没有生效 */
   previewPlugin(src: string): Promise<PluginPreview>;
+  /** 看一眼来源（文件夹、.zip、https:// 的 Git 地址）：marketplace 返回里面的插件列表，否则当作一个插件预览 */
+  inspectPluginSource(src: string): Promise<PluginSourceInspection>;
+  /** 取 marketplace 里的一个插件，返回安装前要给用户确认的内容（之后和 previewPlugin 的流程相同） */
+  previewMarketplacePlugin(token: string, name: string): Promise<PluginPreview>;
+  /** 放弃从 marketplace 里挑插件，清理临时文件 */
+  cancelPluginMarketplace(token: string): Promise<void>;
   /** approved：用户勾选的、同意按作者声明的风险等级运行的 MCP 服务名（没勾选的一律每次询问） */
   installPlugin(token: string, approved: string[]): Promise<PluginInfo>;
   cancelPluginPreview(token: string): Promise<void>;
@@ -775,6 +781,34 @@ export interface PluginInfo {
   format?: "claude" | "codex";
   /** 那种格式里 Mosaic 不支持、因此不会生效的组件（钩子、子 agent……），安装前和详情里如实列出 */
   ignored?: string[];
+}
+
+/** marketplace（一个仓库 / 文件夹里放多个插件，根目录有 .claude-plugin/marketplace.json）里的一项 */
+export interface MarketPlugin {
+  name: string;
+  description?: string;
+  category?: string;
+  /** 来源类型：relative / github / url / git-subdir / npm / archive / command */
+  kind: string;
+  /** 人能看懂的来源（路径或仓库），选之前就让用户知道插件从哪来 */
+  where: string;
+  /** 为 false 时不能选，reason 说明原因 */
+  supported: boolean;
+  reason?: string;
+}
+export interface MarketInfo {
+  token: string;
+  name: string;
+  owner?: string;
+  description?: string;
+  source: string;
+  plugins: MarketPlugin[];
+}
+/** 看一眼来源是什么：一个插件（preview 已准备好，可直接确认安装），或一个 marketplace（要先挑一个插件） */
+export interface PluginSourceInspection {
+  kind: "plugin" | "marketplace";
+  preview?: PluginPreview;
+  market?: MarketInfo;
 }
 
 /** 插件市场里的一项 */

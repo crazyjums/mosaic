@@ -132,3 +132,31 @@ describe("演示模式的插件", () => {
     }
   });
 });
+
+describe("演示：插件合集（marketplace）", () => {
+  it("识别为合集，列出可装和不可装（带原因）的条目；挑一个后进入普通的安装确认", async () => {
+    const b = createDemoPlugins();
+    const r = await b.inspectPluginSource("https://github.com/example/market-tools");
+    expect(r.kind).toBe("marketplace");
+    const m = r.market!;
+    expect(m.plugins.filter((p) => p.supported).map((p) => p.name)).toEqual(["hello", "feishu"]);
+    const bad = m.plugins.filter((p) => !p.supported);
+    expect(bad.length).toBe(2);
+    expect(bad.every((p) => !!p.reason)).toBe(true);
+    await expect(b.previewMarketplacePlugin(m.token, "formatter")).rejects.toThrow("暂时不能安装");
+    const p = await b.previewMarketplacePlugin(m.token, "hello");
+    expect(p.plugin.id).toBe("hello");
+    const info = await b.installPlugin(p.token, []);
+    expect(info.enabled).toBe(true);
+  });
+
+  it("取消之后选择失效；不是合集的来源照常当作一个插件", async () => {
+    const b = createDemoPlugins();
+    const m = (await b.inspectPluginSource("/path/to/market")).market!;
+    await b.cancelPluginMarketplace(m.token);
+    await expect(b.previewMarketplacePlugin(m.token, "hello")).rejects.toThrow("失效");
+    const one = await b.inspectPluginSource("/path/to/hello-plugin");
+    expect(one.kind).toBe("plugin");
+    expect(one.preview?.plugin.id).toBe("hello");
+  });
+});

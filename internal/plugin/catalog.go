@@ -121,44 +121,84 @@ func validateGit(rawURL, ref, subdir string) error {
 // PreviewGit 从 Git 仓库取一个插件（浅克隆，只取最新一次提交），返回安装前要给用户确认的内容。
 // subdir 非空时插件在仓库的这个子目录里。克隆不会运行仓库里的任何代码（git 钩子不随仓库传输）。
 func (h *Host) PreviewGit(rawURL, ref, subdir string) (Preview, error) {
-	if err := validateGit(rawURL, ref, subdir); err != nil {
-		return Preview{}, err
+	return h.previewGit(gitRequest{url: rawURL, ref: ref, subdir: subdir})
+}
+
+// gitRequest 是一次从 Git 取插件的请求。sha 非空时要求克隆下来的提交就是它；hint 是插件没写名字时用的名字
+// （marketplace 里的条目名），为空则取仓库名；label 是记录和显示用的来源，为空则用 地址#分支。
+type gitRequest struct {
+	url, ref, subdir, sha, hint, label string
+}
+
+var shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// cloneGit 把仓库浅克隆到 dest（dest 必须不存在）。校验、安全参数和下载逻辑都在这里，所有 Git 来源共用。
+func (h *Host) cloneGit(rawURL, ref, sha, dest string) error {
+	if err := validateGit(rawURL, ref, ""); err != nil {
+		return err
+	}
+	if sha != "" && !shaRe.MatchString(sha) {
+		return errors.New("sha 必须是 40 位小写十六进制的提交号")
 	}
 	if _, err := h.opts.LookPath("git"); err != nil {
-		return Preview{}, errors.New("电脑上没有找到 git，无法从 Git 地址安装；请先安装 git，或下载 zip 后安装")
+		return errors.New("电脑上没有找到 git，无法从 Git 地址安装；请先安装 git，或下载 zip 后安装")
 	}
-	label := rawURL
+	// core.symlinks=false：仓库里的符号链接只会变成普通文本文件，不会指到别处；
+	// protocol.allow=never 再单独放开 https：仓库里的子模块不会被拉取，也不会走 file:// 或 ssh。
+	args := []string{"-c", "core.symlinks=false", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
+		"clone", "--depth", "1", "--single-branch", "--no-tags"}
 	if ref != "" {
-		label += "#" + ref
+		args = append(args, "--branch", ref)
 	}
-	return h.stage(label, func(stage string) error {
+	args = append(args, "--", rawURL, dest)
+	res := runCommand(context.Background(), "", append([]string{"git"}, args...), []string{"GIT_TERMINAL_PROMPT=0"}, gitTimeout)
+	if res.Err != nil {
+		return fmt.Errorf("下载失败：%v", res.Err)
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("下载失败：%s", tail(res.Output, 300))
+	}
+	if sha != "" {
+		// 清单里固定了提交：浅克隆只有分支最新的一次提交，对不上就拒绝，而不是悄悄装一个别的版本。
+		head := runCommand(context.Background(), dest, []string{"git", "rev-parse", "HEAD"}, []string{"GIT_TERMINAL_PROMPT=0"}, gitTimeout)
+		if head.Err != nil || head.ExitCode != 0 || strings.TrimSpace(head.Output) != sha {
+			return fmt.Errorf("仓库当前的提交与清单里固定的 sha（%s）不一致，为安全起见不安装", sha[:12])
+		}
+	}
+	return nil
+}
+
+func (h *Host) previewGit(r gitRequest) (Preview, error) {
+	if err := validateGit(r.url, r.ref, r.subdir); err != nil {
+		return Preview{}, err
+	}
+	label := r.label
+	if label == "" {
+		label = r.url
+		if r.ref != "" {
+			label += "#" + r.ref
+		}
+	}
+	hint := r.hint
+	if hint == "" {
+		hint = hintFromSource(label)
+	}
+	return h.stageNamed(label, hint, func(stage string) error {
 		clone := stage + ".clone"
 		defer os.RemoveAll(clone)
-		// core.symlinks=false：仓库里的符号链接只会变成普通文本文件，不会指到别处；
-		// protocol.allow=never 再单独放开 https：仓库里的子模块不会被拉取，也不会走 file:// 或 ssh。
-		args := []string{"-c", "core.symlinks=false", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
-			"clone", "--depth", "1", "--single-branch", "--no-tags"}
-		if ref != "" {
-			args = append(args, "--branch", ref)
-		}
-		args = append(args, "--", rawURL, clone)
-		res := runCommand(context.Background(), "", append([]string{"git"}, args...), []string{"GIT_TERMINAL_PROMPT=0"}, gitTimeout)
-		if res.Err != nil {
-			return fmt.Errorf("下载失败：%v", res.Err)
-		}
-		if res.ExitCode != 0 {
-			return fmt.Errorf("下载失败：%s", tail(res.Output, 300))
+		if err := h.cloneGit(r.url, r.ref, r.sha, clone); err != nil {
+			return err
 		}
 		src := clone
-		if subdir != "" {
-			p, err := insideDir(clone, subdir)
+		if r.subdir != "" {
+			p, err := insideDir(clone, r.subdir)
 			if err != nil {
 				return fmt.Errorf("子目录不合法：%v", err)
 			}
 			src = p
 		}
 		if fi, err := os.Stat(src); err != nil || !fi.IsDir() {
-			return fmt.Errorf("仓库里没有目录 %q", subdir)
+			return fmt.Errorf("仓库里没有目录 %q", r.subdir)
 		}
 		return copyDir(src, stage)
 	})
