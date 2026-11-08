@@ -447,6 +447,19 @@ function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRem
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
       {!p.error && p.enabled && p.actions.length > 0 && <ActionsBlock plugin={p} />}
 
+      {!!p.ignored?.length && (
+        <Block title={t("不会生效的部分")}>
+          <div className="space-y-1 text-xs">
+            <div className="text-muted">{t("这个插件的原格式里有下面这些 Mosaic 不支持的组件，它们不会运行：")}</div>
+            <ul className="list-disc space-y-0.5 pl-4">
+              {p.ignored.map((x) => (
+                <li key={x}>{x}</li>
+              ))}
+            </ul>
+          </div>
+        </Block>
+      )}
+
       <Block title={t("提供的内容")}>
         <div className="space-y-1 text-sm">
           <Row label={t("技能")}>{p.skills.length ? p.skills.join("、") : "—"}</Row>

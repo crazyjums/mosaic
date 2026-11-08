@@ -79,6 +79,19 @@ export default function PluginInstallDialog({ preview, busy, error, onConfirm, o
             </div>
           </Section>
 
+          <Section title={t("不会生效的部分")} empty="" show={(p.ignored?.length ?? 0) > 0}>
+            <div className="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-xs">
+              <div className="mb-1 text-warn">
+                {p.format === "claude" ? t("这是 Claude Code 格式的插件。下面这些 Mosaic 不支持，装上之后也不会运行：") : t("下面这些 Mosaic 不支持，装上之后也不会运行：")}
+              </div>
+              <ul className="list-disc space-y-0.5 pl-4">
+                {p.ignored!.map((x) => (
+                  <li key={x}>{x}</li>
+                ))}
+              </ul>
+            </div>
+          </Section>
+
           <Section title={t("依赖的外部命令")} empty="" show={p.requires.length > 0}>
             <ul className="space-y-1 text-xs">
               {p.requires.map((r) => (
