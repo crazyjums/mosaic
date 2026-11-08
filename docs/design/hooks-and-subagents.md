@@ -1,6 +1,6 @@
 # 子 agent 与钩子（hooks）：怎么做
 
-状态：**已评审，按建议实施中**。S1（子 agent 调度器 + task 工具 + 用户目录）已实现；S2、H1、H2 进行中。评审结论：§4 的五个问题都按建议。
+状态：**已评审，按建议实施中**。S1（子 agent 调度器 + task 工具 + 用户目录）、S2（插件 agents 导入）已实现；H1、H2 进行中。评审结论：§4 的五个问题都按建议。
 
 背景：插件重设计（[plugin-system-v3.md](plugin-system-v3.md)）之后，Claude Code / Codex 格式插件里的 `agents/` 和 `hooks/` 会被**忽略并告知**。这份文档回答：怎样真正支持它们，哪些地方要和 Claude Code 不一样，以及为什么。
 

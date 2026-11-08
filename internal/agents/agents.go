@@ -144,10 +144,10 @@ func Parse(data []byte, nameHint string) (core.SubagentDefinition, error) {
 	return d, nil
 }
 
-// LoadDir 扫描目录里的 *.md（含子目录）。prefix 非空时名字变成 “prefix:名字”（插件的 agent）。
-// 单个文件有问题只跳过它，问题记在 problems 里。
+// LoadDir 扫描目录里的 *.md（含子目录，跳过隐藏目录）。prefix 非空时名字变成 “prefix:名字”（插件的 agent）。
+// 单个文件有问题只跳过它，问题记在 problems 里。目录不存在不是错误。
 func LoadDir(dir, prefix string) (defs []core.SubagentDefinition, problems []string) {
-	var files []string
+	var rels []string
 	_ = filepath.WalkDir(dir, func(p string, e os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -156,18 +156,28 @@ func LoadDir(dir, prefix string) (defs []core.SubagentDefinition, problems []str
 			return filepath.SkipDir
 		}
 		if !e.IsDir() && strings.EqualFold(filepath.Ext(p), ".md") && e.Type().IsRegular() {
-			files = append(files, p)
+			if rel, err := filepath.Rel(dir, p); err == nil {
+				rels = append(rels, rel)
+			}
 		}
 		return nil
 	})
-	sort.Strings(files)
+	return LoadFiles(dir, rels, prefix)
+}
+
+// LoadFiles 读 root 下指定的这些 agent 文件（相对路径）。prefix 非空时名字变成 “prefix:子目录:名字”
+// （和 Claude Code 的插件 agent 命名一致：agents/review/security.md → 插件:review:security）。
+// 子目录从 root 下的 agents/ 之后算起（插件清单里列的文件通常都在 agents/ 下）。
+func LoadFiles(root string, rels []string, prefix string) (defs []core.SubagentDefinition, problems []string) {
+	rels = append([]string(nil), rels...)
+	sort.Strings(rels)
 	seen := map[string]bool{}
-	for _, f := range files {
+	for _, rel := range rels {
 		if len(defs) >= maxAgents {
 			problems = append(problems, fmt.Sprintf("子 agent 超过 %d 个，其余的没有加载", maxAgents))
 			break
 		}
-		rel, _ := filepath.Rel(dir, f)
+		f := filepath.Join(root, filepath.FromSlash(rel))
 		data, err := readLimited(f, maxFileBytes)
 		if err != nil {
 			problems = append(problems, rel+"："+err.Error())
@@ -180,12 +190,14 @@ func LoadDir(dir, prefix string) (defs []core.SubagentDefinition, problems []str
 			continue
 		}
 		if prefix != "" {
-			// 子目录也是名字的一部分（和 Claude Code 一致）：agents/review/security.md → 插件:review:security
-			parts := strings.Split(filepath.ToSlash(filepath.Dir(rel)), "/")
 			name := prefix
-			for _, p := range parts {
-				if p != "." && p != "" {
-					name += ":" + p
+			dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(rel)))
+			if dir == "agents" || strings.HasPrefix(dir, "agents/") {
+				dir = strings.TrimPrefix(dir, "agents")
+			}
+			for _, part := range strings.Split(dir, "/") {
+				if part != "." && part != "" {
+					name += ":" + part
 				}
 			}
 			d.Name = name + ":" + d.Name

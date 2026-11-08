@@ -91,10 +91,10 @@ func TestParseVariants(t *testing.T) {
 	})
 	for name, src := range map[string]string{
 		"没有 frontmatter": "just text",
-		"没结束":           "---\nname: x\ndescription: d\nbody",
-		"没有描述":          "---\nname: x\n---\nbody",
-		"正文空":           "---\nname: x\ndescription: d\n---\n",
-		"名字不合法":         "---\nname: a b\ndescription: d\n---\nbody",
+		"没结束":            "---\nname: x\ndescription: d\nbody",
+		"没有描述":           "---\nname: x\n---\nbody",
+		"正文空":            "---\nname: x\ndescription: d\n---\n",
+		"名字不合法":          "---\nname: a b\ndescription: d\n---\nbody",
 	} {
 		if _, err := Parse([]byte(src), ""); err == nil {
 			t.Errorf("%s：应报错", name)

@@ -28,6 +28,21 @@ type MCPApplier interface {
 	ApplySource(source string, cfgs []mcp.ServerConfig) error
 }
 
+// AgentsApplier 接收插件带来的子 agent：插件启用时给出它的目录和 agent 文件（相对路径），停用或卸载时 rels 为空。
+// 解析和登记在装配层（internal/agents + core.SubagentRegistry），这个包不依赖内核。
+type AgentsApplier interface {
+	ApplyPluginAgents(pluginID, dir string, rels []string)
+	// DescribePluginAgents 解析这些文件，给安装确认和详情显示名字、说明和问题（不登记）。
+	DescribePluginAgents(pluginID, dir string, rels []string) []AgentView
+}
+
+// AgentView 是插件带来的一个子 agent 的概要。
+type AgentView struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Warnings    []string `json:"warnings,omitempty"`
+}
+
 // HostOptions 是 Host 的依赖。
 type HostOptions struct {
 	// Dir 是插件代码目录（安装后只读）；DataDir 是插件运行时数据的根目录（每个插件一个子目录）；
@@ -36,6 +51,8 @@ type HostOptions struct {
 	// Secrets 保存 secret 类型的配置（系统钥匙串）。为 nil 时 secret 配置不可用。
 	Secrets secret.Store
 	MCP     MCPApplier
+	// Agents 接收插件带来的子 agent（可为 nil）。
+	Agents AgentsApplier
 	// AppVersion 用于检查 min_app_version；"dev" 或空表示不检查。
 	AppVersion string
 	// Catalog 是随应用发布的目录（结构见 catalog 包：registry.json 和 bundled/<目录>）；为 nil 时市场里只有远程列表。
@@ -215,6 +232,7 @@ type Info struct {
 
 	Skills    []string      `json:"skills"`
 	Commands  []CommandView `json:"commands"`
+	Agents    []AgentView   `json:"agents"`
 	Servers   []ServerView  `json:"servers"`
 	Config    []ConfigView  `json:"config"`
 	HasStatus bool          `json:"has_status"`
@@ -302,7 +320,7 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 	info := Info{
 		ID: m.ID, Name: m.Name, Version: m.Version, Description: m.Description,
 		Error: errText, Warning: warn,
-		Skills: []string{}, Commands: []CommandView{}, Servers: []ServerView{}, Config: []ConfigView{},
+		Skills: []string{}, Commands: []CommandView{}, Agents: []AgentView{}, Servers: []ServerView{}, Config: []ConfigView{},
 		Actions: []ActionView{}, Requires: []Requirement{}, Network: append([]string{}, m.Network...),
 		HasStatus: m.Status != nil,
 		Format:    m.Format, Ignored: append([]string(nil), m.Ignored...),
@@ -319,6 +337,15 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 	}
 	for _, c := range m.Commands {
 		info.Commands = append(info.Commands, CommandView{Name: c.Name, Description: c.Description})
+	}
+	if len(m.Agents) > 0 {
+		if h.opts.Agents != nil {
+			info.Agents = append(info.Agents, h.opts.Agents.DescribePluginAgents(m.ID, dir, m.Agents)...)
+		} else { // 没接装配层时（测试）只列文件名
+			for _, rel := range m.Agents {
+				info.Agents = append(info.Agents, AgentView{Name: strings.TrimSuffix(filepath.Base(rel), ".md")})
+			}
+		}
 	}
 	for _, s := range m.MCP {
 		name := m.ServerName(s)
@@ -724,9 +751,6 @@ func (h *Host) activeIDsLocked() []string {
 // applyLocked 让各个注册表与当前状态一致：目前只有 MCP 需要主动推送（技能和命令是每次使用时现取的）。
 func (h *Host) applyLocked() {
 	h.warn = map[string]string{}
-	if h.opts.MCP == nil {
-		return
-	}
 	active := map[string]bool{}
 	for _, id := range h.activeIDsLocked() {
 		active[id] = true
@@ -737,6 +761,19 @@ func (h *Host) applyLocked() {
 	}
 	for id := range h.state.Plugins { // 已卸载但状态还在的：确保它的服务也被摘掉
 		ids[id] = true
+	}
+	// 子 agent：启用的插件交出它的 agent 文件，其余的（停用、卸载）清空。
+	if h.opts.Agents != nil {
+		for id := range ids {
+			if l := h.plugins[id]; active[id] && l != nil && len(l.m.Agents) > 0 {
+				h.opts.Agents.ApplyPluginAgents(id, l.dir, append([]string(nil), l.m.Agents...))
+			} else {
+				h.opts.Agents.ApplyPluginAgents(id, "", nil)
+			}
+		}
+	}
+	if h.opts.MCP == nil {
+		return
 	}
 	for id := range ids {
 		var cfgs []mcp.ServerConfig

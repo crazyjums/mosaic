@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -113,9 +114,17 @@ func TestClaudeCodePluginImport(t *testing.T) {
 		t.Errorf("应提前检测 node: %v", m.Requires.Commands)
 	}
 
+	// 子 agent 现在会被导入（启用时交给装配层解析登记），不再是“不会生效”
+	if len(m.Agents) != 1 || m.Agents[0] != "agents/reviewer.md" {
+		t.Fatalf("子 agent 文件: %v", m.Agents)
+	}
+	if strings.Contains(strings.Join(m.Ignored, "\n"), "子 agent") {
+		t.Fatalf("子 agent 不应再列为不会生效: %v", m.Ignored)
+	}
+
 	// 不支持的组件必须列出来，不能悄悄忽略
 	ig := strings.Join(m.Ignored, "\n")
-	for _, want := range []string{"子 agent", "钩子", "语言服务器", "输出风格", "后台监视器", "live", "proj", "!`"} {
+	for _, want := range []string{"钩子", "语言服务器", "输出风格", "后台监视器", "live", "proj", "!`"} {
 		if !strings.Contains(ig, want) {
 			t.Errorf("忽略清单里应有 %q:\n%s", want, ig)
 		}
@@ -226,9 +235,9 @@ func TestClaudeCodeLayoutVariants(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"hooks-only"}`)
 		writeFile(t, filepath.Join(dir, "hooks", "hooks.json"), `{"hooks":{}}`)
-		writeFile(t, filepath.Join(dir, "agents", "a.md"), "agent")
+		writeFile(t, filepath.Join(dir, ".lsp.json"), `{}`)
 		_, err := ParseManifest(dir, "dev")
-		if err == nil || !strings.Contains(err.Error(), "没有 Mosaic 能用的内容") || !strings.Contains(err.Error(), "钩子") || !strings.Contains(err.Error(), "子 agent") {
+		if err == nil || !strings.Contains(err.Error(), "没有 Mosaic 能用的内容") || !strings.Contains(err.Error(), "钩子") || !strings.Contains(err.Error(), "语言服务器") {
 			t.Fatalf("应说明为什么装不了: %v", err)
 		}
 	})
@@ -365,4 +374,106 @@ func TestClaudeUserConfigKeysStayUnique(t *testing.T) {
 	if m2.MCP[0].Args[0] != a[0] || m2.MCP[0].Args[1] != a[1] {
 		t.Fatal("映射必须稳定")
 	}
+}
+
+// fakeAgents 记录 Host 推给装配层的插件子 agent。
+type fakeAgents struct {
+	got map[string][]string
+	dir map[string]string
+}
+
+func (f *fakeAgents) ApplyPluginAgents(id, dir string, rels []string) {
+	if f.got == nil {
+		f.got, f.dir = map[string][]string{}, map[string]string{}
+	}
+	f.got[id], f.dir[id] = rels, dir
+}
+
+func (f *fakeAgents) DescribePluginAgents(id, dir string, rels []string) []AgentView {
+	var out []AgentView
+	for _, r := range rels {
+		out = append(out, AgentView{Name: id + ":" + r})
+	}
+	return out
+}
+
+func TestClaudePluginAgents(t *testing.T) {
+	t.Run("默认扫描 agents/（递归），只有子 agent 的插件也能装", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"agents-only"}`)
+		writeFile(t, filepath.Join(dir, "agents", "reviewer.md"), "---\nname: reviewer\ndescription: d\n---\nbody")
+		writeFile(t, filepath.Join(dir, "agents", "review", "security.md"), "---\nname: security\ndescription: d\n---\nbody")
+		writeFile(t, filepath.Join(dir, "agents", ".hidden", "x.md"), "x")
+		writeFile(t, filepath.Join(dir, "agents", "notes.txt"), "x")
+		m, err := ParseManifest(dir, "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(m.Agents, []string{"agents/review/security.md", "agents/reviewer.md"}) {
+			t.Fatalf("%v", m.Agents)
+		}
+	})
+	t.Run("清单里的 agents 替换默认目录；路径不能逃出插件目录；只能是 .md", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"listed","agents":["./custom/a.md","../escape.md","./custom/b.txt"]}`)
+		writeFile(t, filepath.Join(dir, "custom", "a.md"), "---\nname: a\ndescription: d\n---\nbody")
+		writeFile(t, filepath.Join(dir, "custom", "b.txt"), "x")
+		writeFile(t, filepath.Join(dir, "agents", "default.md"), "---\nname: default\ndescription: d\n---\nbody")
+		m, err := ParseManifest(dir, "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(m.Agents, []string{"custom/a.md"}) {
+			t.Fatalf("清单里的 agents 替换默认目录: %v", m.Agents)
+		}
+		ig := strings.Join(m.Ignored, "\n")
+		if !strings.Contains(ig, "escape.md") || !strings.Contains(ig, "b.txt") {
+			t.Fatalf("逃逸和非 .md 要告知: %v", m.Ignored)
+		}
+	})
+	t.Run("清单里写了空列表：不带子 agent，不扫描默认目录", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"no-agents","agents":[]}`)
+		writeFile(t, filepath.Join(dir, "agents", "reviewer.md"), "---\nname: reviewer\ndescription: d\n---\nbody")
+		writeFile(t, filepath.Join(dir, "commands", "x.md"), "do x")
+		m, err := ParseManifest(dir, "dev")
+		if err != nil || len(m.Agents) != 0 {
+			t.Fatalf("%v %v", m.Agents, err)
+		}
+	})
+	t.Run("启用时交给装配层，停用、卸载时清空", func(t *testing.T) {
+		src := t.TempDir()
+		writeDeployTools(t, src)
+		h, _, _, _ := newTestHost(t)
+		fa := &fakeAgents{}
+		h.opts.Agents = fa
+		pv, err := h.Preview(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pv.Plugin.Agents) != 1 || pv.Plugin.Agents[0].Name != "deploy-tools:agents/reviewer.md" {
+			t.Fatalf("安装确认里要列出子 agent: %+v", pv.Plugin.Agents)
+		}
+		if _, err := h.Install(pv.Token, nil); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(fa.got["deploy-tools"], []string{"agents/reviewer.md"}) || fa.dir["deploy-tools"] == "" {
+			t.Fatalf("启用后应交出子 agent: %v %v", fa.got, fa.dir)
+		}
+		if _, err := h.SetEnabled("deploy-tools", false); err != nil {
+			t.Fatal(err)
+		}
+		if len(fa.got["deploy-tools"]) != 0 {
+			t.Fatalf("停用后应清空: %v", fa.got["deploy-tools"])
+		}
+		if _, err := h.SetEnabled("deploy-tools", true); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.Uninstall("deploy-tools", true); err != nil {
+			t.Fatal(err)
+		}
+		if len(fa.got["deploy-tools"]) != 0 {
+			t.Fatalf("卸载后应清空: %v", fa.got["deploy-tools"])
+		}
+	})
 }

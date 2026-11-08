@@ -152,10 +152,11 @@ func importClaudePlugin(dir, hint string) (*Manifest, error) {
 	imp.skills(cm)
 	imp.commands(cm)
 	imp.mcp(cm)
+	imp.agents(cm)
 	imp.ignoredComponents(cm)
 
-	if len(m.Skills) == 0 && len(m.Commands) == 0 && len(m.MCP) == 0 {
-		msg := "这个插件里没有 Mosaic 能用的内容（技能、命令、MCP 服务）"
+	if len(m.Skills) == 0 && len(m.Commands) == 0 && len(m.MCP) == 0 && len(m.Agents) == 0 {
+		msg := "这个插件里没有 Mosaic 能用的内容（技能、命令、MCP 服务、子 agent）"
 		if len(m.Ignored) > 0 {
 			msg += "；它只有这些不受支持的组件：" + strings.Join(m.Ignored, "、")
 		}
@@ -615,25 +616,62 @@ func (c *claudeImport) mcp(cm claudeManifest) {
 	}
 }
 
+// ---- 子 agent ----
+
+// agents 收集子 agent 文件（相对路径）。默认扫描 agents/（递归）；清单里写了 agents 就替换默认目录
+// （和 Claude Code 一致），它只能是 .md 文件。文件内容在启用时由装配层解析（internal/agents）。
+func (c *claudeImport) agents(cm claudeManifest) {
+	const maxAgentFiles = 50
+	add := func(rel string) {
+		rel = filepath.ToSlash(filepath.Clean(rel))
+		p, err := insideDir(c.dir, rel)
+		if err != nil {
+			c.ignore("子 agent %s（%v）", rel, err)
+			return
+		}
+		if fi, err := os.Stat(p); err != nil || fi.IsDir() || !strings.EqualFold(filepath.Ext(p), ".md") {
+			c.ignore("子 agent %s（不是 .md 文件或不存在）", rel)
+			return
+		}
+		if len(c.m.Agents) >= maxAgentFiles {
+			c.ignore("子 agent %s（超过 %d 个上限）", rel, maxAgentFiles)
+			return
+		}
+		if !contains(c.m.Agents, rel) {
+			c.m.Agents = append(c.m.Agents, rel)
+		}
+	}
+	// 写了 agents 就替换默认目录，哪怕是空列表（"agents": [] 表示“不要带子 agent”）；只有没写或写 null 才扫描默认目录。
+	declared := len(strings.TrimSpace(string(cm.Agents))) > 0 && strings.TrimSpace(string(cm.Agents)) != "null"
+	if paths, ok := rawStrings(cm.Agents); ok && declared {
+		for _, p := range paths {
+			add(strings.TrimPrefix(p, "./"))
+		}
+		return
+	} else if !ok {
+		c.ignore("清单里的 agents 写法不被支持（只能是 .md 文件路径或它们的列表）")
+		return
+	}
+	_ = filepath.WalkDir(filepath.Join(c.dir, "agents"), func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".md") && d.Type().IsRegular() {
+			if rel, err := filepath.Rel(c.dir, p); err == nil {
+				add(rel)
+			}
+		}
+		return nil
+	})
+	sort.Strings(c.m.Agents)
+}
+
 // ---- 不支持的组件：列出来，不悄悄忽略 ----
 
 func (c *claudeImport) ignoredComponents(cm claudeManifest) {
-	countMD := func(rel string) int {
-		n := 0
-		_ = filepath.WalkDir(filepath.Join(c.dir, rel), func(p string, d os.DirEntry, err error) error {
-			if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(p), ".md") {
-				n++
-			}
-			return nil
-		})
-		return n
-	}
-	if n := countMD("agents"); n > 0 || len(strings.TrimSpace(string(cm.Agents))) > 4 {
-		if n == 0 {
-			n = 1
-		}
-		c.ignore("子 agent（agents，%d 个）：Mosaic 还没有对应的概念", n)
-	}
 	if isDir(filepath.Join(c.dir, "hooks")) || fileExists(filepath.Join(c.dir, "hooks.json")) || len(strings.TrimSpace(string(cm.Hooks))) > 4 {
 		c.ignore("钩子（hooks）：会在工具调用前后执行命令，Mosaic 不执行它们（也不会绕过权限确认）")
 	}

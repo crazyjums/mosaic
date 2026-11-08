@@ -79,6 +79,21 @@ export default function PluginInstallDialog({ preview, busy, error, onConfirm, o
             </div>
           </Section>
 
+          <Section title={t("带来的子 agent")} empty="" show={(p.agents?.length ?? 0) > 0}>
+            <div className="mb-1.5 text-xs text-muted">{t("主对话可以把任务派给它们；它们的每个工具调用照常按你的权限设置确认，插件里写的权限设置不生效。")}</div>
+            <ul className="space-y-1 text-xs">
+              {p.agents!.map((a, i) => (
+                <li key={a.name + i}>
+                  <span className="font-mono">{a.name}</span>
+                  {a.description && <span className="text-muted"> — {a.description}</span>}
+                  {a.warnings?.map((w) => (
+                    <div key={w} className="text-warn">{w}</div>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </Section>
+
           <Section title={t("不会生效的部分")} empty="" show={(p.ignored?.length ?? 0) > 0}>
             <div className="rounded-ctl border border-warn/40 bg-warn/10 px-3 py-2 text-xs">
               <div className="mb-1 text-warn">

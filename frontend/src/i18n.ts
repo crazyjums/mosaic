@@ -512,6 +512,8 @@ export const EN: Record<string, string> = {
   "已安装 v{v}，这次会覆盖更新：配置会保留，但下面的风险确认需要重新勾选。": "v{v} is installed. This will update it: settings are kept, but the risk confirmations below need to be ticked again.",
   "已找到": "found",
   "带来的技能和命令": "Skills and commands it brings",
+  "带来的子 agent": "Subagents it brings",
+  "主对话可以把任务派给它们；它们的每个工具调用照常按你的权限设置确认，插件里写的权限设置不生效。": "The main conversation can hand tasks to them. Each of their tool calls still follows your permission settings; permission settings written in the plugin have no effect.",
   "插件是在你电脑上运行的外部程序，应用无法限制它能做什么。请只安装你信任的作者写的插件，并仔细看下面它要运行的内容。": "A plugin is an external program running on your computer and the app cannot limit what it does. Only install plugins from authors you trust, and read what it will run below.",
   "插件读取到的内容（例如文档、消息）会作为工具结果发给你当前选择的模型厂商。": "Content a plugin reads (documents, messages…) is sent to your current model provider as tool results.",
   "更新并启用": "Update and enable",

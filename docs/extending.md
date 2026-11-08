@@ -200,7 +200,7 @@ mcp.RegisterServerTools(ctx, tools, "github", client, permission.RiskExec)
 ## 3. 新增子 agent 定义
 
 子 agent 已经可以用了（设计见 [hooks-and-subagents.md](design/hooks-and-subagents.md)）。最简单的办法是**写一个文件**，不用改代码：
-把 Claude Code 格式的 agent 文件放进 `~/.myllmapp/agents/`，在 设置 → 权限 → 子 agent 里点“重新加载”。
+把 Claude Code 格式的 agent 文件放进 `~/.myllmapp/agents/`，在 设置 → 权限 → 子 agent 里点“重新加载”。插件也可以带子 agent（Claude Code 格式插件的 `agents/*.md`）：`plugin` 包只负责找出文件，解析和登记在 `internal/bootstrap/plugin_agents.go`（来源 `plugin:<id>`，启停时整体替换），这样 `plugin` 包不依赖内核。
 
 ```markdown
 ---
@@ -226,7 +226,7 @@ engine.Subagents().ReplaceSource("my-source", []core.SubagentDefinition{{
 }})
 ```
 
-有子 agent 时，主 agent 会多一个 `task` 工具（`{agent, prompt}`）。子 agent 在独立的上下文里跑，事件带着自己的 `agent_id` 和 `parent_id = "main"`；界面把它的过程折叠在 `task` 工具卡片下面，最终回复作为 `task` 的结果交回主 agent。权限和主对话完全相同；第一版不允许子 agent 再派子 agent。
+有子 agent 时，主 agent 会多一个 `task` 工具（`{agent, prompt}`）。子 agent 在独立的上下文里跑，事件带着自己的 `agent_id` 和 `parent_id = "main"`；界面把它的过程折叠在 `task` 工具卡片下面，最终回复作为 `task` 的结果交回主 agent。权限和主对话完全相同；第一版不允许子 agent 再派子 agent。`task` 工具和子 agent 定义只在 Mosaic 内置的对话引擎里有效，Codex、Claude Code、pi 这些外部引擎不会调用它们。
 
 ## 4. 新增事件类型
 
