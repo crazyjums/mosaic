@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useChat } from "../store/chatStore";
 import type { AssistantItem } from "../store/reducer";
 import AssistantMessage from "./AssistantMessage";
@@ -10,7 +10,14 @@ import { t } from "../i18n";
 // 结束后默认收起，只留一行“子 agent X · 完成 · N 步”，需要时再点开看。
 export default function SubagentRun({ callId }: { callId: string }) {
   const agent = useChat((s) => Object.values(s.agents).find((a) => a.callId === callId));
-  const items = useChat((s) => (agent ? s.timeline.filter((it): it is AssistantItem => it.kind === "assistant" && it.agentId === agent.id) : []));
+  // 选择器只取 timeline 的引用（store 不变时引用不变），过滤放在 useMemo 里：
+  // 在选择器里 filter 每次都返回新数组，Zustand 5 会认为快照一直在变而反复重渲染。
+  const timeline = useChat((s) => s.timeline);
+  const agentId = agent?.id;
+  const items = useMemo(
+    () => (agentId ? timeline.filter((it): it is AssistantItem => it.kind === "assistant" && it.agentId === agentId) : []),
+    [timeline, agentId],
+  );
   const running = agent?.status === "running";
   const [open, setOpen] = useState<boolean | null>(null); // null = 跟随状态（运行中展开、结束后收起）
   if (!agent) return null;
