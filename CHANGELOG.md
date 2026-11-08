@@ -12,6 +12,11 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **可以安装 Claude Code 格式的插件**（`.claude-plugin/plugin.json`，或只有 `skills/`、`commands/`、`.mcp.json` 这些约定目录；GitHub 下载的压缩包也行）：技能、斜杠命令（支持 `$ARGUMENTS`、`$1`…）、MCP 服务（stdio / http）和配置项都能用。之前这类插件会直接报“找不到 plugin.json”。
+- 插件里 Mosaic 不支持的部分（子 agent、钩子、LSP 等）不再让整个插件装不上，而是在安装确认和详情里列为“不会生效的部分”——不会运行，也不会被悄悄忽略。Codex 格式插件里的 hooks / agents 同样处理。
+
 ## [1.7.23] - 2026-11-08
 
 ### 修复
