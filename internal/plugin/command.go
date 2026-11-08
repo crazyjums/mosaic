@@ -3,6 +3,7 @@ package plugin
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -54,4 +55,54 @@ func (t commandTemplate) render(args string) string {
 		return t.body
 	}
 	return t.body + "\n\n" + args
+}
+
+var positionalRe = regexp.MustCompile(`\$([1-9])`)
+
+// renderClaude 按 Claude Code 的写法展开命令：$ARGUMENTS 是用户输入的全部，$1…$9 是按空白拆开（引号内不拆）的第几个参数。
+// 没有任何占位符而用户输入了内容时，把内容接在后面，不会丢掉（和原生模板一致）。
+func (t commandTemplate) renderClaude(args string) string {
+	args = strings.TrimSpace(args)
+	words, err := splitCommand(args)
+	if err != nil {
+		words = strings.Fields(args)
+	}
+	used := strings.Contains(t.body, "$ARGUMENTS")
+	out := strings.ReplaceAll(t.body, "$ARGUMENTS", args)
+	// 只替换单个数字：$10 不是第 10 个参数，也不是 $1 后面跟个 0——保持原样。
+	out = replaceAllSubmatchFunc(positionalRe, out, func(m []string, next byte) (string, bool) {
+		if next >= '0' && next <= '9' {
+			return "", false
+		}
+		used = true
+		i := int(m[1][0] - '1')
+		if i < len(words) {
+			return words[i], true
+		}
+		return "", true
+	})
+	if !used && args != "" {
+		return out + "\n\n" + args
+	}
+	return out
+}
+
+// replaceAllSubmatchFunc 类似 ReplaceAllStringFunc，但回调能看到匹配后面的那个字符；返回 false 表示这一处不替换。
+func replaceAllSubmatchFunc(re *regexp.Regexp, s string, f func(m []string, next byte) (string, bool)) string {
+	var b strings.Builder
+	last := 0
+	for _, loc := range re.FindAllStringSubmatchIndex(s, -1) {
+		var next byte
+		if loc[1] < len(s) {
+			next = s[loc[1]]
+		}
+		m := []string{s[loc[0]:loc[1]], s[loc[2]:loc[3]]}
+		if rep, ok := f(m, next); ok {
+			b.WriteString(s[last:loc[0]])
+			b.WriteString(rep)
+			last = loc[1]
+		}
+	}
+	b.WriteString(s[last:])
+	return b.String()
 }

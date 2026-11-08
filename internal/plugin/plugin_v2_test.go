@@ -29,10 +29,19 @@ func TestPortablePluginImportAndSafety(t *testing.T) {
     }
     if preview.Plugin.Servers[0].Effective != "exec" { t.Fatalf("untrusted MCP must be exec by default") }
 
-    // Unsupported executable components must fail before install.
+    // Unsupported executable components are never run, and never silently dropped either:
+    // the plugin still installs, but hooks / agents are listed in Ignored so the user is told.
     writeFile(t, filepath.Join(dir, "hooks", "hooks.json"), `{"hooks":[]}`)
-    if _, err := ParseManifest(dir, "dev"); err == nil || !strings.Contains(err.Error(), "hooks") {
-        t.Fatalf("hooks must not be silently ignored: %v", err)
+    writeFile(t, filepath.Join(dir, "agents", "reviewer.md"), "---\nname: reviewer\n---\nreview")
+    m2, err := ParseManifest(dir, "dev")
+    if err != nil { t.Fatalf("hooks/agents must be ignored, not reject the whole plugin: %v", err) }
+    joined := strings.Join(m2.Ignored, "|")
+    if !strings.Contains(joined, "hooks") || !strings.Contains(joined, "agents") || m2.Format != "codex" {
+        t.Fatalf("hooks and agents must be reported as ignored: format=%q ignored=%v", m2.Format, m2.Ignored)
+    }
+    p2, err := h.Preview(dir)
+    if err != nil || len(p2.Plugin.Ignored) != 2 || p2.Plugin.Format != "codex" {
+        t.Fatalf("preview must show what will not take effect: %+v %v", p2.Plugin.Ignored, err)
     }
 }
 
