@@ -336,3 +336,27 @@ func TestShellFormExpandsVars(t *testing.T) {
 		t.Fatalf("%+v", o)
 	}
 }
+
+func TestShellFormDoesNotInjectPaths(t *testing.T) {
+	if _, err := lookPath("sh"); err != nil {
+		t.Skip("没有 sh")
+	}
+	// 目录名里带 $(…)：先替换进命令文本的话会被 sh 当成命令执行
+	root := filepath.Join(t.TempDir(), "plugin-$(echo INJECTED)")
+	r := newRunner()
+	r.ReplaceSource("plugin:t", []Hook{{Event: core.HookUserPromptSubmit, Command: `cat >/dev/null; printf '%s' "${CLAUDE_PLUGIN_ROOT}"`, PluginRoot: root}})
+	o := r.Run(context.Background(), core.HookInput{Event: core.HookUserPromptSubmit, Prompt: "x"})
+	if len(o.Context) != 1 || !strings.Contains(o.Context[0], "$(echo INJECTED)") {
+		t.Fatalf("路径应原样交给命令，不被执行: %+v", o)
+	}
+}
+
+func TestBadJSONWithBlockOnFailure(t *testing.T) {
+	r := newRunner()
+	h := helperHook(core.HookPreToolUse, "", "out:{not json")
+	h.BlockOnFailure = true
+	r.ReplaceSource("plugin:t", []Hook{h})
+	if o := r.Run(context.Background(), preInput("shell", `{}`)); !o.Block || o.Runs[0].Outcome != "blocked" {
+		t.Fatalf("坏 JSON + BlockOnFailure 应阻止: %+v", o)
+	}
+}

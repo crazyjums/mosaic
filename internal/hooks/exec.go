@@ -68,9 +68,9 @@ func (r *Runner) exec(ctx context.Context, h Hook, input map[string]any, cwd str
 			}
 			return res
 		}
-		// 变量也作为环境变量传入，所以命令里写 $CLAUDE_PLUGIN_ROOT 也能用；这里替换的是 ${...} 写法，
-		// 和 Claude Code 文档里的写法一致。
-		name, args = sh, []string{"-c", expand(h.Command)}
+		// shell 形式不在这里替换变量：它们已经作为环境变量传入，交给 sh 自己展开。
+		// 如果先把路径文本替换进命令，路径里的 $(…)、反引号等字符会变成 shell 语法被执行（即使原来加了引号）。
+		name, args = sh, []string{"-c", h.Command}
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, timeout)
