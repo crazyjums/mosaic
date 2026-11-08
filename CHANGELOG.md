@@ -12,6 +12,8 @@
 
 ## [Unreleased]
 
+## [1.7.25] - 2026-11-08
+
 ### 新增
 
 - **可以安装 Claude Code 格式的插件**（`.claude-plugin/plugin.json`，或只有 `skills/`、`commands/`、`.mcp.json` 这些约定目录；GitHub 下载的压缩包也行）：技能、斜杠命令（支持 `$ARGUMENTS`、`$1`…）、MCP 服务（stdio / http）和配置项都能用。之前这类插件会直接报“找不到 plugin.json”。
