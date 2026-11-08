@@ -355,6 +355,9 @@ func TestSubagentEvents(t *testing.T) {
 	}
 	if o := r.Run(context.Background(), core.HookInput{Event: core.HookSubagentStart, AgentType: "reviewer"}); len(o.Runs) != 0 {
 		t.Fatal("matcher 不匹配的子 agent 不跑")
+	}
+}
+
 func TestShellFormDoesNotInjectPaths(t *testing.T) {
 	if _, err := lookPath("sh"); err != nil {
 		t.Skip("没有 sh")
