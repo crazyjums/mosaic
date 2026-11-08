@@ -6,6 +6,9 @@ copyright: crazyjums
 directories:
   output: release
   buildResources: build
+# 应用图标：用仓库里的 Mosaic 图标（Wails 版也在用）。不写的话 electron-builder 会退回 Electron 默认图标。
+# macOS 的 .icns 和 Linux 的图标由这张 1024px 的 PNG 生成；Windows 用现成的多尺寸 .ico（16–256）。
+icon: ../build/appicon.png
 files:
   - dist/src/**
   - package.json
@@ -34,10 +37,15 @@ extraResources:
 # 测试版和正式版的安装包文件名里带上平台和架构，方便在 Release 页面区分。
 artifactName: Mosaic-${version}-${os}-${arch}.${ext}
 win:
+  icon: ../build/windows/icon.ico
   target:
     - target: nsis
       arch: [x64]
 nsis:
+  # 安装程序、卸载程序和安装界面的图标跟应用一致（默认就取 win.icon，这里写明避免回退成 NSIS 默认图标）。
+  installerIcon: ../build/windows/icon.ico
+  uninstallerIcon: ../build/windows/icon.ico
+  installerHeaderIcon: ../build/windows/icon.ico
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
@@ -47,6 +55,8 @@ linux:
       arch: [x64]
   category: Development
 mac:
+  # macOS 的图标四周要留约 10% 边距（Apple 模板：1024 画布里图形占 824），否则比别的应用大一圈。
+  icon: resources/mac-icon.png
   target:
     - target: dmg
     - target: zip
