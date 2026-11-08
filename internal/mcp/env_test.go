@@ -51,3 +51,33 @@ func TestBaseEnvIncludesToolchainButNotSecrets(t *testing.T) {
 		t.Fatal("厂商密钥不能透传")
 	}
 }
+
+func TestToolchainEnvDropsEmbeddedCredentialsInValues(t *testing.T) {
+	t.Setenv("PIP_INDEX_URL", "https://user:private-token@packages.example/simple")
+	t.Setenv("npm_config_registry", "https://__token__@registry.example/")
+	t.Setenv("UV_INDEX_URL", "https://pypi.example/simple") // 没有凭据：正常传
+	t.Setenv("GOPROXY", "https://goproxy.example,direct")
+	got := map[string]string{}
+	for _, kv := range BaseEnv() {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	for _, n := range []string{"PIP_INDEX_URL", "npm_config_registry"} {
+		if _, ok := got[n]; ok {
+			t.Errorf("%s 的值里有内嵌凭据，不应传给插件: %q", n, got[n])
+		}
+	}
+	for _, n := range []string{"UV_INDEX_URL", "GOPROXY"} {
+		if got[n] == "" {
+			t.Errorf("%s 没有凭据，应该传", n)
+		}
+	}
+	for v, want := range map[string]bool{
+		"https://user:pw@host/x": true, "http://tok@host": true, "HTTPS://U:P@HOST": true, "git+ssh://git@github.com/x": true,
+		"https://host/path@2x": false, "https://host/?a=b@c": false, "/usr/local/ca.pem": false, "https://pypi.example/simple": false,
+	} {
+		if hasEmbeddedCredential(v) != want {
+			t.Errorf("hasEmbeddedCredential(%q) = %v, want %v", v, !want, want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -55,6 +56,14 @@ func isToolchainEnv(name string) bool {
 	return false
 }
 
+// urlUserinfoRe 匹配 URL 里内嵌的凭据（scheme://user:password@host 或 scheme://token@host）。
+var urlUserinfoRe = regexp.MustCompile(`(?i)[a-z][a-z0-9+.-]*://[^/\s@]+@`)
+
+// hasEmbeddedCredential 报告值里是不是带了内嵌凭据的 URL。名字里没有 token / password 字样的变量，
+// 值也可能带凭据（例如 PIP_INDEX_URL=https://user:token@packages.example/simple）：这种整个变量不传——
+// 插件需要私有仓库的话，应该在自己的清单里声明它要的环境变量，而不是继承用户的。
+func hasEmbeddedCredential(value string) bool { return urlUserinfoRe.MatchString(value) }
+
 // BaseEnv 返回基础环境变量（"名=值"）：只包含白名单里当前进程里确实存在的那些。
 func BaseEnv() []string {
 	var out []string
@@ -64,7 +73,10 @@ func BaseEnv() []string {
 			continue
 		}
 		if isToolchainEnv(name) {
-			out = append(out, kv)
+			// 工具链变量按名字规则放行，所以还要看值：带内嵌凭据的 URL 不传。
+			if _, value, _ := strings.Cut(kv, "="); !hasEmbeddedCredential(value) {
+				out = append(out, kv)
+			}
 			continue
 		}
 		for _, allowed := range baseEnvNames {
