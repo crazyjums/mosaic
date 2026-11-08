@@ -38,6 +38,8 @@ interface Store extends ChatState, Q.QueueState {
   permissionMode: PermissionMode;
   /** 动作失败时显示在界面顶部的提示 */
   toast: string | null;
+  /** 别处（比如插件详情）要放进输入框的文字；Composer 取走之后清空。seq 保证同样的文字再点一次也会触发。 */
+  composerDraft: { text: string; seq: number } | null;
   /** 当前会话还有多少轮更早的历史没有加载（打开长会话时只加载最近几轮） */
   earlier: number;
   loadingEarlier: boolean;
@@ -74,6 +76,8 @@ interface Store extends ChatState, Q.QueueState {
   /** 重新读取厂商列表、当前状态和会话列表（设置页修改厂商后调用） */
   refreshMeta(): Promise<void>;
   dismissToast(): void;
+  /** 把文字放进输入框（例如插件详情里的“在输入框里使用”），不会自动发送 */
+  draftToComposer(text: string): void;
 }
 
 let initialized = false;
@@ -181,6 +185,7 @@ export const useChat = create<Store>((set, get) => {
     workspaceInfo: null,
     permissionMode: "default",
     toast: null,
+    composerDraft: null,
     ...Q.emptyQueue(),
     stash: {},
     activity: {},
@@ -413,5 +418,6 @@ export const useChat = create<Store>((set, get) => {
       }
     },
     dismissToast: () => set({ toast: null }),
+    draftToComposer: (text) => set((s) => ({ composerDraft: { text, seq: (s.composerDraft?.seq ?? 0) + 1 } })),
   };
 });

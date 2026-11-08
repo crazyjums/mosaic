@@ -37,6 +37,19 @@ export default function Composer() {
   const [attachError, setAttachError] = useState("");
   const [dragging, setDragging] = useState(false);
   const running = useChat((s) => s.running);
+  // 别处要放进输入框的文字（插件详情里的“在输入框里使用”）：取走并清空，光标放到末尾，方便接着输入参数。
+  const draft = useChat((s) => s.composerDraft);
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft.text);
+    useChat.setState({ composerDraft: null });
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(draft.text.length, draft.text.length);
+    });
+  }, [draft]);
   const send = useChat((s) => s.send);
   const cancel = useChat((s) => s.cancel);
   const waiting = useChat((s) => s.permissions.length > 0);

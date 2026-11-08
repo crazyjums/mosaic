@@ -397,6 +397,10 @@ export interface Backend {
   /** 综合依赖、技能/命令与 MCP 真实连接/工具注册状态（无需执行插件代码） */
   getPluginDiagnostics(id: string): Promise<PluginDiagnostics>;
   listPluginDiagnostics(): Promise<PluginDiagnostics[]>;
+  /** 插件已注册的工具，以及每个能不能试调用 */
+  listPluginTools(id: string): Promise<PluginToolView[]>;
+  /** 用空参数调用一个只读、无参数的插件工具，确认它真的连上了；其他工具会被拒绝 */
+  tryPluginTool(id: string, tool: string): Promise<PluginTryResult>;
   /** 仅重连该插件的 MCP 服务 */
   reconnectPlugin(id: string): Promise<PluginDiagnostics>;
   runPluginAction(id: string, action: string): Promise<PluginActionResult>;
@@ -809,6 +813,21 @@ export interface PluginSourceInspection {
   kind: "plugin" | "marketplace";
   preview?: PluginPreview;
   market?: MarketInfo;
+}
+
+/** 插件提供的一个工具，以及它能不能“试调用”（只读、无参数、不涉及私密内容的才行） */
+export interface PluginToolView {
+  name: string;
+  description?: string;
+  risk: string;
+  trial: boolean;
+  /** 不能试调用的原因 */
+  reason?: string;
+}
+export interface PluginTryResult {
+  output: string;
+  is_error: boolean;
+  duration_ms: number;
 }
 
 /** 插件市场里的一项 */

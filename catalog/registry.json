@@ -81,6 +81,16 @@
       },
       "bundled": "echo-mcp",
       "category": "demo"
+    },
+    {
+      "id": "filesystem",
+      "name": "文件系统（官方 MCP）",
+      "summary": {
+        "zh": "MCP 官方的文件系统服务器：让模型读写你指定的那个目录里的文件，不需要账号（需要 npx）。每次读写都会先询问你。",
+        "en": "The official MCP filesystem server: lets the model read and write files in one directory you choose. No account needed (requires npx). Every call asks first."
+      },
+      "bundled": "filesystem",
+      "category": "dev"
     }
   ]
 }

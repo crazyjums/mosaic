@@ -32,6 +32,10 @@ def tools(prefix):
     }
 
 
+# 不需要参数的工具：插件详情里的“试调用”只对这样的只读工具开放，用来一键确认服务器真的连上了。
+PING_DESCRIPTION = "不需要参数：回应 pong 和当前使用的前缀，用来确认这个服务真的连上了。"
+
+
 def handle(msg, prefix):
     method, mid = msg.get("method"), msg.get("id")
     if method == "initialize":
@@ -40,9 +44,11 @@ def handle(msg, prefix):
         return {"tools": [
             {"name": n, "description": d, "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}
             for n, (d, _) in tools(prefix).items()
-        ]}
+        ] + [{"name": "ping", "description": PING_DESCRIPTION, "inputSchema": {"type": "object", "properties": {}}}]}
     if method == "tools/call":
         params = msg.get("params", {})
+        if params.get("name") == "ping":
+            return {"content": [{"type": "text", "text": "pong（前缀：%s）" % prefix}]}
         tool = tools(prefix).get(params.get("name"))
         if tool is None:
             return {"content": [{"type": "text", "text": "unknown tool"}], "isError": True}

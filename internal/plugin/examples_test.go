@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -95,6 +96,14 @@ func TestExampleEchoMCPEndToEnd(t *testing.T) {
 	if res.IsError || res.Output != "echo: 你好" {
 		t.Fatalf("%+v", res)
 	}
+	// ping：不需要参数，是“试调用”的样板；schema 里没有必填项。
+	ping, ok := reg.Get("mcp__echo-mcp__ping")
+	if !ok || strings.Contains(string(ping.Spec().InputSchema), "required") {
+		t.Fatalf("ping 应已注册且没有必填参数: %v %s", ok, ping.Spec().InputSchema)
+	}
+	if r := ping.Execute(context.Background(), tool.Call{Input: []byte(`{}`)}); r.IsError || r.Output != "pong（前缀：echo:）" {
+		t.Fatalf("ping: %+v", r)
+	}
 
 	// 改了配置：服务用新的前缀重启。
 	if _, err := h.SetConfig("echo-mcp", map[string]string{"prefix": ">>", "loud": "true"}); err != nil {
@@ -140,4 +149,50 @@ func waitUntil(t *testing.T, cond func() bool) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("等待条件超时")
+}
+
+// filesystem：官方 MCP 文件系统服务器的示范。这里**不会**真的运行 npx（不下载、不执行外部包），
+// 只验证清单：版本固定、风险档位是“每次询问”、目录配置必填且展开进启动参数、依赖 npx。
+func TestExampleFilesystemManifest(t *testing.T) {
+	fake := newFakeMCP()
+	h := newExampleHost(t, fake)
+	h.opts.LookPath = func(name string) (string, error) {
+		if name == "npx" {
+			return "/usr/bin/npx", nil
+		}
+		return "", os.ErrNotExist
+	}
+	p, err := h.Preview(exampleDir("filesystem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Plugin.Servers) != 1 || p.Plugin.Servers[0].Declared != "exec" || p.Plugin.Servers[0].Effective != "exec" {
+		t.Fatalf("既能读又能写的服务器不能声明 read，每次调用都要询问: %+v", p.Plugin.Servers)
+	}
+	cmd := p.Plugin.Servers[0].Command
+	if !strings.HasPrefix(cmd, "npx -y @modelcontextprotocol/server-filesystem@") || strings.Contains(cmd, "@latest") {
+		t.Fatalf("要固定版本，不能跟着 latest 走（供应链）: %q", cmd)
+	}
+	if len(p.Plugin.Requires) != 1 || p.Plugin.Requires[0].Command != "npx" || !p.Plugin.Requires[0].Found {
+		t.Fatalf("应声明依赖 npx: %+v", p.Plugin.Requires)
+	}
+	if len(p.Plugin.Config) != 1 || p.Plugin.Config[0].Key != "root" || p.Plugin.Config[0].Type != "path" || !p.Plugin.Config[0].Required {
+		t.Fatalf("目录必须是必填的路径配置: %+v", p.Plugin.Config)
+	}
+
+	info, err := h.Install(p.Token, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Warning == "" {
+		t.Error("还没选目录：应提示先完成配置，而不是用空目录去启动服务")
+	}
+	root := t.TempDir()
+	if _, err := h.SetConfig("filesystem", map[string]string{"root": root}); err != nil {
+		t.Fatal(err)
+	}
+	cfgs := fake.get("plugin:filesystem")
+	if len(cfgs) != 1 || cfgs[0].Command != "npx" || len(cfgs[0].Args) != 3 || cfgs[0].Args[2] != root || cfgs[0].Args[0] != "-y" {
+		t.Fatalf("选了目录之后，目录要展开进启动参数: %+v", cfgs)
+	}
 }

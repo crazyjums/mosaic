@@ -1,4 +1,4 @@
-import type { PluginActionResult, PluginCatalogEntry, PluginDiagnostics, PluginLoginState, PluginInfo, PluginPreview, PluginSourceInspection, PluginStatus, SlashCommandInfo } from "./types";
+import type { PluginActionResult, PluginCatalogEntry, PluginDiagnostics, PluginLoginState, PluginInfo, PluginPreview, PluginSourceInspection, PluginStatus, PluginToolView, PluginTryResult, SlashCommandInfo } from "./types";
 
 // 演示模式（浏览器预览 / 截图 / 测试）里的插件：内存里的假实现，行为尽量和后端 internal/plugin 一致。
 // 选择路径里带 "hello" 得到一个只有技能和命令的插件，带 "bad" 得到校验失败，其余得到一个带 MCP 工具和配置表单的“飞书”示例。
@@ -12,7 +12,7 @@ const hello = (): PluginInfo => ({
 const feishu = (): PluginInfo => ({
   id: "feishu", name: "飞书", version: "0.1.0", description: "读取飞书文档和群消息（示例）。",
   enabled: false, skills: ["feishu-docs"], commands: [{ name: "feishu-summary", description: "总结一篇飞书文档" }],
-  servers: [{ name: "feishu", transport: "stdio", command: "node ${PLUGIN_DIR}/server/feishu-mcp.js --profile ${config.profile}", declared_risk: "read", effective_risk: "exec", approved: false }],
+  servers: [{ name: "feishu", transport: "stdio", command: "node ${PLUGIN_DIR}/server/feishu-mcp.js --profile ${config.profile}", declared_risk: "read", effective_risk: "exec", approved: false, sensitive: true }],
   config: [
     { key: "profile", label: "飞书应用配置名", type: "string", default: "default", value: "default", has_secret: false, help: "lark-cli 里配置的 profile 名" },
     { key: "region", label: "区域", type: "select", options: ["cn", "global"], default: "cn", value: "cn", has_secret: false },
@@ -91,6 +91,21 @@ export function createDemoPlugins() {
     };
   };
 
+  // 演示：规则和真实后端一致——只读（安装时信任了只读声明）、无参数、不敏感的工具才能试调用，其余写明原因。
+  const listToolsOne = async (id: string): Promise<PluginToolView[]> => {
+    const p = find(id);
+    if (!p.enabled || !p.servers.length) throw new Error(`插件 "${id}" 未启用或无法加载`);
+    if (p.servers.some((x) => x.sensitive)) {
+      return [{ name: `mcp__${id}__read_doc`, description: "读取一篇文档的正文。", risk: "exec", trial: false, reason: "它会读取私密内容，每次调用都要经过对话里的确认" }];
+    }
+    const approved = p.servers.some((x) => x.approved);
+    const need = "它需要参数，请在对话里让模型来调用";
+    const notRead = "它不是只读的（或你没有在安装时信任它的只读声明），请在对话里使用，每次调用会先询问你";
+    return [
+      { name: `mcp__${id}__echo`, description: "原样返回文字，前面加上设置里的前缀。", risk: approved ? "read" : "exec", trial: false, reason: approved ? need : notRead },
+      { name: `mcp__${id}__ping`, description: "不需要参数：回应 pong，用来确认这个服务真的连上了。", risk: approved ? "read" : "exec", trial: approved, reason: approved ? undefined : notRead },
+    ];
+  };
   const previewOne = async (src: string): Promise<PluginPreview> => {
     if (/^https:\/\//i.test(src.trim()) === false && /^[a-z][a-z0-9+.-]*:\/\//i.test(src.trim())) throw new Error("Git 地址必须是 https:// 开头的完整地址");
     if (src.includes("bad")) throw new Error("plugin.json 不是合法的 JSON：invalid character '}' looking for beginning of object key string");
@@ -136,6 +151,13 @@ export function createDemoPlugins() {
     listPlugins: async (): Promise<PluginInfo[]> => installed.map(warn),
     getPluginDiagnostics: async (id: string): Promise<PluginDiagnostics> => diagnose(id),
     listPluginDiagnostics: async (): Promise<PluginDiagnostics[]> => installed.map((p) => diagnose(p.id)),
+    listPluginTools: listToolsOne,
+    tryPluginTool: async (id: string, name: string): Promise<PluginTryResult> => {
+      const t = (await listToolsOne(id)).find((x) => x.name === name);
+      if (!t) throw new Error(`插件 "${id}" 没有注册工具 "${name}"`);
+      if (!t.trial) throw new Error("不能试调用：" + (t.reason ?? ""));
+      return { output: "pong（前缀：echo:）", is_error: false, duration_ms: 3 };
+    },
     reconnectPlugin: async (id: string): Promise<PluginDiagnostics> => {
       const p = find(id);
       if (!p.enabled || !p.servers.length) throw new Error("插件未启用或没有 MCP 服务");
