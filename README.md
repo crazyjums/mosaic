@@ -243,7 +243,7 @@ flowchart LR
 
 已完成（续）：插件市场、Skill / 斜杠命令 / MCP、插件诊断和单独重连、Codex / Agent Plugins 基础格式导入；**Electron 版**（托盘、通知、全局快捷键、多窗口、CSP 与预览沙箱、应用内更新）；**外部 Agent 引擎**：Codex、Claude Code、pi。飞书属于尚需真实租户验证的早期集成。
 
-进行中：插件系统重设计的最后一步（见 [docs/design/plugin-system-v3.md](docs/design/plugin-system-v3.md)）——装好之后的“试用”入口和一个官方示范的 MCP 插件。已完成：npx 类 MCP 在代理 / 镜像环境下可用、Claude Code 格式插件、插件合集。
+已完成：插件系统重设计（见 [docs/design/plugin-system-v3.md](docs/design/plugin-system-v3.md)）——npx 类 MCP 在代理 / 镜像环境下可用、Claude Code 格式插件、插件合集、装好后的“试用”入口和官方示范的文件系统 MCP 插件。
 
 计划中：Electron 版成为默认并移除 Wails 版（等真机试用反馈）、安装包代码签名与公证、子 Agent / Hooks 的安全执行、插件完整 OAuth、更多附件类型（PDF 等）。
 
