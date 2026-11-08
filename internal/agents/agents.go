@@ -3,6 +3,7 @@ package agents
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -167,7 +168,7 @@ func LoadDir(dir, prefix string) (defs []core.SubagentDefinition, problems []str
 			break
 		}
 		rel, _ := filepath.Rel(dir, f)
-		data, err := os.ReadFile(f)
+		data, err := readLimited(f, maxFileBytes)
 		if err != nil {
 			problems = append(problems, rel+"："+err.Error())
 			continue
@@ -205,8 +206,30 @@ type frontmatter map[string][]string
 func parseFrontmatter(head string) frontmatter {
 	fm := frontmatter{}
 	var listKey string
+	// blockKey 不为空时正在读 “key: >” 或 “key: |” 后面缩进的多行文字（description 常这样写）。
+	var blockKey string
+	var blockFolded bool
+	var block []string
+	flush := func() {
+		if blockKey == "" {
+			return
+		}
+		sep := "\n"
+		if blockFolded {
+			sep = " "
+		}
+		fm[blockKey] = []string{strings.TrimSpace(strings.Join(block, sep))}
+		blockKey, block = "", nil
+	}
 	for _, line := range strings.Split(head, "\n") {
 		trimmed := strings.TrimSpace(line)
+		if blockKey != "" {
+			if trimmed == "" || line != strings.TrimLeft(line, " \t") {
+				block = append(block, trimmed)
+				continue
+			}
+			flush()
+		}
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
@@ -225,7 +248,10 @@ func parseFrontmatter(head string) frontmatter {
 		case v == "":
 			listKey = k
 			fm[k] = []string{}
+		case strings.TrimRight(v, "+-") == ">" || strings.TrimRight(v, "+-") == "|":
+			blockKey, blockFolded = k, strings.HasPrefix(v, ">")
 		case strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]"):
+			fm[k] = []string{} // “tools: []” 是写了、但是空的：和没写不一样
 			for _, x := range strings.Split(strings.Trim(v, "[]"), ",") {
 				if x = unquote(strings.TrimSpace(x)); x != "" {
 					fm[k] = append(fm[k], x)
@@ -235,6 +261,7 @@ func parseFrontmatter(head string) frontmatter {
 			fm[k] = []string{unquote(v)}
 		}
 	}
+	flush()
 	return fm
 }
 
@@ -265,4 +292,14 @@ func (f frontmatter) list(k string) []string {
 		}
 	}
 	return out
+}
+
+// readLimited 最多读 limit+1 字节：太大的文件不整个读进内存，Parse 看到超长就会拒绝。
+func readLimited(path string, limit int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, int64(limit)+1))
 }

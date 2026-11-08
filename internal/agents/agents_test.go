@@ -61,6 +61,22 @@ func TestParseVariants(t *testing.T) {
 			t.Fatalf("%+v %v", d, err)
 		}
 	})
+	t.Run("tools: [] 是空白名单：不运行，不是放开全部", func(t *testing.T) {
+		d, err := Parse([]byte("---\nname: x\ndescription: d\ntools: []\n---\nbody"), "")
+		if err != nil || !slices.Equal(d.Tools, []string{"__none__"}) {
+			t.Fatalf("%+v %v", d, err)
+		}
+	})
+	t.Run("description 的多行写法（> 和 |）", func(t *testing.T) {
+		d, err := Parse([]byte("---\nname: x\ndescription: >\n  第一行\n  第二行\ntools: Read\n---\nbody"), "")
+		if err != nil || d.Description != "第一行 第二行" || !slices.Equal(d.Tools, []string{"read_file"}) {
+			t.Fatalf("%q %+v %v", d.Description, d.Tools, err)
+		}
+		d, err = Parse([]byte("---\nname: x\ndescription: |-\n  a\n  b\n---\nbody"), "")
+		if err != nil || d.Description != "a\nb" {
+			t.Fatalf("%q %v", d.Description, err)
+		}
+	})
 	t.Run("名字取文件名", func(t *testing.T) {
 		d, err := Parse([]byte("---\ndescription: d\n---\nbody"), "from-file")
 		if err != nil || d.Name != "from-file" {
