@@ -71,6 +71,9 @@ type Manifest struct {
 	// Ignored 是别家格式里 Mosaic 不支持、因此不会生效的组件，安装确认和详情里如实列出，不悄悄忽略。
 	Format  string   `json:"-"`
 	Ignored []string `json:"-"`
+	// Agents 是插件带来的子 agent 文件（相对插件目录的路径，Claude Code 格式）。只由导入器填写；
+	// 启用时交给装配层解析并登记（见 HostOptions.Agents）。
+	Agents []string `json:"-"`
 }
 
 // SkillRef 指向一个技能文件夹（里面有 SKILL.md）。
