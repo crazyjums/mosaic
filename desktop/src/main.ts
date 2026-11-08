@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { app, BrowserWindow, globalShortcut, ipcMain, net, Notification, protocol } from "electron";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -274,6 +274,8 @@ function createWindow(opts: WindowOpts = {}): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#0f1115",
+    // Linux 的窗口/任务栏图标靠它（Windows/macOS 取可执行文件 / .app 自带的图标）。图标没找到就用系统默认，不影响启动。
+    ...(existsSync(paths.icon) ? { icon: paths.icon } : {}),
     show: !SMOKE,
     webPreferences: { preload: join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
