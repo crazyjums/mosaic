@@ -44,6 +44,8 @@ type EngineConfig struct {
 
 	// DisabledTools 是被禁用的工具名。
 	DisabledTools []string
+	// Hooks 运行钩子（可为 nil）。只对内置对话引擎有效；外部引擎（Codex 等）有它们自己的机制。
+	Hooks Hooks
 	// TitleMode 决定会话标题怎么来：first_message（默认，截取第一句）或 model（第一轮结束后让模型生成）。
 	TitleMode string
 	// SkillsPrompt 返回追加到系统提示词后面的技能清单（参数是会话的工作区，技能随工作区变化）；为 nil 或返回空串表示没有技能。
@@ -559,6 +561,7 @@ func (e *Engine) SendInputTo(ctx context.Context, id string, in UserInput) (Turn
 			AllowOutsideWorkspace: func() bool { return e.permissionMode() == string(permission.ModeAuto) },
 			SessionID:             sid,
 			Disabled:              disabled,
+			Hooks:                 e.cfg.Hooks,
 		}
 		e.mu.Lock()
 		r.cfg, r.profile = cfg, pcfg

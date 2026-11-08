@@ -9,6 +9,7 @@
 //   - Engine（engine.go）：内核的"命令接口"。CLI 和 Wails 绑定层只调用 Engine 的方法、只订阅 Engine 的事件总线。
 //   - 会话（session.go）与重放（replay.go）：会话数据结构、持久化接口、把历史消息重放成事件。
 //   - 子 agent：定义注册（SubagentRegistry）与调度（task 工具，见 subagent.go / task_tool.go）；
+//   - 钩子：在工具调用前后、用户发言时、一轮结束时询问注入的 Hooks（hooks.go；执行在 internal/hooks），只能更严；
 //   - 预留扩展点（只有接口）：后台任务。
 //
 // # 不负责什么
