@@ -169,7 +169,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 	// 权限规则包在档位外面：命中规则的调用直接放行/拒绝/询问，没命中的再按档位处理。
 	policy := permission.NewRulePolicy(permission.NewModePolicy(permission.Mode(mode)), settingsMgr.PermissionRules())
 
-	// 钩子：第一版只来自插件（H2 接上逐条批准之后才会有）；交给钩子的 permission_mode 跟随当前档位。
+	// 钩子：只来自插件，而且每条都要用户单独批准（见 plugin/hooks.go）；交给钩子的 permission_mode 跟随当前档位。
 	hookRunner := hooks.New()
 	hookRunner.Mode = func() string { return string(policy.Mode()) }
 
@@ -212,6 +212,7 @@ func Build(cfg *config.Config, opts Options) (*Built, error) {
 		Secrets:    secrets,
 		MCP:        mcpMgr,
 		Agents:     pluginAgents{reg: engine.Subagents()},
+		Hooks:      pluginHooks{runner: hookRunner},
 		AppVersion: update.Version,
 		Catalog:    pluginCatalog.FS,
 		// 在线列表只增加“可以安装的来源”，装之前仍要用户确认；离线或失败时用内置的那一份。
