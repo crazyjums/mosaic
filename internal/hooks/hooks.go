@@ -110,7 +110,8 @@ func (r *Runner) Count() int {
 }
 
 // matching 返回这个事件上匹配的钩子，按来源名、再按登记顺序排列（结果稳定，便于理解“谁先跑”）。
-func (r *Runner) matching(ev core.HookEvent, toolName string) []Hook {
+// target 是 matcher 要匹配的对象：工具事件是工具名，子 agent 事件是子 agent 的名字；其余事件不看 matcher。
+func (r *Runner) matching(ev core.HookEvent, target string) []Hook {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.disabled {
@@ -127,8 +128,15 @@ func (r *Runner) matching(ev core.HookEvent, toolName string) []Hook {
 			if h.Event != ev {
 				continue
 			}
-			if (ev == core.HookPreToolUse || ev == core.HookPostToolUse) && !Matches(h.Matcher, toolName) {
-				continue
+			switch ev {
+			case core.HookPreToolUse, core.HookPostToolUse:
+				if !Matches(h.Matcher, target) {
+					continue
+				}
+			case core.HookSubagentStart, core.HookSubagentStop:
+				if !matchesName(h.Matcher, target) {
+					continue
+				}
 			}
 			out = append(out, h)
 		}
@@ -138,7 +146,11 @@ func (r *Runner) matching(ev core.HookEvent, toolName string) []Hook {
 
 // Run 实现 core.Hooks。
 func (r *Runner) Run(ctx context.Context, in core.HookInput) core.HookOutcome {
-	hs := r.matching(in.Event, in.ToolName)
+	target := in.ToolName
+	if in.Event == core.HookSubagentStart || in.Event == core.HookSubagentStop {
+		target = in.AgentType
+	}
+	hs := r.matching(in.Event, target)
 	var out core.HookOutcome
 	if len(hs) == 0 {
 		return out
@@ -203,6 +215,18 @@ func ClaudeToolName(name string) string {
 
 var exactListRe = regexp.MustCompile(`^[A-Za-z0-9_|,\s]+$`)
 
+// matchesName 用和工具相同的规则匹配子 agent 名（不做 Claude Code 工具名映射）。插件的子 agent 名带前缀
+// （“插件:名字”），所以精确列表也认去掉前缀之后的名字。
+func matchesName(matcher, name string) bool {
+	if Matches(matcher, name) {
+		return true
+	}
+	if i := strings.LastIndex(name, ":"); i >= 0 {
+		return Matches(matcher, name[i+1:])
+	}
+	return false
+}
+
 // Matches 按 Claude Code 的规则判断 matcher 是否匹配这个工具：空或 "*" 匹配全部；只含字母、数字、下划线和
 // | , 的是精确名字列表；其余当正则（整体匹配）。Mosaic 名字和 Claude Code 名字任一匹配即可。
 // 写错的正则不匹配任何工具（宁可不跑，也不要误跑到所有工具上）。
@@ -266,6 +290,14 @@ func stdinJSON(in core.HookInput, mode string) map[string]any {
 	case core.HookUserPromptSubmit:
 		m["prompt"] = in.Prompt
 	case core.HookStop:
+		m["stop_hook_active"] = in.StopHookActive
+		m["last_assistant_message"] = in.LastAssistantMessage
+	case core.HookSubagentStart:
+		m["agent_id"] = in.AgentID
+		m["agent_type"] = in.AgentType
+	case core.HookSubagentStop:
+		m["agent_id"] = in.AgentID
+		m["agent_type"] = in.AgentType
 		m["stop_hook_active"] = in.StopHookActive
 		m["last_assistant_message"] = in.LastAssistantMessage
 	}
@@ -385,7 +417,7 @@ func apply(out *core.HookOutcome, in *core.HookInput, h Hook, res execResult, ru
 			notes = append(notes, "updatedInput 不是 JSON 对象，已忽略")
 		}
 	}
-	if c := strings.TrimSpace(o.Specific.AdditionalContext); c != "" && in.Event != core.HookStop {
+	if c := strings.TrimSpace(o.Specific.AdditionalContext); c != "" && in.Event != core.HookStop && in.Event != core.HookSubagentStop {
 		out.Context = append(out.Context, label(c))
 		run.AddedContext = true
 	}

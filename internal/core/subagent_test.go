@@ -32,6 +32,18 @@ type routed struct {
 	mainTools   [][]string
 	childTools  [][]string
 	childSystem string
+	childMsgs   []string
+}
+
+func (r *routed) childSawPrompt(sub string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.childMsgs {
+		if strings.Contains(m, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *routed) Name() string { return "fake" }
@@ -45,6 +57,11 @@ func (r *routed) Stream(ctx context.Context, req provider.Request, on func(provi
 	if isChild {
 		r.childTools = append(r.childTools, names)
 		r.childSystem = req.System
+		for _, m := range req.Messages {
+			for _, b := range m.Content {
+				r.childMsgs = append(r.childMsgs, b.Text)
+			}
+		}
 	} else {
 		r.mainTools = append(r.mainTools, names)
 	}
@@ -68,6 +85,10 @@ type subHarness struct {
 }
 
 func newSubHarness(t *testing.T, main, child fake.Script, answer func(*core.Engine, event.PermissionRequest), defs ...core.SubagentDefinition) *subHarness {
+	return newSubHarnessHooks(t, nil, main, child, answer, defs...)
+}
+
+func newSubHarnessHooks(t *testing.T, hooks core.Hooks, main, child fake.Script, answer func(*core.Engine, event.PermissionRequest), defs ...core.SubagentDefinition) *subHarness {
 	t.Helper()
 	p := &routed{main: fake.NewWithScript("fake", main, 0), child: fake.NewWithScript("fake", child, 0)}
 	reg := provider.NewRegistry()
@@ -78,7 +99,7 @@ func newSubHarness(t *testing.T, main, child fake.Script, answer func(*core.Engi
 	ws := t.TempDir()
 	eng, err := core.NewEngine(core.EngineConfig{
 		Catalog: catalog, Tools: tools, Store: store.NewMemory(),
-		Policy: permission.NewModePolicy(permission.ModeDefault), Workspace: ws,
+		Policy: permission.NewModePolicy(permission.ModeDefault), Workspace: ws, Hooks: hooks,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -331,5 +352,54 @@ func TestSubagentRegistryReplaceSource(t *testing.T) {
 	}
 	if !slices.Equal(names, []string{"a@user", "x:c@plugin:x"}) {
 		t.Fatalf("%v", names)
+	}
+}
+
+// startHooks 只对 SubagentStart 表态：补一段上下文。
+type startHooks struct {
+	mu  sync.Mutex
+	got []core.HookInput
+}
+
+func (h *startHooks) Run(_ context.Context, in core.HookInput) core.HookOutcome {
+	h.mu.Lock()
+	h.got = append(h.got, in)
+	h.mu.Unlock()
+	if in.Event == core.HookSubagentStart {
+		return core.HookOutcome{Context: []string{"仓库用 pnpm"}, Runs: []event.HookRun{{Source: "plugin:x", Command: "ctx", Outcome: "ok", AddedContext: true}}}
+	}
+	return core.HookOutcome{}
+}
+
+func TestSubagentStartHook(t *testing.T) {
+	main := fake.Script{Steps: []fake.Step{
+		{ToolCalls: []fake.ToolSpec{call("task", map[string]string{"agent": "explorer", "prompt": "看看"})}},
+		{Text: "好"},
+	}}
+	child := fake.Script{Steps: []fake.Step{{Text: "结论"}}}
+	hk := &startHooks{}
+	h := newSubHarnessHooks(t, hk, main, child, allow, explorer)
+	if _, err := h.engine.Send(context.Background(), "go"); err != nil {
+		t.Fatal(err)
+	}
+	var start, stop *core.HookInput
+	for i, in := range hk.got {
+		switch in.Event {
+		case core.HookSubagentStart:
+			start = &hk.got[i]
+		case core.HookSubagentStop:
+			stop = &hk.got[i]
+		}
+	}
+	if start == nil || start.AgentType != "explorer" || start.AgentID == "" || stop == nil || stop.AgentType != "explorer" || stop.LastAssistantMessage != "结论" {
+		t.Fatalf("start=%+v stop=%+v", start, stop)
+	}
+	// 补充的上下文带标注接在任务说明后面交给子 agent；hook_run 事件挂在 task 卡片上
+	runs := payloads[event.HookRun](h.rec)
+	if len(runs) != 1 || runs[0].Hook != "SubagentStart" || runs[0].CallID == "" {
+		t.Fatalf("%+v", runs)
+	}
+	if !h.p.childSawPrompt("仓库用 pnpm") {
+		t.Fatal("子 agent 应看到 SubagentStart 补充的上下文")
 	}
 }
