@@ -160,3 +160,29 @@ describe("演示：插件合集（marketplace）", () => {
     expect(one.preview?.plugin.id).toBe("hello");
   });
 });
+
+describe("演示：插件的试用", () => {
+  it("涉及私密内容的工具不能试调用：写明原因，直接调用也被拒绝", async () => {
+    const b = createDemoPlugins();
+    const p = await b.previewPlugin("/x/feishu");
+    await b.installPlugin(p.token, []);
+    const tools = await b.listPluginTools("feishu");
+    expect(tools).toHaveLength(1);
+    expect(tools[0].trial).toBe(false);
+    expect(tools[0].reason).toContain("私密");
+    await expect(b.tryPluginTool("feishu", tools[0].name)).rejects.toThrow("不能试调用");
+    await expect(b.tryPluginTool("feishu", "mcp__feishu__nope")).rejects.toThrow("没有注册工具");
+  });
+
+  it("没安装或已停用的插件一律拒绝；没有 MCP 服务的插件没有工具可试", async () => {
+    const b = createDemoPlugins();
+    await expect(b.listPluginTools("feishu")).rejects.toThrow("没有安装");
+    const p = await b.previewPlugin("/x/feishu");
+    await b.installPlugin(p.token, []);
+    await b.setPluginEnabled("feishu", false);
+    await expect(b.listPluginTools("feishu")).rejects.toThrow("未启用");
+    const h = await b.previewPlugin("/x/hello");
+    await b.installPlugin(h.token, []);
+    await expect(b.listPluginTools("hello")).rejects.toThrow("未启用或无法加载");
+  });
+});

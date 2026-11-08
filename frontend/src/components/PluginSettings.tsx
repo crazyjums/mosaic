@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { backend, type MarketInfo, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginDiagnostics, type PluginPreview, type PluginSourceInspection, type PluginStatus } from "../bridge";
+import { backend, type MarketInfo, type PluginActionResult, type PluginCatalogEntry, type PluginLoginState, type PluginConfigView, type PluginInfo, type PluginDiagnostics, type PluginPreview, type PluginSourceInspection, type PluginStatus, type PluginToolView, type PluginTryResult } from "../bridge";
 import { t } from "../i18n";
+import { useChat } from "../store/chatStore";
+import { useSettings } from "../store/settingsStore";
 import PluginInstallDialog from "./PluginInstallDialog";
 import PluginMarketPicker from "./PluginMarketPicker";
 import { CATEGORIES, FeaturedCard, PluginCard, PluginIcon, matches } from "./PluginMarket";
@@ -489,6 +491,7 @@ function PluginDetail({ plugin: p, diagnostics, onRefreshHealth, onChange, onRem
       {error && <div className="rounded-ctl border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</div>}
 
       <PluginHealthBlock plugin={p} health={diagnostics} onRefresh={onRefreshHealth} />
+      {p.enabled && !p.error && p.servers.length > 0 && diagnostics?.state === "ready" && <PluginTrialBlock plugin={p} toolCount={diagnostics.tool_count} />}
       {!p.error && p.enabled && p.login && <LoginBlock plugin={p} login={p.login} onDone={() => setStatusTick((n) => n + 1)} />}
       {!p.error && p.enabled && p.has_status && <StatusBlock plugin={p} refresh={statusTick} />}
       {!p.error && p.config.length > 0 && <ConfigForm plugin={p} onChange={onChange} />}
@@ -613,11 +616,19 @@ function PluginHealthBlock({ plugin, health, onRefresh }: { plugin: PluginInfo; 
             <div className="text-muted">{t("在对话框输入以下命令即可使用，或复制后粘贴发送")}：</div>
             <div className="mt-2 flex flex-wrap gap-2">
               {plugin.commands.map((cmd) => (
-                <button key={cmd.name} className="rounded-ctl border border-line px-2 py-1 font-mono text-accent hover:bg-accent-soft"
-                  title={t("复制命令")}
-                  onClick={() => void navigator.clipboard.writeText("/" + cmd.name).catch((e) => setError(errMsg(e)))}>
-                  /{cmd.name} · {t("复制")}
-                </button>
+                <span key={cmd.name} className="inline-flex overflow-hidden rounded-ctl border border-line font-mono">
+                  <button className="px-2 py-1 text-accent hover:bg-accent-soft" title={t("放进对话的输入框，补上参数后再发送")}
+                    onClick={() => {
+                      useChat.getState().draftToComposer("/" + cmd.name + " ");
+                      useSettings.getState().hide();
+                    }}>
+                    /{cmd.name} · {t("在输入框里使用")}
+                  </button>
+                  <button className="border-l border-line px-2 py-1 text-muted hover:bg-panel-2" title={t("复制命令")}
+                    onClick={() => void navigator.clipboard.writeText("/" + cmd.name).catch((e) => setError(errMsg(e)))}>
+                    {t("复制")}
+                  </button>
+                </span>
               ))}
             </div>
           </div>
@@ -951,5 +962,71 @@ function Linkified({ text }: { text: string }) {
         ),
       )}
     </>
+  );
+}
+
+// 试用：装好之后一键确认“它真的连上了、能返回结果”。
+//
+// 试调用不经过对话也不弹权限窗，所以后端只对最保守的一类工具开放：只读（你在安装时信任了它的只读声明）、
+// 不需要参数、不涉及私密内容。其余的工具不显示按钮，并写明原因——它们照常在对话里用，每次调用会先询问你。
+function PluginTrialBlock({ plugin, toolCount }: { plugin: PluginInfo; toolCount: number }) {
+  const [tools, setTools] = useState<PluginToolView[] | null>(null);
+  const [error, setError] = useState("");
+  const [running, setRunning] = useState("");
+  const [results, setResults] = useState<Record<string, PluginTryResult>>({});
+  useEffect(() => {
+    let alive = true;
+    backend()
+      .listPluginTools(plugin.id)
+      .then((v) => alive && setTools(v))
+      .catch((e) => alive && setError(errMsg(e)));
+    return () => {
+      alive = false;
+    };
+  }, [plugin.id, toolCount]);
+  const run = async (name: string) => {
+    setRunning(name);
+    setError("");
+    try {
+      const r = await backend().tryPluginTool(plugin.id, name);
+      setResults((m) => ({ ...m, [name]: r }));
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setRunning("");
+    }
+  };
+  if (!tools || tools.length === 0) return error ? <div className="text-xs text-danger">{error}</div> : null;
+  const trialable = tools.some((x) => x.trial);
+  return (
+    <Block title={t("试用")}>
+      <div className="space-y-2 text-xs">
+        <div className="text-muted">
+          {trialable
+            ? t("只读且不需要参数的工具可以在这里直接试一下，确认它真的连上了；其余的工具在对话里让模型调用，每次会先询问你。")
+            : t("这个插件的工具都需要参数，或者不是只读的：请在对话里让模型调用，每次会先询问你。")}
+        </div>
+        {error && <div className="text-danger">{error}</div>}
+        {tools.map((x) => (
+          <div key={x.name} className="rounded-ctl border border-line p-2">
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate">{x.name}</code>
+              {x.trial && (
+                <button className="btn px-2 py-0.5 text-xs" disabled={running !== ""} onClick={() => void run(x.name)}>
+                  {running === x.name ? t("调用中…") : t("试调用")}
+                </button>
+              )}
+            </div>
+            {x.description && <div className="mt-0.5 text-muted">{x.description}</div>}
+            {!x.trial && x.reason && <div className="mt-0.5 text-muted">{x.reason}</div>}
+            {results[x.name] && (
+              <pre className={`mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-ctl bg-panel-2 p-2 font-mono text-[11px] ${results[x.name].is_error ? "text-danger" : ""}`}>
+                {results[x.name].output || t("（没有输出）")}
+              </pre>
+            )}
+          </div>
+        ))}
+      </div>
+    </Block>
   );
 }
