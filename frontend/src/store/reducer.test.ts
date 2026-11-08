@@ -106,6 +106,7 @@ describe("子 agent", () => {
     s = applyEvent(s, mk("message_start", { provider: "fake", model: "demo", step: 1 }, "a1", "main", "m1"));
     const item = s.timeline.find((it) => it.kind === "assistant") as AssistantItem;
     expect(item.agentId).toBe("a1");
+    expect(s.model).not.toBe("demo"); // 子 agent 的模型不改会话的模型
     s = applyEvent(s, mk("subagent_end", { agent_id: "a1", parent_id: "main", status: "completed", summary: "有 a.txt" }));
     expect(s.agents.a1).toMatchObject({ status: "completed", summary: "有 a.txt" });
   });
