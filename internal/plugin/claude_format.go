@@ -212,6 +212,7 @@ func (c *claudeImport) userConfig(cm claudeManifest) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	usedKeys := map[string]bool{}
 	for _, k := range keys {
 		o := cm.UserConfig[k]
 		key := userConfigKeyRe.ReplaceAllString(strings.ToLower(k), "_")
@@ -221,6 +222,18 @@ func (c *claudeImport) userConfig(cm claudeManifest) {
 		if len(key) > 32 {
 			key = key[:32]
 		}
+		// 归一化会让不同的键撞在一起（Region 和 region、截断、标点）：给后来的加数字后缀，保持唯一。
+		// keys 是按排序后的原始键遍历的，所以同一个插件每次得到同样的映射。
+		base := key
+		for n := 2; usedKeys[key]; n++ {
+			suffix := fmt.Sprintf("_%d", n)
+			if len(base)+len(suffix) > 32 {
+				key = base[:32-len(suffix)] + suffix
+			} else {
+				key = base + suffix
+			}
+		}
+		usedKeys[key] = true
 		if len(c.m.Config) >= maxConfig {
 			c.ignore("配置项 %s（超过 %d 项上限）", k, maxConfig)
 			continue

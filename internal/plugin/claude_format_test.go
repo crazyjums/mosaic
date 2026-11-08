@@ -311,3 +311,58 @@ func TestRenderClaudeTemplate(t *testing.T) {
 		t.Errorf("原生模板不应展开 $1: %q", got)
 	}
 }
+
+// 评审发现：用户输入里的 $5、$ARGUMENTS 不能被当成占位符再展开一遍。
+func TestRenderClaudeKeepsArgumentsLiteral(t *testing.T) {
+	cases := []struct{ body, args, want string }{
+		{"Explain $ARGUMENTS", "the price is $5", "Explain the price is $5"},
+		{"Explain $ARGUMENTS", "use $ARGUMENTS here", "Explain use $ARGUMENTS here"},
+		{"a=$1 all=$ARGUMENTS", "$2 x", "a=$2 all=$2 x"},
+		{"first=$1 second=$2", "$1 $2", "first=$1 second=$2"},
+	}
+	for _, c := range cases {
+		if got := (commandTemplate{body: c.body}).renderClaude(c.args); got != c.want {
+			t.Errorf("renderClaude(%q, %q) = %q, want %q", c.body, c.args, got, c.want)
+		}
+	}
+}
+
+// 评审发现：归一化后撞键（Region / region）不能让整个插件被“重复 key”拒绝。
+func TestClaudeUserConfigKeysStayUnique(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"keys","userConfig":{
+  "Region": {"type":"string","title":"Region A","description":"d"},
+  "region": {"type":"string","title":"Region B","description":"d"},
+  "region-": {"type":"string","title":"Region C","description":"d"},
+  "a_very_long_key_name_that_exceeds_the_limit_1": {"type":"string","title":"L1","description":"d"},
+  "a_very_long_key_name_that_exceeds_the_limit_2": {"type":"string","title":"L2","description":"d"}
+}}`)
+	writeFile(t, filepath.Join(dir, ".mcp.json"), `{"mcpServers":{"s":{"command":"node","args":["${user_config.region}","${user_config.Region}"]}}}`)
+	m, err := ParseManifest(dir, "dev")
+	if err != nil {
+		t.Fatalf("撞键不应让整个插件装不上: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, c := range m.Config {
+		if seen[c.Key] {
+			t.Fatalf("重复的键 %q: %+v", c.Key, m.Config)
+		}
+		seen[c.Key] = true
+		if len(c.Key) > 32 {
+			t.Fatalf("键太长: %q", c.Key)
+		}
+	}
+	if len(m.Config) != 5 {
+		t.Fatalf("5 个配置项都应保留: %+v", m.Config)
+	}
+	// 引用要翻译成各自的键，且两个引用指向不同的键
+	a := m.MCP[0].Args
+	if a[0] == a[1] || !strings.HasPrefix(a[0], "${config.") {
+		t.Fatalf("两个不同的 userConfig 引用必须映射到不同的键: %v", a)
+	}
+	// 同一份输入永远得到同一个映射
+	m2, _ := ParseManifest(dir, "dev")
+	if m2.MCP[0].Args[0] != a[0] || m2.MCP[0].Args[1] != a[1] {
+		t.Fatal("映射必须稳定")
+	}
+}
