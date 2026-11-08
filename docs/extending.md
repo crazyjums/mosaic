@@ -199,20 +199,33 @@ mcp.RegisterServerTools(ctx, tools, "github", client, permission.RiskExec)
 
 ## 3. 新增子 agent 定义
 
-子 agent 的**定义与注册**已实现，**调度**是第二阶段的工作（见 [roadmap](roadmap.md#子-agent-调度与可视化树)）。现在就可以注册定义：
+子 agent 已经可以用了（设计见 [hooks-and-subagents.md](design/hooks-and-subagents.md)）。最简单的办法是**写一个文件**，不用改代码：
+把 Claude Code 格式的 agent 文件放进 `~/.myllmapp/agents/`，在 设置 → 权限 → 子 agent 里点“重新加载”。
+
+```markdown
+---
+name: explorer
+description: 只读地探索代码库，回答“某某功能在哪里实现”这类问题。
+tools: Read, Glob, Grep        # Claude Code 的工具名会映射成 read_file、find_files、search_content
+maxTurns: 15
+---
+
+你是一个只读的代码探索者。不要修改任何文件。最后用几句话给出结论和相关文件路径。
+```
+
+在代码里注册也可以（`internal/agents` 负责解析文件，`core.SubagentRegistry` 按来源登记）：
 
 ```go
-// 在 internal/bootstrap 中，Build 创建 engine 之后：
-engine.Subagents().Register(core.SubagentDefinition{
+engine.Subagents().ReplaceSource("my-source", []core.SubagentDefinition{{
     Name:        "explorer",
     Description: "只读地探索代码库，回答'某某功能在哪里实现'这类问题。",
     System:      "You are a read-only code explorer. Never modify files.",
-    Tools:       []string{"read_file", "list_dir"}, // 只给只读工具
+    Tools:       []string{"read_file", "list_dir"}, // 只给只读工具；为空表示继承主对话的全部工具（task 除外）
     MaxSteps:    10,
-})
+}})
 ```
 
-调度实现后，主 agent 会看到一个 `task` 工具，可以把任务派给 `explorer`；子 agent 的所有事件带着自己的 `agent_id` 和 `parent_id = "main"`，前端的 `ActivityPanel` 会把它们画成树。
+有子 agent 时，主 agent 会多一个 `task` 工具（`{agent, prompt}`）。子 agent 在独立的上下文里跑，事件带着自己的 `agent_id` 和 `parent_id = "main"`；界面把它的过程折叠在 `task` 工具卡片下面，最终回复作为 `task` 的结果交回主 agent。权限和主对话完全相同；第一版不允许子 agent 再派子 agent。
 
 ## 4. 新增事件类型
 

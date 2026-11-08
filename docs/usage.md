@@ -336,6 +336,16 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 - **隐私**：故障转移会把你的对话发给组里的其他厂商。只有你自己加进组的成员才会被使用，请确认它们都是你愿意发送这段对话的厂商。
 - 健康状态只保存在内存里，重启应用后全部重置。成员不能是模型组（不支持嵌套）。
 
+## 2.12.1 子 agent
+
+主对话可以用 `task` 工具把一件具体的活（查资料、跑测试、审代码）派给**子 agent**：它在独立的上下文里干活（看不到这段对话），只把结论交回来，中间过程折叠在那张 `task` 工具卡片下面（运行中展开，结束后收起，点开能看）。
+
+- **怎么加**：把 Claude Code 格式的 agent 文件（Markdown；开头 `---` 里写 `name`、`description`，可选 `tools`、`disallowedTools`、`model`、`maxTurns`；正文是它的系统提示词）放进 `~/.myllmapp/agents/`，在 设置 → 权限 → 子 agent 里点“重新加载”。
+- **工具**：`tools` 是白名单，`disallowedTools` 是黑名单；不写 `tools` 就继承主对话的全部工具。Claude Code 的工具名会映射成 Mosaic 的（Read→read_file、Glob→find_files、Grep→search_content、Bash→shell、Write/Edit…），对不上的（WebFetch、WebSearch 等）忽略并在列表里提示；白名单一个都对不上时**拒绝运行**，不会悄悄给它全部工具。
+- **权限**：和主对话**完全相同**（同一档位、同一套规则、同一个确认弹窗，弹窗上标明是哪个子 agent）。定义文件里的 `permissionMode`、`hooks`、`mcpServers` 不生效。
+- **模型**：`model` 只有在当前厂商配置档里有同名模型时才换，否则沿用主对话的模型。`maxTurns` 是它的最大步数（默认 20，不超过主对话的上限），到了上限会把停下时的结论标注“可能不完整”交回来。
+- **限制**：子 agent 不能再派子 agent；多个子 agent 顺序运行；重新打开会话时只看得到 `task` 的结论，看不到子 agent 的中间过程；只在 Mosaic 内置的对话引擎里有效（Codex、Claude Code、pi 引擎有它们自己的机制）。
+
 ## 2.13 技能（Skills）
 
 技能是一个文件夹，里面有一个 `SKILL.md`：开头的 `---` 块写名字和"什么时候用"，后面是模型要照着做的说明；文件夹里还可以放参考文档和脚本。格式与 Claude Code 的技能兼容，已经写好的可以直接用。

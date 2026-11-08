@@ -18,7 +18,7 @@
 
 | 能力 | 事件 | 后端接口 | 前端 | 还差什么 |
 | --- | --- | --- | --- | --- |
-| 子 agent 调度与可视化树 | ✅ `subagent_start/end`，信封 `agent_id`/`parent_id` | ✅ `SubagentDefinition`、`SubagentRegistry`；⬜ `SubagentRunner` | ✅ reducer 建树；`ActivityPanel` 显示 | Runner 实现 + `task` 工具 |
+| 子 agent 调度与可视化树 | ✅ `subagent_start/end`（带 `call_id`），信封 `agent_id`/`parent_id` | ✅ `SubagentRegistry`（按来源）、`task` 工具、用户目录 `~/.myllmapp/agents/` | ✅ 子 agent 的过程折叠在 `task` 卡片下面；设置页列表 | 插件 `agents/` 导入、嵌套、并行、过程持久化 |
 | 后台任务 | ✅ `task_start/log/end` | ⬜ `TaskManager` 接口 | ✅ reducer + 面板 | TaskManager 实现 + 3 个工具 |
 | 上下文压缩 | ✅ `context_compacted` | ✅ `SummaryCompactor`（估算触发、摘要、保留最近几轮）；⬜ 手动“立即压缩”、按厂商返回的 input_tokens 校准、服务端压缩 | ✅ 提示 + 可展开摘要 | 见下文“上下文压缩” |
 | MCP 接入 | — | ✅ stdio / Streamable HTTP 客户端、`mcp.Manager` | ✅ 设置 → MCP | resources / prompts、服务器推送（工具列表变化通知） |
