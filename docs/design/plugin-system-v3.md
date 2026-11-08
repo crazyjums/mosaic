@@ -99,7 +99,7 @@
 ## 6. 暂不做 / 需要你决定
 
 - **hooks**：Claude Code 插件里最常见的“高级”组件，会在工具调用前后执行任意命令。支持它等于给插件一个绕过权限弹窗的入口，需要单独设计（只允许在确认页逐条批准的、沙箱化的子集）。本版本只忽略。
-- **agents（子 agent）**：Mosaic 内核没有对应概念，需要先有子 agent 的设计。本版本只忽略。
+- **agents（子 agent）**：本版本只忽略；之后按 [hooks-and-subagents.md](hooks-and-subagents.md) 的 S2 实现了导入。
 - 远程 MCP 的 OAuth（v2 的 P2）。
 
 ## 7. 待你确认
