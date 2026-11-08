@@ -1,6 +1,7 @@
 package plugin
 
 import (
+    "bytes"
     "encoding/json"
     "fmt"
     "os"
@@ -16,13 +17,27 @@ import (
 // Mosaic's existing validated Manifest. Unsupported executable components
 // (hooks / subagents) are rejected instead of silently granted privileges.
 func importAgentComponents(dir string, m *Manifest) error {
+    m.Format = "codex"
+    // hooks / agents 不支持：不执行它们，也不拒绝整个插件——列出来让用户知道哪些不会生效。
     for _, rel := range []string{"hooks", "agents"} {
         p := filepath.Join(dir, rel)
         if _, err := os.Stat(p); err == nil {
-            return fmt.Errorf("插件包含 %s：Mosaic 尚未支持该扩展，请移除后再安装", rel)
+            if rel == "hooks" {
+                m.Ignored = append(m.Ignored, "钩子（hooks）：会在工具调用前后执行命令，Mosaic 不执行它们（也不会绕过权限确认）")
+            } else {
+                m.Ignored = append(m.Ignored, "子 agent（agents）：Mosaic 还没有对应的概念")
+            }
         } else if !os.IsNotExist(err) {
             return fmt.Errorf("检查扩展 %s 失败：%w", rel, err)
         }
+    }
+    if len(m.Hooks) > 0 && string(bytes.TrimSpace(m.Hooks)) != "null" {
+        m.Hooks = nil
+        m.Ignored = append(m.Ignored, "清单里声明的钩子（hooks）")
+    }
+    if len(m.Subagents) > 0 && string(bytes.TrimSpace(m.Subagents)) != "null" {
+        m.Subagents = nil
+        m.Ignored = append(m.Ignored, "清单里声明的子 agent（subagents）")
     }
     if m.ID == "" { m.ID = m.Name }
     if m.Name == "" { m.Name = m.ID }

@@ -181,7 +181,7 @@ func (h *Host) scan() {
 			continue
 		}
 		dir := filepath.Join(h.opts.Dir, e.Name())
-		m, err := ParseManifest(dir, h.opts.AppVersion)
+		m, err := ParseManifestHint(dir, h.opts.AppVersion, e.Name())
 		l := &loaded{dir: dir, m: m}
 		if err != nil {
 			l.err = err.Error()
@@ -222,6 +222,10 @@ type Info struct {
 	Requires    []Requirement `json:"requires"`
 	Network     []string      `json:"network"`
 	InstalledAt time.Time     `json:"installed_at,omitempty"`
+	// Format 是插件的来源格式（"claude" / "codex"；原生 Mosaic 插件为空）；Ignored 是那种格式里 Mosaic 不支持、
+	// 因此不会生效的组件（钩子、子 agent……）。安装确认和详情里如实告诉用户。
+	Format  string   `json:"format,omitempty"`
+	Ignored []string `json:"ignored,omitempty"`
 }
 
 // CommandView 是一个斜杠命令的概要。
@@ -299,11 +303,16 @@ func (h *Host) describe(m *Manifest, dir string, st *pluginState, errText, warn 
 		Skills: []string{}, Commands: []CommandView{}, Servers: []ServerView{}, Config: []ConfigView{},
 		Actions: []ActionView{}, Requires: []Requirement{}, Network: append([]string{}, m.Network...),
 		HasStatus: m.Status != nil,
+		Format:    m.Format, Ignored: append([]string(nil), m.Ignored...),
 	}
 	if st != nil {
 		info.Enabled, info.Source, info.InstalledAt = st.Enabled, st.Source, st.InstalledAt
 	}
 	for _, s := range m.Skills {
+		if s.Path == "." {
+			info.Skills = append(info.Skills, m.Name) // 整个插件就是一个技能
+			continue
+		}
 		info.Skills = append(info.Skills, filepath.Base(filepath.FromSlash(s.Path)))
 	}
 	for _, c := range m.Commands {
@@ -417,7 +426,7 @@ func (h *Host) stage(source string, fill func(stage string) error) (Preview, err
 		cleanup()
 		return Preview{}, err
 	}
-	m, err := ParseManifest(root, h.opts.AppVersion)
+	m, err := ParseManifestHint(root, h.opts.AppVersion, hintFromSource(source))
 	if err != nil {
 		cleanup()
 		return Preview{}, err
@@ -870,6 +879,8 @@ type commandEntry struct {
 	info CommandInfo
 	path string
 	raw  string // 清单里的命令名
+	// claude 表示模板按 Claude Code 的写法展开（$ARGUMENTS、$1…）。
+	claude bool
 }
 
 func (h *Host) commandsLocked() []commandEntry {
@@ -886,7 +897,7 @@ func (h *Host) commandsLocked() []commandEntry {
 			if t, err := loadCommandTemplate(p); err == nil && desc == "" {
 				desc = t.description
 			}
-			all = append(all, commandEntry{info: CommandInfo{Name: c.Name, Description: desc, PluginID: id, PluginName: l.m.Name}, path: p, raw: c.Name})
+			all = append(all, commandEntry{info: CommandInfo{Name: c.Name, Description: desc, PluginID: id, PluginName: l.m.Name}, path: p, raw: c.Name, claude: c.claude})
 			count[c.Name]++
 		}
 	}
@@ -915,9 +926,10 @@ func (h *Host) ExpandCommand(name, args string) (text string, ok bool, err error
 	name = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(name), "/"))
 	h.mu.Lock()
 	var path string
+	var claude bool
 	for _, e := range h.commandsLocked() {
 		if strings.EqualFold(e.info.Name, name) || e.info.PluginID+":"+e.raw == name {
-			path = e.path
+			path, claude = e.path, e.claude
 			break
 		}
 	}
@@ -928,6 +940,9 @@ func (h *Host) ExpandCommand(name, args string) (text string, ok bool, err error
 	t, err := loadCommandTemplate(path)
 	if err != nil {
 		return "", true, err
+	}
+	if claude {
+		return t.renderClaude(args), true, nil
 	}
 	return t.render(args), true, nil
 }

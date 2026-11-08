@@ -771,6 +771,10 @@ export interface PluginInfo {
   requires: { command: string; found: boolean }[];
   network: string[];
   installed_at?: string;
+  /** 插件的来源格式："claude"（Claude Code 布局）/ "codex"；原生 Mosaic 插件没有这一项 */
+  format?: "claude" | "codex";
+  /** 那种格式里 Mosaic 不支持、因此不会生效的组件（钩子、子 agent……），安装前和详情里如实列出 */
+  ignored?: string[];
 }
 
 /** 插件市场里的一项 */

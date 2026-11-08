@@ -1,6 +1,6 @@
 # 插件系统重设计（v3）：先让真实世界的插件能装、能用
 
-状态：**设计提案**。阶段 A（§3.2 环境透传 + §3.3 启动可见）已实现；B、C、D 尚未实施。
+状态：**设计提案**。阶段 A（§3.2 环境透传 + §3.3 启动可见）和 B（§3.1 格式适配）已实现；C、D 尚未实施。
 
 和 [plugin-system-v2.md](plugin-system-v2.md) 的关系：v2 是 2026-11-01 在**没有运行任何真实流程**时根据代码静态审查写的，其中的“可用性诊断”（Ready / Needs Setup / 连接状态）已在 v1.7.9 落地。v3 是在**真正跑了一遍**之后写的：先复现，再设计，只针对复现到的问题。v2 里没被 v3 推翻的部分（安装向导、试用路径、跨平台验收）继续有效，不重复。
 
@@ -45,7 +45,9 @@
 
 不做的：不兼容它们各自的“插件市场”协议里的自动更新、不执行 hooks（见 §6）。
 
-> 注意：上表和 marketplace 的字段细节来自我对这两种布局的了解，**没有在本次复现里拿真实插件逐项核对**（沙箱里只造了一个最小的 Claude Code 风格夹具）。阶段 B 开工的第一步是取几个真实的公开插件作为夹具，核对后再定映射表。
+> **已核对**：阶段 B 实施前对照了 Claude Code 官方的插件参考（plugins-reference）和 marketplace 文档（plugin-marketplaces）：清单可选、放在 `.claude-plugin/plugin.json` 且只有 `name` 必填；默认位置 `skills/<名>/SKILL.md`、`commands/*.md`（扁平）、`agents/`、`hooks/hooks.json`、`.mcp.json`；清单里 `skills` 是追加、`commands` / `agents` 是替换默认目录、`mcpServers` 与 `.mcp.json` 合并；变量 `${CLAUDE_PLUGIN_ROOT}`、`${CLAUDE_PLUGIN_DATA}`、`${CLAUDE_PROJECT_DIR}`、`${user_config.键}`；`userConfig` 的字段（`type`/`title`/`description`/`required`/`default`/`options`/`sensitive`）。夹具（`internal/plugin/claude_format_test.go`）按文档里的示例结构写成。仍然**没有**拿真实的第三方插件逐个试装。
+>
+> 实现里的取舍：命令名取文件名（Mosaic 的命令是扁平的，没有 Claude Code 的 `插件名:命令` 命名空间，同名时已有的“`插件id:名字`”规则照常处理）；命令的内联 `content`、`.mcpb` 打包、`sse` / `ws` 传输、用了 `${CLAUDE_PROJECT_DIR}` 的 MCP 服务暂不支持，列为“不会生效”；插件 id 由名字转成小写字母数字和 `-`（最长 24），同一个名字永远得到同一个 id（已安装的插件每次加载都要重新推出它）。
 
 **marketplace 仓库**：很多插件以一个仓库里放多个插件的形式发布（根目录有 `.claude-plugin/marketplace.json`，列出 `plugins[]`，每项有 `source`，通常是仓库内相对路径）。“从 Git 地址安装”遇到这种仓库时，不再报错，而是列出里面的插件让用户挑一个（或多个）安装。
 

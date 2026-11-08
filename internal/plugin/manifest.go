@@ -65,6 +65,12 @@ type Manifest struct {
 	// 下面两项这个版本还不支持：清单里出现就拒绝加载并说明原因，而不是悄悄忽略。
 	Hooks     json.RawMessage `json:"hooks,omitempty"`
 	Subagents json.RawMessage `json:"subagents,omitempty"`
+
+	// Format 和 Ignored 只由导入器（claude_format.go、agent_format.go）填写，不从 plugin.json 里读：
+	// 一个插件不能自己声明“我是什么格式”或“我没有被忽略的东西”。
+	// Ignored 是别家格式里 Mosaic 不支持、因此不会生效的组件，安装确认和详情里如实列出，不悄悄忽略。
+	Format  string   `json:"-"`
+	Ignored []string `json:"-"`
 }
 
 // SkillRef 指向一个技能文件夹（里面有 SKILL.md）。
@@ -77,6 +83,8 @@ type CommandRef struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
 	Description string `json:"description,omitempty"`
+	// claude 表示模板是 Claude Code 的写法（$ARGUMENTS、$1…）；只由导入器设置，原生插件的 $1 就是字面的 $1。
+	claude bool
 }
 
 // MCPSpec 声明一个 MCP 服务。
@@ -159,6 +167,25 @@ func (e *IncompatibleError) Error() string { return e.Reason }
 // ParseManifest 解析并校验 dir 下的 plugin.json。路径类字段必须落在 dir 之内（解析符号链接后检查）。
 // appVersion 用来检查 min_app_version，"dev"（开发版）或空表示不检查。
 func ParseManifest(dir, appVersion string) (*Manifest, error) {
+	return ParseManifestHint(dir, appVersion, "")
+}
+
+// ParseManifestHint 同 ParseManifest。hint 是别家格式的插件没有写名字时用的名字（来源的目录名、仓库名等）。
+func ParseManifestHint(dir, appVersion, hint string) (*Manifest, error) {
+	// Claude Code 布局（.claude-plugin/plugin.json 或只有约定目录）：翻译成 Mosaic 的清单。原生 plugin.json 优先。
+	if isClaudeLayout(dir) {
+		m, err := importClaudePlugin(dir, hint)
+		if err != nil {
+			return nil, err
+		}
+		if err := m.validate(dir); err != nil {
+			return nil, err
+		}
+		if err := m.compat(appVersion); err != nil {
+			return m, err
+		}
+		return m, nil
+	}
 	// Compatible with native Mosaic packages and portable Agent Plugins:
 	// plugin.json at root or legacy Codex .codex-plugin/plugin.json.
 	path := filepath.Join(dir, FileName)
@@ -170,7 +197,7 @@ func ParseManifest(dir, appVersion string) (*Manifest, error) {
 		legacy = err == nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("找不到 %s 或 .codex-plugin/%s", FileName, FileName)
+		return nil, fmt.Errorf("找不到 %s（也不是 Claude Code / Codex 布局的插件：没有 .claude-plugin/%s，也没有 skills/、commands/、.mcp.json）", FileName, FileName)
 	}
 	defer f.Close()
 	buf := make([]byte, maxManifestBytes+1)

@@ -251,7 +251,8 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 - **启停与卸载**：停用后技能、斜杠命令和 MCP 工具将被移除；不能再新发起该插件的状态脚本、动作或登录命令。卸载可以选择同时清理配置与插件数据。
 - **使用**：插件的技能会出现在技能清单里，命令在输入框键入 `/` 后可选；插件的 MCP 工具以 `mcp__<插件id>__工具名` 形式出现，照常走权限确认。
 - **飞书**：插件市场里的“飞书”用你自己的飞书账号登录，让模型读取你的文档和群消息（只读）。需要先装好飞书的命令行 `lark-cli`，然后首次使用点一次“初始化应用配置”，然后点“登录飞书”——会在浏览器里打开飞书授权页，用你的公司账号登录并同意，回到应用会自动显示“已登录”（令牌由 lark-cli 保存在系统钥匙串里，应用不接触）。它读到的内容会发给你选择的模型厂商，所以**每次读取都会弹窗确认，没有“本会话总是允许”**。这是第一版，登录流程还没有在真实飞书租户里完整验证，遇到问题请把按钮的输出反馈给我们。
-- **Codex / Agent Plugins 基础格式导入**：支持带标准 schema 的 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`（以及旧版 `.codex-plugin/plugin.json` 的基础映射）。**暂不支持**自动执行 Hooks / Subagents 或通用插件 OAuth；不能将这种格式兼容理解为完整的 Codex 插件运行时。
+- **Claude Code 格式的插件**：目录里有 `.claude-plugin/plugin.json`，或者没有清单但有约定的目录（`skills/`、`commands/`、`.mcp.json`、根目录的 `SKILL.md`），照常用“安装文件夹 / zip / Git 地址”安装，GitHub 下载的压缩包（外面套一层目录）也能识别。Mosaic 读懂的部分：技能（`skills/<名>/SKILL.md`）、斜杠命令（`commands/*.md`，支持 `$ARGUMENTS` 和 `$1`…`$9`）、MCP 服务（`.mcp.json` 和清单里的 `mcpServers`，stdio 和 http；`${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` / `${user_config.键}` 自动换成 Mosaic 的写法）、配置项（`userConfig`，`sensitive` 的存系统钥匙串）。**不支持的组件不会运行，并且不会被悄悄忽略**：子 agent（`agents/`）、钩子（`hooks/`）、LSP、输出风格、监视器等会在安装确认和详情里列在“不会生效的部分”；命令里的 `` !`…` `` 内联命令也不会执行。导入的 MCP 服务一律按“每次调用都询问”，你在确认页勾选信任之后才降级。名字太长或带特殊字符时，插件 id 会转成小写字母、数字和 `-`（最长 24 个字符）。
+- **Codex / Agent Plugins 基础格式导入**：支持带标准 schema 的 `plugin.json`、`skills/*/SKILL.md`、`mcp.json`（以及旧版 `.codex-plugin/plugin.json` 的基础映射）。其中的 hooks / agents 不再导致整个插件装不上，而是同样列为“不会生效”。**暂不支持**自动执行 Hooks / Subagents 或通用插件 OAuth；不能将这种格式兼容理解为完整的 Codex 插件运行时。
 - **自己写插件**：点“新建插件模板…”生成一个最小插件，改完用“安装文件夹…”试；写法见 [plugin-development.md](plugin-development.md)。
 - 插件目录在 `~/.myllmapp/plugins`，运行数据在 `~/.myllmapp/plugin-data`。随应用内置的示例见 `catalog/bundled/`（包含 Skill-only 和 MCP 示例）；格式与边界见 [plugin-development.md](plugin-development.md) 和 [plugin-system-v2.md](design/plugin-system-v2.md)。
 

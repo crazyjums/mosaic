@@ -158,7 +158,7 @@ func copyDir(src, dst string) error {
 
 // pluginRoot 找到清单所在的目录：dir 下直接有 plugin.json，或者只有一个子目录且里面有。
 func pluginRoot(dir string) (string, error) {
-	if fileExists(filepath.Join(dir, FileName)) || fileExists(filepath.Join(dir, ".codex-plugin", FileName)) {
+	if isPluginDir(dir) {
 		return dir, nil
 	}
 	entries, err := os.ReadDir(dir)
@@ -171,10 +171,15 @@ func pluginRoot(dir string) (string, error) {
 			subs = append(subs, e.Name())
 		}
 	}
-	if len(subs) == 1 && (fileExists(filepath.Join(dir, subs[0], FileName)) || fileExists(filepath.Join(dir, subs[0], ".codex-plugin", FileName))) {
+	if len(subs) == 1 && isPluginDir(filepath.Join(dir, subs[0])) {
 		return filepath.Join(dir, subs[0]), nil
 	}
-	return "", fmt.Errorf("找不到 %s（要放在插件目录或压缩包的最外层）", FileName)
+	return "", fmt.Errorf("找不到插件：没有 %s，也不是 Claude Code / Codex 布局（要放在插件目录或压缩包的最外层）", FileName)
+}
+
+// isPluginDir 判断目录本身是不是一个插件：原生 plugin.json、Codex 的 .codex-plugin，或 Claude Code 布局。
+func isPluginDir(dir string) bool {
+	return fileExists(filepath.Join(dir, FileName)) || fileExists(filepath.Join(dir, ".codex-plugin", FileName)) || isClaudeLayout(dir)
 }
 
 func fileExists(p string) bool {

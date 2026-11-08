@@ -11,7 +11,10 @@
 //   - catalog.go：插件市场（内置插件、在线列表及其本地缓存）和从 Git 仓库取插件；列表只提供来源，装之前仍走 Preview 确认；
 //   - archive.go：zip 解压和目录复制，防 zip slip、符号链接、压缩炸弹；
 //   - vars.go / run.go：命令行拆分与变量展开（先拆后展开，不经过 shell），状态检查和操作按钮的运行；
-//   - command.go：斜杠命令的提示词模板；
+//   - command.go：斜杠命令的提示词模板（原生的 {{args}}，以及 Claude Code 写法的 $ARGUMENTS / $1…）；
+//   - claude_format.go / agent_format.go：读懂别家格式的插件（Claude Code 的 .claude-plugin、Codex / Agent Plugins），
+//     翻译成 Mosaic 自己的 Manifest。只读文件、不执行任何东西；Mosaic 不支持的组件（hooks、agents、LSP……）
+//     不生效，并列进 Manifest.Ignored 让用户在确认页看到，而不是悄悄忽略；
 //   - plugin.go / statusline.go：钩子的接口（预留）和状态栏脚本。
 //
 // # 不负责什么
@@ -20,7 +23,7 @@
 //   - 不发现技能：它只提供技能文件夹（skill.Folder），发现和读取在 internal/skill；
 //   - 不做权限裁决：插件的工具照常走 permission；清单里声明的 read 风险只有在安装确认时用户勾选后才生效；
 //   - 不渲染界面：设置页的表单、状态点、按钮由前端根据 Info 渲染，插件不能注入前端代码；
-//   - 钩子（hooks）这个版本还没有实现：清单里出现 hooks 会被拒绝。
+//   - 钩子（hooks）这个版本还没有实现：Mosaic 原生清单里出现 hooks 会被拒绝；别家格式里的 hooks 不会执行，只被列为“不会生效”。
 //
 // # 安全
 //
