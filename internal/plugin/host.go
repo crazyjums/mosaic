@@ -58,6 +58,8 @@ type Host struct {
 	state   stateFile
 	plugins map[string]*loaded
 	staged  map[string]*stagedPlugin
+	// markets 是用户正在从中挑插件的 marketplace（见 marketplace.go），取消或选完后清理。
+	markets map[string]*stagedMarket
 	warn    map[string]string
 	// remote 是在线列表里（上次刷新的）条目，见 catalog.go。
 	remote []registryEntry
@@ -115,7 +117,7 @@ func NewHost(opts HostOptions) (*Host, error) {
 			return nil, fmt.Errorf("plugin: %w", err)
 		}
 	}
-	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, warn: map[string]string{}, logins: map[string]*loginRun{}}
+	h := &Host{opts: opts, plugins: map[string]*loaded{}, staged: map[string]*stagedPlugin{}, markets: map[string]*stagedMarket{}, warn: map[string]string{}, logins: map[string]*loginRun{}}
 	h.cleanLeftovers()
 	h.loadState()
 	h.loadRegistryCache()
