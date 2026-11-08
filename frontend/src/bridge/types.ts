@@ -223,6 +223,8 @@ export interface MCPServerStatus {
   tools: string[];
   server_name?: string;
   server_version?: string;
+  started_at?: string;
+  output?: string;
   /** 空表示你自己添加的；"plugin:<id>" 表示插件带来的（只读，在 设置 → 插件 里管理） */
   source?: string;
 }
@@ -820,6 +822,10 @@ export interface PluginServerHealth {
   state: "connecting" | "connected" | "failed" | "disabled";
   tools: string[];
   error?: string;
+  /** 这次连接开始的时间（连接中时显示“已等待 N 秒”） */
+  started_at?: string;
+  /** 子进程 stderr 的最后几行：连接中能看到 npx 在下载还是在报错，失败后保留作排查依据 */
+  output?: string;
 }
 export interface PluginDiagnostics {
   id: string;

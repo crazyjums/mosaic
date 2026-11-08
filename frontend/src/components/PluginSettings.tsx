@@ -535,7 +535,16 @@ function PluginHealthBlock({ plugin, health, onRefresh }: { plugin: PluginInfo; 
               </span>
             </div>
             <div className="mt-1 text-muted">{t("已注册工具")}：{srv.tools.length ? srv.tools.join("、") : "—"}</div>
+            {srv.state === "connecting" && srv.started_at && (
+              <div className="mt-1 text-muted">{t("已等待 {n} 秒", { n: String(Math.max(0, Math.round((Date.now() - Date.parse(srv.started_at)) / 1000))) })}</div>
+            )}
             {srv.error && <div className="mt-1 break-words text-danger">{srv.error}</div>}
+            {srv.output && (
+              <details className="mt-1" open={srv.state !== "connected"}>
+                <summary className="cursor-pointer text-muted">{t("子进程输出")}</summary>
+                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-ctl bg-panel p-2 font-mono text-[11px]">{srv.output}</pre>
+              </details>
+            )}
           </div>
         ))}
         {plugin.commands.length > 0 && (
