@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ToolStatus, ToolView } from "../store/reducer";
+import { hookLine, type ToolStatus, type ToolView } from "../store/reducer";
 import { t } from "../i18n";
 import { OPENABLE_EXT } from "../store/artifacts";
 import { FileLink } from "./FileLink";
@@ -53,6 +53,16 @@ export default function ToolCallCard({ tool }: { tool: ToolView }) {
         </span>
       </button>
       {tool.name === "task" && <SubagentRun callId={tool.callId} />}
+      {/* 钩子跑过什么一直显示（不用展开）：它们是在你电脑上运行的命令，被阻止时也要一眼看到是谁、为什么 */}
+      {!!tool.hooks?.length && (
+        <div className="space-y-0.5 border-t border-line px-3 py-1.5 text-[11px]">
+          {tool.hooks.map((h, i) => (
+            <div key={i} className={h.outcome === "blocked" || h.outcome === "error" || h.outcome === "timeout" ? "text-warn" : "text-muted"} title={h.command}>
+              {hookLine(h)}
+            </div>
+          ))}
+        </div>
+      )}
       <ImagePreview tool={tool} />
       <FileRow tool={tool} />
       {/* 失败的调用不用展开就能看到原因（只取第一行，避免撑开版面） */}
