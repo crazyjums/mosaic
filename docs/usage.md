@@ -341,9 +341,10 @@ MCP 的环境变量和请求头保存在 `settings.json` 中（权限 0600），
 主对话可以用 `task` 工具把一件具体的活（查资料、跑测试、审代码）派给**子 agent**：它在独立的上下文里干活（看不到这段对话），只把结论交回来，中间过程折叠在那张 `task` 工具卡片下面（运行中展开，结束后收起，点开能看）。
 
 - **怎么加**：把 Claude Code 格式的 agent 文件（Markdown；开头 `---` 里写 `name`、`description`，可选 `tools`、`disallowedTools`、`model`、`maxTurns`；正文是它的系统提示词）放进 `~/.myllmapp/agents/`，在 设置 → 权限 → 子 agent 里点“重新加载”。也可以装一个带 `agents/` 的 Claude Code 格式插件：插件启用时它的子 agent 自动可用（名字前面带插件 id），停用或卸载就去掉；安装确认和插件详情里能看到有哪些、哪些字段不会生效。
-- **工具**：`tools` 是白名单，`disallowedTools` 是黑名单；不写 `tools` 就继承主对话的全部工具。Claude Code 的工具名会映射成 Mosaic 的（Read→read_file、Glob→find_files、Grep→search_content、Bash→shell、Write/Edit…），对不上的（WebFetch、WebSearch 等）忽略并在列表里提示；白名单一个都对不上时**拒绝运行**，不会悄悄给它全部工具。
+- **工具**：`tools` 是白名单，`disallowedTools` 是黑名单；不写 `tools` 就继承主对话的全部工具。Claude Code 的工具名会映射成 Mosaic 的（Read→read_file、Glob→find_files、Grep→search_content、Bash→shell、Write/Edit…），对不上的（WebFetch、WebSearch 等）忽略并在列表里提示；白名单一个都对不上、或者写了 `tools: []` 时**拒绝运行**，不会悄悄给它全部工具。注意：Claude Code 里 `Bash(git *)` 这种带参数的写法在 Mosaic 里只按工具名算——它让子 agent 拿到 `shell`，**并不限制只能跑 git 命令**；要限制命令，请在 设置 → 权限 里写规则（子 agent 和主对话共用同一套规则）。
 - **权限**：和主对话**完全相同**（同一档位、同一套规则、同一个确认弹窗，弹窗上标明是哪个子 agent）。定义文件里的 `permissionMode`、`hooks`、`mcpServers` 不生效。
-- **模型**：`model` 只有在当前厂商配置档里有同名模型时才换，否则沿用主对话的模型。`maxTurns` 是它的最大步数（默认 20，不超过主对话的上限），到了上限会把停下时的结论标注“可能不完整”交回来。
+- **模型**：`model` 只有在当前厂商配置档里有同名模型时才换（`sonnet` / `opus` / `haiku` 这类别名对应到名字里含这个词的模型），否则沿用主对话的模型。`maxTurns` 是它的最大步数（默认 20，最多 100，也不超过主对话的上限），到了上限会把停下时的结论标注“可能不完整”交回来。
+- **上下文**：子 agent 看不到这段对话，但会拿到工作区路径、项目约定（`AGENTS.md` 等）和技能清单。
 - **限制**：子 agent 不能再派子 agent；多个子 agent 顺序运行；重新打开会话时只看得到 `task` 的结论，看不到子 agent 的中间过程；只在 Mosaic 内置的对话引擎里有效（Codex、Claude Code、pi 引擎有它们自己的机制）。
 
 ## 2.13 技能（Skills）

@@ -127,11 +127,19 @@ func (a *Agent) Run(ctx context.Context, sess *Session, input string) TurnResult
 func (a *Agent) RunInput(ctx context.Context, sess *Session, in UserInput) TurnResult {
 	em := emitter{pub: a.cfg.Publisher, sessionID: sess.ID, agentID: a.cfg.ID, parentID: a.cfg.ParentID}
 	res := TurnResult{TurnID: event.NewID("turn")}
+	// 本轮用量按会话合计的差值算：这样子 agent（task 工具）花的 token 也算进这一轮，又不会重复计算。
+	startUsage := sess.Snapshot().Usage
 
 	// end 统一负责收尾：发 turn_end 并返回结果。所有退出路径都经过这里，保证前端一定能解锁输入框。
 	end := func(reason event.TurnEndReason, err error) TurnResult {
 		res.Reason, res.Err = reason, err
 		total := sess.Snapshot().Usage
+		res.Usage = provider.Usage{
+			InputTokens:      total.InputTokens - startUsage.InputTokens,
+			OutputTokens:     total.OutputTokens - startUsage.OutputTokens,
+			CacheReadTokens:  total.CacheReadTokens - startUsage.CacheReadTokens,
+			CacheWriteTokens: total.CacheWriteTokens - startUsage.CacheWriteTokens,
+		}
 		em.emit("", event.TurnEnd{
 			TurnID:       res.TurnID,
 			Reason:       reason,

@@ -31,6 +31,7 @@ type routed struct {
 	mu          sync.Mutex
 	mainTools   [][]string
 	childTools  [][]string
+	childSystem string
 }
 
 func (r *routed) Name() string { return "fake" }
@@ -43,6 +44,7 @@ func (r *routed) Stream(ctx context.Context, req provider.Request, on func(provi
 	isChild := strings.Contains(req.System, childMarker)
 	if isChild {
 		r.childTools = append(r.childTools, names)
+		r.childSystem = req.System
 	} else {
 		r.mainTools = append(r.mainTools, names)
 	}
@@ -164,9 +166,14 @@ func TestSubagentFullRound(t *testing.T) {
 			t.Fatalf("子 agent 不能看到 task: %v", names)
 		}
 	}
-	// 子 agent 的用量计入会话
-	if u := h.engine.Status().Usage; u.InputTokens == 0 && u.OutputTokens == 0 {
-		t.Logf("用量: %+v", u)
+	// 子 agent 的用量计入会话，也计入这一轮（turn_end 的本轮用量 = 会话合计，因为这是第一轮）
+	te := payloads[event.TurnEnd](h.rec)[0]
+	if te.Usage != te.SessionUsage || te.Usage.OutputTokens == 0 {
+		t.Fatalf("本轮用量应包含子 agent: turn=%+v session=%+v", te.Usage, te.SessionUsage)
+	}
+	// 子 agent 的提示词带上工作区（项目约定和技能清单也跟着工作区走）
+	if !strings.Contains(h.p.childSystem, h.ws) {
+		t.Fatalf("子 agent 应知道工作区: %q", h.p.childSystem)
 	}
 }
 
