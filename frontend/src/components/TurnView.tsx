@@ -42,6 +42,8 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
   const waiting = allTools.filter((x) => x.status === "awaiting_permission");
   const finished = allTools.filter((x) => x.status === "done").length;
   const settled = finished + failed;
+  const active = [...allTools].reverse().find((tool) => tool.status === "running" || tool.status === "queued");
+  const progress = waiting.length ? t("等待你的权限确认") : active ? t("正在执行：{tool}", { tool: active.name }) : answering ? t("正在整理回答") : t("正在思考");
 
   const handoffs = items.reduce((n, it) => n + (it.route?.handedOn.length ?? 0), 0);
   let stats: string;
@@ -53,6 +55,7 @@ export default function TurnView({ items, live }: { items: AssistantItem[]; live
 
   return (
     <div className="space-y-3">
+      {live && <div role="status" className="flex items-center gap-2 rounded-ctl border border-line bg-panel-2 px-3 py-2 text-xs text-fg"><span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />{progress}</div>}
       {hasProcess &&
         (open ? (
           // 展开后的过程区：整块有浅色底和细边框，和下面的"最终回答"卡片分开

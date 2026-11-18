@@ -9,7 +9,7 @@ import { useSettings } from "../store/settingsStore";
 import { useUIPrefs } from "../store/uiPrefs";
 import QueuePanel from "./QueuePanel";
 import { ModelItem } from "./StatusBar";
-import PermissionModeSelect from "./PermissionModeSelect";
+import PermissionModeSelect, { usePermissionDescription } from "./PermissionModeSelect";
 
 // 输入框：按设置的快捷键发送；可以添加图片和文本附件（选择 / 粘贴 / 拖进来）；键入 / 弹出技能菜单。
 //
@@ -53,6 +53,7 @@ export default function Composer() {
   const send = useChat((s) => s.send);
   const cancel = useChat((s) => s.cancel);
   const waiting = useChat((s) => s.permissions.length > 0);
+  const permissionDescription = usePermissionDescription();
   const queued = useChat((s) => s.queue.filter((m) => m.sessionId === s.sessionId).length);
   const sendKey = useUIPrefs((s) => s.prefs.sendKey);
   const openSettings = useSettings((s) => s.show);
@@ -185,6 +186,7 @@ export default function Composer() {
     <div className="shrink-0 px-7 pb-3 pt-3">
       <div className="mx-auto max-w-[var(--content-width)] space-y-2">
         <QueuePanel />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted"><ModelItem compact /><PermissionModeSelect /><span>{t("当前权限：{description}", { description: permissionDescription })}</span></div>
         <div
           className={`relative rounded-[18px] border-[1.5px] bg-panel shadow-card transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-[var(--focus-ring)] ${dragging ? "border-accent ring-2 ring-[var(--focus-ring)]" : "border-line"}`}
           onDragOver={(e) => {
@@ -265,8 +267,6 @@ export default function Composer() {
             </button>
             <span className="hidden text-[11px] text-muted xl:inline">{hint}</span>
             <div className="flex-1" />
-            <div className="hidden max-w-[210px] lg:flex"><ModelItem /></div>
-            <div className="hidden lg:flex"><PermissionModeSelect /></div>
             {running && (
               <button
                 className="flex items-center gap-1.5 rounded-ctl border border-danger/50 px-3 py-1.5 text-sm text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"

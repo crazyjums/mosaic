@@ -82,17 +82,20 @@ function Tip({ tip, children, className = "" }: { tip: string; children: ReactNo
   );
 }
 
-export function ModelItem() {
+export function ModelItem({ compact = false }: { compact?: boolean } = {}) {
   const { provider, model, profiles, running, setModel } = useChat();
   const openSettings = useSettings((s) => s.show);
-  const isDemo = profiles.find((p) => p.name === provider)?.type === "fake";
+  const profileType = profiles.find((p) => p.name === provider)?.type;
+  const isDemo = profileType === "fake";
+  const engine = profileType === "codex" ? "Codex" : profileType === "claudecode" ? "Claude Code" : profileType === "pi" ? "pi" : t("内置引擎");
 
   // 选项值编码为 "profile\u0000model"，一个下拉框同时选择厂商和模型。
   const value = `${provider}\u0000${model}`;
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 text-muted">{t("引擎：{engine}", { engine })}</span>
       <select
-        className="max-w-[13rem] truncate rounded-ctl border border-line bg-panel px-1.5 py-0.5 text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
+        className="min-w-0 max-w-[13rem] truncate rounded-ctl border border-line bg-panel px-1.5 py-0.5 text-fg focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
         value={value}
         onChange={(e) => {
           const [p, m] = e.target.value.split("\u0000");
@@ -117,7 +120,7 @@ export function ModelItem() {
           {t("配置模型厂商 →")}
         </button>
       )}
-      {isDemo && (
+      {isDemo && !compact && (
         <button className="shrink-0 rounded bg-warn/15 px-1.5 py-0.5 text-warn hover:bg-warn/25" onClick={() => void openSettings("providers")}>
           {t("演示模型 · 配置真实模型 →")}
         </button>

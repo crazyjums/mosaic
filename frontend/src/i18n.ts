@@ -28,6 +28,19 @@ export function t(zh: string, vars?: Record<string, string | number>): string {
 }
 
 export const EN: Record<string, string> = {
+  "内置引擎": "Built-in",
+  "引擎：{engine}": "Engine: {engine}",
+  "Codex 可在工作区内自动写入和运行命令；越界或需要提升权限时可能询问。": "Codex can write and run commands within the workspace; actions outside it or requiring elevated permissions may prompt.",
+  "等待你的权限确认": "Waiting for your approval",
+  "正在执行：{tool}": "Running: {tool}",
+  "正在整理回答": "Preparing the answer",
+  "正在思考": "Thinking",
+  "本轮执行摘要": "Turn summary",
+  "工具报告的文件变更": "File changes reported by tools",
+  "命令记录": "Command activity",
+  "当前权限：{description}": "Permissions: {description}",
+  "{n} 次工具调用失败或被拒绝": "{n} tool calls failed or were denied",
+  "仅汇总可识别的工具记录；命令或外部引擎产生的其他文件可能未列出。": "Only recognizable tool records are listed; other files created by commands or external engines may be missing.",
   // ---- App / 侧边栏 ----
   "新会话": "New session",
   "演示模式": "Demo",
