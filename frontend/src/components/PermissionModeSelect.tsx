@@ -23,6 +23,7 @@ const TONE: Record<PermissionMode, string> = {
 export default function PermissionModeSelect() {
   const mode = useChat((s) => s.permissionMode);
   const setMode = useChat((s) => s.setPermissionMode);
+  const description = usePermissionDescription();
   const [confirming, setConfirming] = useState(false);
 
   const onChange = (m: PermissionMode) => {
@@ -36,7 +37,7 @@ export default function PermissionModeSelect() {
         className={`shrink-0 rounded border px-1.5 py-0.5 ${TONE[mode] ?? TONE.default} bg-panel`}
         value={mode}
         onChange={(e) => onChange(e.target.value as PermissionMode)}
-        title={t("权限：{desc}（立即生效，会被记住；全部放行除外）", { desc: t(MODES.find((m) => m.value === mode)?.desc ?? "") })}
+        title={t("权限：{desc}（立即生效，会被记住；全部放行除外）", { desc: description })}
         aria-label={t("权限档位")}
       >
         {MODES.map((m) => (
@@ -57,6 +58,14 @@ export default function PermissionModeSelect() {
       )}
     </>
   );
+}
+
+export function usePermissionDescription() {
+  const mode = useChat((s) => s.permissionMode);
+  const type = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type);
+  return type === "codex" && (mode === "default" || mode === "accept_edits")
+    ? t("Codex 可在工作区内自动写入和运行命令；越界或需要提升权限时可能询问。")
+    : t(MODES.find((m) => m.value === mode)?.desc ?? "");
 }
 
 // "全部放行"的危险确认。刻意不提供 Enter 快捷确认，默认焦点在"取消"上，Esc 取消。

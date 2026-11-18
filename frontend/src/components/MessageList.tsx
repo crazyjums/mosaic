@@ -1,3 +1,4 @@
+import { TurnSummary } from "./TurnSummary";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useChat } from "../store/chatStore";
 import { useSettings } from "../store/settingsStore";
@@ -24,6 +25,7 @@ export default function MessageList() {
   // 子 agent 的过程折叠在派出它的 task 工具卡片下面（见 SubagentRun），不进主时间线。
   const timeline = useMemo(() => allItems.filter((it) => !(it.kind === "assistant" && it.agentId !== "main" && agents[it.agentId]?.callId)), [allItems, agents]);
   const running = useChat((s) => s.running);
+  const tools = useChat((s) => s.tools);
   const backendKind = useChat((s) => s.backendKind);
   const isDemoModel = useChat((s) => s.profiles.find((p) => p.name === s.provider)?.type === "fake");
   const sessionId = useChat((s) => s.sessionId);
@@ -122,9 +124,16 @@ export default function MessageList() {
                 </div>
               );
             case "turn_end":
-              if (it.replay) return null;
+              const turnTools = [];
+              for (let i = idx - 1; i >= 0; i--) {
+                const item = all[i];
+                if (!Array.isArray(item) && (item.kind === "user" || item.kind === "turn_end")) break;
+                if (Array.isArray(item)) turnTools.unshift(...item.flatMap((msg) => msg.blocks.flatMap((block) => block.type === "tool" && tools[block.callId] ? [tools[block.callId]] : [])));
+              }
               return (
-                <div key={it.id} className="flex items-center gap-3 text-[11px] text-muted">
+                <div key={it.id} className="space-y-3">
+                <TurnSummary tools={turnTools} />
+                {!it.replay && <div className="flex items-center gap-3 text-[11px] text-muted">
                   <div className="h-px flex-1 bg-line" />
                   {t("{reason} · {steps} 步 · 入 {input} / 出 {output} tokens", {
                     reason: REASON[it.reason] ? t(REASON[it.reason]) : it.reason,
@@ -133,6 +142,7 @@ export default function MessageList() {
                     output: it.usage.output_tokens,
                   })}
                   <div className="h-px flex-1 bg-line" />
+                </div>}
                 </div>
               );
           }
